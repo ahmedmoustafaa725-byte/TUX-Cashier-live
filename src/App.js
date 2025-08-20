@@ -580,20 +580,37 @@ useEffect(() => {
   bankTx,
 ]);
 
-  // Optional: realtime orders stream
-  -  useEffect(() => {
--    if (!realtimeOrders || !ordersColRef || !fbUser) return;
--    const qy = query(ordersColRef, orderBy("createdAt", "desc"));
--    const unsub = onSnapshot(qy, (snap) => {
--      const arr = [];
--      snap.forEach((d) => arr.push(orderFromCloudDoc(d.id, d.data())));
--      // Replace local orders with cloud stream (you can merge if you prefer)
--      setOrders(arr);
--    });
--    return () => unsub();
--  }, [realtimeOrders, ordersColRef, fbUser]);
-+  useEffect(() => {
-+    if (!realtimeOrders || !ordersColRef || !fbUser) return;
+  // Optional: realtime orders stream (limited to current shift window)
+useEffect(() => {
+  if (!realtimeOrders || !ordersColRef || !fbUser) return;
+
+  // Only stream when a shift is active (has a start time)
+  if (!dayMeta?.startedAt) {
+    return; // no listener until a shift starts
+  }
+
+  const startTs = Timestamp.fromDate(new Date(dayMeta.startedAt));
+  const qParts = [
+    where("createdAt", ">=", startTs),
+    orderBy("createdAt", "desc"),
+  ];
+
+  if (dayMeta?.endedAt) {
+    const endTs = Timestamp.fromDate(new Date(dayMeta.endedAt));
+    // range on the same field is fine; orderBy must be on that field too (it is)
+    qParts.unshift(where("createdAt", "<=", endTs));
+  }
+
+  const qy = query(ordersColRef, ...qParts);
+  const unsub = onSnapshot(qy, (snap) => {
+    const arr = [];
+    snap.forEach((d) => arr.push(orderFromCloudDoc(d.id, d.data())));
+    setOrders(arr);
+  });
+
+  return () => unsub();
+}, [realtimeOrders, ordersColRef, fbUser, dayMeta?.startedAt, dayMeta?.endedAt]);
+
 +
 +    // If shift hasn't started, show no orders and don't listen
 +    if (!dayMeta?.startedAt) {
