@@ -21,15 +21,6 @@ import {
   doc as fsDoc,
 } from "firebase/firestore";
 
-// ---- Firebase config (fill with your real values) ----
-const FIREBASE_CONFIG = {
-  apiKey: "AI...your real key...",
-  authDomain: "your-project-id.firebaseapp.com",
-  projectId: "your-project-id",
-  storageBucket: "your-project-id.appspot.com",
-  messagingSenderId: "1234567890",
-  appId: "1:1234567890:web:abcdef123456",
-};
 
 
 
@@ -48,18 +39,17 @@ const firebaseConfig = {
   appId: "1:978379497015:web:ea165dcb6873e0c65929b2"
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
 
 // 2) Name your shop (used for collection/doc paths)
 const SHOP_ID = "tux"; // change if you manage multiple shops (e.g. "tux-truck-1")
 
 function ensureFirebase() {
-  if (!getApps().length) initializeApp(FIREBASE_CONFIG);
+  if (!getApps().length) initializeApp(firebaseConfig);
   const auth = getAuth();
   const db = getFirestore();
   return { auth, db };
 }
+
 
 // Pack current state (dates -> ISO) for Firestore
 function packStateForCloud(state) {
@@ -292,26 +282,6 @@ const DEFAULT_DELIVERY_FEE = 20;
 // ---- Editor PIN to protect PRICES tab
 const EDITOR_PIN = "0512";
 
-// localStorage keys
-const LS_KEYS = {
-  menu: "tux_menu",
-  extras: "tux_extras",
-  orders: "tux_orders",
-  inv: "tux_inventory_v2",
-  nextNo: "tux_nextOrderNo",
-  dark: "tux_darkMode",
-  workers: "tux_workers",
-  pays: "tux_payments",
-  invLock: "tux_inventoryLocked",
-  invSnap: "tux_inventorySnapshot",
-  invLockedAt: "tux_inventoryLockedAt",
-  adminPins: "tux_adminPins_v1",
-  orderTypes: "tux_orderTypes_v1",
-  defaultDeliveryFee: "tux_defaultDeliveryFee_v1",
-  expenses: "tux_expenses_v1",
-  dayMeta: "tux_dayMeta_v1",
-  bankTx: "tux_bankTx_v1",
-};
 
 // ---------- PIN defaults + helpers ----------
 const DEFAULT_ADMIN_PINS = { 1: "1111", 2: "2222", 3: "3333", 4: "4444", 5: "5555", 6: "6666" };
@@ -1273,10 +1243,7 @@ export default function App() {
   }, [bankTx]);
 
   /* --------------------------- UI --------------------------- */
-  const firebaseConfigured =
-    FIREBASE_CONFIG &&
-    FIREBASE_CONFIG.apiKey &&
-    !FIREBASE_CONFIG.apiKey.includes("YOUR_");
+ const firebaseConfigured = !!(firebaseConfig && firebaseConfig.apiKey);
 
   return (
     <div style={containerStyle}>
@@ -2697,4 +2664,5 @@ export default function App() {
     </div>
   );
 }
+
 
