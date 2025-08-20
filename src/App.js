@@ -641,6 +641,60 @@ useEffect(() => {
     return map;
   }, [inventory]);
 
+  // ---- Admin PIN helper & inventory lock/unlock ----
+const promptAdminAndPin = () => {
+  const adminStr = window.prompt("Enter Admin number (1 to 6):", "1");
+  if (!adminStr) return null;
+  const n = Number(adminStr);
+  if (![1, 2, 3, 4, 5, 6].includes(n)) {
+    alert("Please enter a number from 1 to 6.");
+    return null;
+  }
+  const entered = window.prompt(`Enter PIN for Admin ${n}:`, "");
+  if (entered == null) return null;
+
+  const expected = norm(adminPins[n]);
+  const attempt = norm(entered);
+
+  if (!expected) {
+    alert(`Admin ${n} has no PIN set; set a PIN in Prices → Admin PINs.`);
+    return null;
+  }
+  if (attempt !== expected) {
+    alert("Invalid PIN.");
+    return null;
+  }
+  return n;
+};
+
+const lockInventoryForDay = () => {
+  if (inventoryLocked) return;
+  if (inventory.length === 0) return alert("Add at least one inventory item first.");
+  if (!window.confirm(
+    "Lock current inventory as Start-of-Day? You won't be able to edit until End the Day or admin unlock."
+  )) return;
+
+  const snap = inventory.map((it) => ({
+    id: it.id,
+    name: it.name,
+    unit: it.unit,
+    qtyAtLock: it.qty,
+  }));
+  setInventorySnapshot(snap);
+  setInventoryLocked(true);
+  setInventoryLockedAt(new Date());
+};
+
+const unlockInventoryWithPin = () => {
+  if (!inventoryLocked) return alert("Inventory is already unlocked.");
+  const adminNum = promptAdminAndPin();
+  if (!adminNum) return;
+  if (!window.confirm(`Admin ${adminNum}: Unlock inventory for editing? Snapshot will be kept.`)) return;
+  setInventoryLocked(false);
+  alert("Inventory unlocked for editing.");
+};
+
+
   // --------- Shift Controls ----------
   const startShift = () => {
     if (dayMeta.startedAt && !dayMeta.endedAt) return alert("Shift already started.");
@@ -2743,6 +2797,7 @@ const endDay = async () => {
     </div>
   );
 }
+
 
 
 
