@@ -580,28 +580,30 @@ useEffect(() => {
   bankTx,
 ]);
 
-  // Optional: realtime orders stream (limited to current shift window)
+ // Optional: realtime orders stream (limited to current shift window)
 useEffect(() => {
   if (!realtimeOrders || !ordersColRef || !fbUser) return;
-
-  // Only stream when a shift is active (has a start time)
-  if (!dayMeta?.startedAt) {
-    return; // no listener until a shift starts
-  }
+  if (!dayMeta || !dayMeta.startedAt) return; // no listener until a shift starts
 
   const startTs = Timestamp.fromDate(new Date(dayMeta.startedAt));
-  const qParts = [
-    where("createdAt", ">=", startTs),
-    orderBy("createdAt", "desc"),
-  ];
+  let qy;
 
-  if (dayMeta?.endedAt) {
+  if (dayMeta.endedAt) {
     const endTs = Timestamp.fromDate(new Date(dayMeta.endedAt));
-    // range on the same field is fine; orderBy must be on that field too (it is)
-    qParts.unshift(where("createdAt", "<=", endTs));
+    qy = query(
+      ordersColRef,
+      where("createdAt", ">=", startTs),
+      where("createdAt", "<=", endTs),
+      orderBy("createdAt", "desc")
+    );
+  } else {
+    qy = query(
+      ordersColRef,
+      where("createdAt", ">=", startTs),
+      orderBy("createdAt", "desc")
+    );
   }
 
-  const qy = query(ordersColRef, ...qParts);
   const unsub = onSnapshot(qy, (snap) => {
     const arr = [];
     snap.forEach((d) => arr.push(orderFromCloudDoc(d.id, d.data())));
@@ -609,7 +611,14 @@ useEffect(() => {
   });
 
   return () => unsub();
-}, [realtimeOrders, ordersColRef, fbUser, dayMeta?.startedAt, dayMeta?.endedAt]);
+}, [
+  realtimeOrders,
+  ordersColRef,
+  fbUser,
+  dayMeta && dayMeta.startedAt && dayMeta.startedAt.getTime(),
+  dayMeta && dayMeta.endedAt && dayMeta.endedAt.getTime(),
+]);
+
 
 
     // If shift hasn't started, show no orders and don't listen
@@ -689,34 +698,38 @@ useEffect(() => {
     alert(`Shift changed: ${dayMeta.startedBy} → ${newName}`);
   };
 
-  // NEW: End the Day (replaces Reset Day)
-  const endDay = () => {
-    if (!dayMeta.startedAt) return alert("Start a shift first.");
-    const who = window.prompt("Enter your name to END THE DAY:", "");
-    const endBy = norm(who);
-    if (!endBy) return alert("Name is required.");
+ // NEW: End the Day (replaces Reset Day)
+const endDay = async () => {                    // ⬅ make it async
+  if (!dayMeta.startedAt) return alert("Start a shift first.");
+  const who = window.prompt("Enter your name to END THE DAY:", "");
+  const endBy = norm(who);
+  if (!endBy) return alert("Name is required.");
 
-    // Mark end time now for the final PDF
-    const endTime = new Date();
-    const metaForReport = { ...dayMeta, endedAt: endTime, endedBy: endBy };
+  // Mark end time now for the final PDF
+  const endTime = new Date();
+  const metaForReport = { ...dayMeta, endedAt: endTime, endedBy: endBy };
 
-    // Download PDF first
-    generatePDF(false, metaForReport);
+  // Download PDF first
+  generatePDF(false, metaForReport);
 
-    +  // Purge this shift's orders from Firestore so the board is clean next time
-+  if (cloudEnabled && ordersColRef && fbUser && db) {
-+    try {
-+      // Prefer the recorded shift start; if missing, derive from earliest order
-+      const start =
-+        dayMeta.startedAt
-+          ? new Date(dayMeta.startedAt)
-+          : (orders.length ? new Date(Math.min(...orders.map(o => +o.date))) : endTime);
-+      const removed = await purgeOrdersInCloud(db, ordersColRef, start, endTime);
-+      console.log(`Purged ${removed} cloud orders for the shift.`);
-+    } catch (e) {
-+      console.warn("Cloud purge on endDay failed:", e);
-+    }
-+  }
+  // [3] Purge this shift’s orders from Firestore
+  if (cloudEnabled && db && ordersColRef && fbUser && dayMeta && dayMeta.startedAt) {
+    try {
+      const removed = await purgeOrdersInCloud(
+        db,
+        ordersColRef,
+        new Date(dayMeta.startedAt),
+        endTime
+      );
+      console.log(`Purged ${removed} order docs for this shift.`);
+    } catch (e) {
+      console.warn("Purge failed:", e);
+    }
+  }
+
+  // ...keep your existing margin/bankTx + local reset code below ...
+};
+
 
    // Reset day locally
    setOrders([]);
@@ -2846,6 +2859,7 @@ Bearbeiten
     </div>
   );
 }
+
 
 
 
