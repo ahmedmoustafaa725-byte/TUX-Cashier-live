@@ -378,8 +378,9 @@ export default function App() {
   const [fbReady, setFbReady] = useState(false);
   const [fbUser, setFbUser] = useState(null);
   const [cloudEnabled, setCloudEnabled] = useState(true); // autosave to state doc
-  const [realtimeOrders, setRealtimeOrders] = useState(false); // live board via orders collection
+  const [realtimeOrders, setRealtimeOrders] = useState(true); // live board via orders collection
   const [cloudStatus, setCloudStatus] = useState({ lastSaveAt: null, lastLoadAt: null, error: null });
+  const [hydrated, setHydrated] = useState(false); // <-- prevents autosave before initial load
 
   // Init + Anonymous Auth
   useEffect(() => {
@@ -413,6 +414,47 @@ export default function App() {
     () => (db ? collection(db, "shops", SHOP_ID, "orders") : null),
     [db]
   );
+
+  // One-time initial load from cloud AFTER auth/refs are ready
+useEffect(() => {
+  if (!stateDocRef || !fbUser || hydrated) return;
+
+  (async () => {
+    try {
+      const snap = await getDoc(stateDocRef);
+      if (snap.exists()) {
+        const data = snap.data() || {};
+        const unpacked = unpackStateFromCloud(data, dayMeta);
+
+        if (unpacked.menu) setMenu(unpacked.menu);
+        if (unpacked.extraList) setExtraList(unpacked.extraList);
+        if (unpacked.orders) setOrders(unpacked.orders);
+        if (unpacked.inventory) setInventory(unpacked.inventory);
+        if (unpacked.nextOrderNo != null) setNextOrderNo(unpacked.nextOrderNo);
+        if (unpacked.dark != null) setDark(unpacked.dark);
+        if (unpacked.workers) setWorkers(unpacked.workers);
+        if (unpacked.paymentMethods) setPaymentMethods(unpacked.paymentMethods);
+        if (unpacked.inventoryLocked != null) setInventoryLocked(unpacked.inventoryLocked);
+        if (unpacked.inventorySnapshot) setInventorySnapshot(unpacked.inventorySnapshot);
+        if (unpacked.inventoryLockedAt != null) setInventoryLockedAt(unpacked.inventoryLockedAt);
+        if (unpacked.adminPins) setAdminPins({ ...DEFAULT_ADMIN_PINS, ...unpacked.adminPins });
+        if (unpacked.orderTypes) setOrderTypes(unpacked.orderTypes);
+        if (unpacked.defaultDeliveryFee != null) setDefaultDeliveryFee(unpacked.defaultDeliveryFee);
+        if (unpacked.expenses) setExpenses(unpacked.expenses);
+        if (unpacked.dayMeta) setDayMeta(unpacked.dayMeta);
+        if (unpacked.bankTx) setBankTx(unpacked.bankTx);
+
+        setCloudStatus((s) => ({ ...s, lastLoadAt: new Date(), error: null }));
+      }
+    } catch (e) {
+      console.warn("Initial cloud load failed:", e);
+      setCloudStatus((s) => ({ ...s, error: String(e) }));
+    } finally {
+      setHydrated(true); // allow autosave to begin
+    }
+  })();
+}, [stateDocRef, fbUser, hydrated]); // important: include hydrated
+
 
   // Manual cloud load (pull)
   const loadFromCloud = async () => {
@@ -449,59 +491,62 @@ export default function App() {
   };
 
   // Autosave to cloud (state doc) — debounced
-  useEffect(() => {
-    if (!cloudEnabled || !stateDocRef || !fbUser) return;
-    const t = setTimeout(async () => {
-      try {
-        const body = packStateForCloud({
-          menu,
-          extraList,
-          orders,
-          inventory,
-          nextOrderNo,
-          dark,
-          workers,
-          paymentMethods,
-          inventoryLocked,
-          inventorySnapshot,
-          inventoryLockedAt,
-          adminPins,
-          orderTypes,
-          defaultDeliveryFee,
-          expenses,
-          dayMeta,
-          bankTx,
-        });
-        await setDoc(stateDocRef, body, { merge: true });
-        setCloudStatus((s) => ({ ...s, lastSaveAt: new Date(), error: null }));
-      } catch (e) {
-        setCloudStatus((s) => ({ ...s, error: String(e) }));
-      }
-    }, 1600);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    cloudEnabled,
-    stateDocRef,
-    fbUser,
-    menu,
-    extraList,
-    orders,
-    inventory,
-    nextOrderNo,
-    dark,
-    workers,
-    paymentMethods,
-    inventoryLocked,
-    inventorySnapshot,
-    inventoryLockedAt,
-    adminPins,
-    orderTypes,
-    defaultDeliveryFee,
-    expenses,
-    dayMeta,
-    bankTx,
-  ]);
+ useEffect(() => {
+  if (!cloudEnabled || !stateDocRef || !fbUser || !hydrated) return;
+
+  const t = setTimeout(async () => {
+    try {
+      const body = packStateForCloud({
+        menu,
+        extraList,
+        orders,
+        inventory,
+        nextOrderNo,
+        dark,
+        workers,
+        paymentMethods,
+        inventoryLocked,
+        inventorySnapshot,
+        inventoryLockedAt,
+        adminPins,
+        orderTypes,
+        defaultDeliveryFee,
+        expenses,
+        dayMeta,
+        bankTx,
+      });
+      await setDoc(stateDocRef, body, { merge: true });
+      setCloudStatus((s) => ({ ...s, lastSaveAt: new Date(), error: null }));
+    } catch (e) {
+      setCloudStatus((s) => ({ ...s, error: String(e) }));
+    }
+  }, 1600);
+
+  return () => clearTimeout(t);
+// eslint-disable-next-line react-hooks/exhaustive-deps
+}, [
+  cloudEnabled,
+  stateDocRef,
+  fbUser,
+  hydrated,            // <-- added
+  menu,
+  extraList,
+  orders,
+  inventory,
+  nextOrderNo,
+  dark,
+  workers,
+  paymentMethods,
+  inventoryLocked,
+  inventorySnapshot,
+  inventoryLockedAt,
+  adminPins,
+  orderTypes,
+  defaultDeliveryFee,
+  expenses,
+  dayMeta,
+  bankTx,
+]);
 
   // Optional: realtime orders stream
   useEffect(() => {
@@ -2665,4 +2710,5 @@ export default function App() {
     </div>
   );
 }
+
 
