@@ -580,35 +580,25 @@ useEffect(() => {
   bankTx,
 ]);
 
-// Realtime orders for the current shift window only
+// Realtime orders stream limited to current shift window
 useEffect(() => {
   if (!realtimeOrders || !ordersColRef || !fbUser) return;
 
   // If shift hasn't started, show no orders and don't listen
-  if (!dayMeta || !dayMeta.startedAt) {
+  if (!startedAtMs) {
     setOrders([]);
     return;
   }
 
-  const startTs = Timestamp.fromDate(new Date(dayMeta.startedAt));
-  let qy;
+  const startTs = Timestamp.fromMillis(startedAtMs);
+  const constraints = [where("createdAt", ">=", startTs), orderBy("createdAt", "desc")];
 
-  if (dayMeta && dayMeta.endedAt) {
-    const endTs = Timestamp.fromDate(new Date(dayMeta.endedAt));
-    qy = query(
-      ordersColRef,
-      where("createdAt", ">=", startTs),
-      where("createdAt", "<=", endTs),
-      orderBy("createdAt", "desc")
-    );
-  } else {
-    qy = query(
-      ordersColRef,
-      where("createdAt", ">=", startTs),
-      orderBy("createdAt", "desc")
-    );
+  if (endedAtMs) {
+    const endTs = Timestamp.fromMillis(endedAtMs);
+    constraints.unshift(where("createdAt", "<=", endTs));
   }
 
+  const qy = query(ordersColRef, ...constraints);
   const unsub = onSnapshot(qy, (snap) => {
     const arr = [];
     snap.forEach((d) => arr.push(orderFromCloudDoc(d.id, d.data())));
@@ -616,13 +606,7 @@ useEffect(() => {
   });
 
   return () => unsub();
-}, [
-  realtimeOrders,
-  ordersColRef,
-  fbUser,
-  dayMeta && dayMeta.startedAt && dayMeta.startedAt.getTime(),
-  dayMeta && dayMeta.endedAt && dayMeta.endedAt.getTime(),
-]);
+}, [realtimeOrders, ordersColRef, fbUser, startedAtMs, endedAtMs]);
 
 
 
@@ -2797,6 +2781,7 @@ const endDay = async () => {
     </div>
   );
 }
+
 
 
 
