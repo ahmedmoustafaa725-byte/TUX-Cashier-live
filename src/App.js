@@ -19,6 +19,7 @@ import {
   orderBy,
   where,
   doc as fsDoc,
+  writeBatch,
 } from "firebase/firestore";
 
 /* --------------------------- FIREBASE CONFIG --------------------------- */
@@ -278,6 +279,38 @@ const EDITOR_PIN = "0512";
 // ---------- PIN defaults + helpers ----------
 const DEFAULT_ADMIN_PINS = { 1: "1111", 2: "2222", 3: "3333", 4: "4444", 5: "5555", 6: "6666" };
 const norm = (v) => String(v ?? "").trim();
+
+// Delete all order docs created between startDate and endDate (inclusive), in chunks
+async function purgeOrdersInCloud(db, ordersColRef, startDate, endDate) {
+  try {
+    const startTs = Timestamp.fromDate(startDate);
+    const endTs   = Timestamp.fromDate(endDate);
+    // Fetch this shift's orders by createdAt window
+    const qy = query(
+      ordersColRef,
+      where("createdAt", ">=", startTs),
+      where("createdAt", "<=", endTs)
+    );
+    const ss = await getDocs(qy);
+    if (ss.empty) return 0;
+
+    const docs = ss.docs;
+    let removed = 0;
+    // Firestore allows 500 ops per batch; use 400 for headroom
+    for (let i = 0; i < docs.length; i += 400) {
+      const chunk = docs.slice(i, i + 400);
+      const batch = writeBatch(db);
+      for (const d of chunk) batch.delete(d.ref);
+      await batch.commit();
+      removed += chunk.length;
+    }
+    return removed;
+  } catch (e) {
+    console.warn("purgeOrdersInCloud failed:", e);
+    return 0;
+  }
+}
+
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("orders");
@@ -548,17 +581,41 @@ useEffect(() => {
 ]);
 
   // Optional: realtime orders stream
-  useEffect(() => {
-    if (!realtimeOrders || !ordersColRef || !fbUser) return;
-    const qy = query(ordersColRef, orderBy("createdAt", "desc"));
-    const unsub = onSnapshot(qy, (snap) => {
-      const arr = [];
-      snap.forEach((d) => arr.push(orderFromCloudDoc(d.id, d.data())));
-      // Replace local orders with cloud stream (you can merge if you prefer)
-      setOrders(arr);
-    });
-    return () => unsub();
-  }, [realtimeOrders, ordersColRef, fbUser]);
+  -  useEffect(() => {
+-    if (!realtimeOrders || !ordersColRef || !fbUser) return;
+-    const qy = query(ordersColRef, orderBy("createdAt", "desc"));
+-    const unsub = onSnapshot(qy, (snap) => {
+-      const arr = [];
+-      snap.forEach((d) => arr.push(orderFromCloudDoc(d.id, d.data())));
+-      // Replace local orders with cloud stream (you can merge if you prefer)
+-      setOrders(arr);
+-    });
+-    return () => unsub();
+-  }, [realtimeOrders, ordersColRef, fbUser]);
++  useEffect(() => {
++    if (!realtimeOrders || !ordersColRef || !fbUser) return;
++
++    // If shift hasn't started, show no orders and don't listen
++    if (!dayMeta?.startedAt) {
++      setOrders([]);
++      return;
++    }
++
++    const startTs = Timestamp.fromDate(new Date(dayMeta.startedAt));
++    const qy = query(
++      ordersColRef,
++      where("createdAt", ">=", startTs),
++      orderBy("createdAt", "desc")
++    );
++
++    const unsub = onSnapshot(qy, (snap) => {
++      const arr = [];
++      snap.forEach((d) => arr.push(orderFromCloudDoc(d.id, d.data())));
++      setOrders(arr);
++    });
++    return () => unsub();
++  }, [realtimeOrders, ordersColRef, fbUser, dayMeta?.startedAt]);
+
 
   /* --------------------------- EXISTING APP LOGIC --------------------------- */
   const toggleExtra = (extra) => {
@@ -628,6 +685,69 @@ useEffect(() => {
 
     // Download PDF first
     generatePDF(false, metaForReport);
+
+    +  // Purge this shift's orders from Firestore so the board is clean next time
++  if (cloudEnabled && ordersColRef && fbUser && db) {
++    try {
++      // Prefer the recorded shift start; if missing, derive from earliest order
++      const start =
++        dayMeta.startedAt
++          ? new Date(dayMeta.startedAt)
++          : (orders.length ? new Date(Math.min(...orders.map(o => +o.date))) : endTime);
++      const removed = await purgeOrdersInCloud(db, ordersColRef, start, endTime);
++      console.log(`Purged ${removed} cloud orders for the shift.`);
++    } catch (e) {
++      console.warn("Cloud purge on endDay failed:", e);
++    }
++  }
+
+   // Reset day locally
+   setOrders([]);
+   setNextOrderNo(1);
+   setInventoryLocked(false);
+   setInventoryLockedAt(null);
+(No UI change. This just deletes the shift’s order docs in the orders collection and clears your local list.)
+
+4) Stream only “today’s” orders while a shift runs
+Tighten the realtime listener so it only listens from the current shift start (dayMeta.startedAt). Replace your existing realtime useEffect with this version:
+
+diff
+Kopieren
+Bearbeiten
+-  useEffect(() => {
+-    if (!realtimeOrders || !ordersColRef || !fbUser) return;
+-    const qy = query(ordersColRef, orderBy("createdAt", "desc"));
+-    const unsub = onSnapshot(qy, (snap) => {
+-      const arr = [];
+-      snap.forEach((d) => arr.push(orderFromCloudDoc(d.id, d.data())));
+-      // Replace local orders with cloud stream (you can merge if you prefer)
+-      setOrders(arr);
+-    });
+-    return () => unsub();
+-  }, [realtimeOrders, ordersColRef, fbUser]);
+  useEffect(() => {
+    if (!realtimeOrders || !ordersColRef || !fbUser) return;
+
+    // If shift hasn't started, show no orders and don't listen
+    if (!dayMeta?.startedAt) {
+      setOrders([]);
+      return;
+    }
+
+    const startTs = Timestamp.fromDate(new Date(dayMeta.startedAt));
+    const qy = query(
+      ordersColRef,
+      where("createdAt", ">=", startTs),
+      orderBy("createdAt", "desc")
+    );
+
+    const unsub = onSnapshot(qy, (snap) => {
+      const arr = [];
+      snap.forEach((d) => arr.push(orderFromCloudDoc(d.id, d.data())));
+      setOrders(arr);
+    });
+    return () => unsub();
+ }, [realtimeOrders, ordersColRef, fbUser, dayMeta?.startedAt]);
 
     // Calculate margin (revenue excl. delivery - expenses)
     const validOrders = orders.filter((o) => !o.voided);
@@ -2709,6 +2829,7 @@ useEffect(() => {
     </div>
   );
 }
+
 
 
 
