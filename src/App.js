@@ -580,7 +580,16 @@ useEffect(() => {
   bankTx,
 ]);
 
-// Realtime orders stream limited to current shift window
+// --- Derive simple numbers for effect deps (shift window) ---
+const startedAtMs = dayMeta?.startedAt
+  ? new Date(dayMeta.startedAt).getTime()
+  : null;
+
+const endedAtMs = dayMeta?.endedAt
+  ? new Date(dayMeta.endedAt).getTime()
+  : null;
+
+// --- Realtime orders stream limited to current shift window ---
 useEffect(() => {
   if (!realtimeOrders || !ordersColRef || !fbUser) return;
 
@@ -2781,6 +2790,7 @@ const endDay = async () => {
     </div>
   );
 }
+
 
 
 
