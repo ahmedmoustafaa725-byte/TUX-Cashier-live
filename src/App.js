@@ -29,26 +29,37 @@ import {
 // TODO: Add SDKs for Firebase products that you want to use
 // https://firebase.google.com/docs/web/setup#available-libraries
 
-// Your web app's Firebase configuration
+import { initializeApp, getApps, getApp } from "firebase/app";
+
+// keep your REAL config:
 const firebaseConfig = {
   apiKey: "AIzaSyAp1F6t8zgRiJI9xOzFkKJVsCQIT9BWXno",
   authDomain: "tux-cashier-system.firebaseapp.com",
   projectId: "tux-cashier-system",
-  storageBucket: "tux-cashier-system.firebasestorage.app",
+  storageBucket: "tux-cashier-system.appspot.com", // <-- make sure it's appspot.com
   messagingSenderId: "978379497015",
-  appId: "1:978379497015:web:ea165dcb6873e0c65929b2"
+  appId: "1:978379497015:web:ea165dcb6873e0c65929b2",
 };
+
+// reuse existing app if it’s already created
+const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+
+
 
 
 // 2) Name your shop (used for collection/doc paths)
 const SHOP_ID = "tux"; // change if you manage multiple shops (e.g. "tux-truck-1")
 
 function ensureFirebase() {
-  if (!getApps().length) initializeApp(firebaseConfig);
-  const auth = getAuth();
-  const db = getFirestore();
+-  if (!getApps().length) initializeApp(FIREBASE_CONFIG);
+-  const auth = getAuth();
+-  const db = getFirestore();
++  const theApp = getApps().length ? getApp() : initializeApp(firebaseConfig);
++  const auth = getAuth(theApp);
++  const db = getFirestore(theApp);
   return { auth, db };
 }
+
 
 
 // Pack current state (dates -> ISO) for Firestore
@@ -2664,5 +2675,6 @@ export default function App() {
     </div>
   );
 }
+
 
 
