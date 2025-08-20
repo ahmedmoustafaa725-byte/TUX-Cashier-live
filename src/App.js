@@ -580,15 +580,20 @@ useEffect(() => {
   bankTx,
 ]);
 
- // Optional: realtime orders stream (limited to current shift window)
+// Realtime orders for the current shift window only
 useEffect(() => {
   if (!realtimeOrders || !ordersColRef || !fbUser) return;
-  if (!dayMeta || !dayMeta.startedAt) return; // no listener until a shift starts
+
+  // If shift hasn't started, show no orders and don't listen
+  if (!dayMeta || !dayMeta.startedAt) {
+    setOrders([]);
+    return;
+  }
 
   const startTs = Timestamp.fromDate(new Date(dayMeta.startedAt));
   let qy;
 
-  if (dayMeta.endedAt) {
+  if (dayMeta && dayMeta.endedAt) {
     const endTs = Timestamp.fromDate(new Date(dayMeta.endedAt));
     qy = query(
       ordersColRef,
@@ -619,28 +624,6 @@ useEffect(() => {
   dayMeta && dayMeta.endedAt && dayMeta.endedAt.getTime(),
 ]);
 
-
-
-    // If shift hasn't started, show no orders and don't listen
-    if (!dayMeta?.startedAt) {
-      setOrders([]);
-      return;
-    }
-
-    const startTs = Timestamp.fromDate(new Date(dayMeta.startedAt));
-    const qy = query(
-      ordersColRef,
-      where("createdAt", ">=", startTs),
-      orderBy("createdAt", "desc")
-    );
-
-    const unsub = onSnapshot(qy, (snap) => {
-      const arr = [];
-      snap.forEach((d) => arr.push(orderFromCloudDoc(d.id, d.data())));
-      setOrders(arr);
-    });
-    return () => unsub();
- }, [realtimeOrders, ordersColRef, fbUser, dayMeta?.startedAt]);
 
 
   /* --------------------------- EXISTING APP LOGIC --------------------------- */
@@ -698,8 +681,8 @@ useEffect(() => {
     alert(`Shift changed: ${dayMeta.startedBy} → ${newName}`);
   };
 
- // NEW: End the Day (replaces Reset Day)
-const endDay = async () => {                    // ⬅ make it async
+// NEW: End the Day (replaces Reset Day)
+const endDay = async () => {
   if (!dayMeta.startedAt) return alert("Start a shift first.");
   const who = window.prompt("Enter your name to END THE DAY:", "");
   const endBy = norm(who);
@@ -712,175 +695,76 @@ const endDay = async () => {                    // ⬅ make it async
   // Download PDF first
   generatePDF(false, metaForReport);
 
-  // [3] Purge this shift’s orders from Firestore
-  if (cloudEnabled && db && ordersColRef && fbUser && dayMeta && dayMeta.startedAt) {
+  // Purge this shift's orders from Firestore so the board is clean next time
+  if (cloudEnabled && ordersColRef && fbUser && db) {
     try {
-      const removed = await purgeOrdersInCloud(
-        db,
-        ordersColRef,
-        new Date(dayMeta.startedAt),
-        endTime
-      );
-      console.log(`Purged ${removed} order docs for this shift.`);
+      // Prefer the recorded shift start; if missing, derive from earliest order
+      const start = dayMeta.startedAt
+        ? new Date(dayMeta.startedAt)
+        : (orders.length ? new Date(Math.min(...orders.map(o => +o.date))) : endTime);
+
+      const removed = await purgeOrdersInCloud(db, ordersColRef, start, endTime);
+      console.log(`Purged ${removed} cloud orders for the shift.`);
     } catch (e) {
-      console.warn("Purge failed:", e);
+      console.warn("Cloud purge on endDay failed:", e);
     }
   }
 
-  // ...keep your existing margin/bankTx + local reset code below ...
+  // Calculate margin (revenue excl. delivery - expenses)
+  const validOrders = orders.filter((o) => !o.voided);
+  const revenueExclDelivery = validOrders.reduce(
+    (s, o) =>
+      s +
+      Number(o.itemsTotal != null ? o.itemsTotal : (o.total - (o.deliveryFee || 0))),
+    0
+  );
+  const expensesTotal = expenses.reduce(
+    (s, e) => s + Number((e.qty || 0) * (e.unitPrice || 0)),
+    0
+  );
+  const margin = revenueExclDelivery - expensesTotal;
+
+  // Auto add to Bank as next day's initial balance (or adjust down)
+  const txs = [];
+  if (margin > 0) {
+    txs.push({
+      id: `tx_${Date.now()}`,
+      type: "init",
+      amount: margin,
+      worker: endBy,
+      note: "Auto Init from day margin",
+      date: new Date(),
+    });
+  } else if (margin < 0) {
+    txs.push({
+      id: `tx_${Date.now() + 1}`,
+      type: "adjustDown",
+      amount: Math.abs(margin),
+      worker: endBy,
+      note: "Auto Adjust Down (negative margin)",
+      date: new Date(),
+    });
+  }
+  if (txs.length) setBankTx((arr) => [...txs, ...arr]);
+
+  // Reset day locally
+  setOrders([]);
+  setNextOrderNo(1);
+  setInventoryLocked(false);
+  setInventoryLockedAt(null);
+  setDayMeta({
+    startedBy: "",
+    startedAt: null,
+    endedAt: null,
+    endedBy: "",
+    lastReportAt: null,
+    resetBy: "",
+    resetAt: null,
+    shiftChanges: [],
+  });
+
+  alert(`Day ended by ${endBy}. Report downloaded and day reset ✅`);
 };
-
-
-   // Reset day locally
-   setOrders([]);
-   setNextOrderNo(1);
-   setInventoryLocked(false);
-   setInventoryLockedAt(null);
-(No UI change. This just deletes the shift’s order docs in the orders collection and clears your local list.)
-
-4) Stream only “today’s” orders while a shift runs
-Tighten the realtime listener so it only listens from the current shift start (dayMeta.startedAt). Replace your existing realtime useEffect with this version:
-
-diff
-Kopieren
-Bearbeiten
--  useEffect(() => {
--    if (!realtimeOrders || !ordersColRef || !fbUser) return;
--    const qy = query(ordersColRef, orderBy("createdAt", "desc"));
--    const unsub = onSnapshot(qy, (snap) => {
--      const arr = [];
--      snap.forEach((d) => arr.push(orderFromCloudDoc(d.id, d.data())));
--      // Replace local orders with cloud stream (you can merge if you prefer)
--      setOrders(arr);
--    });
--    return () => unsub();
--  }, [realtimeOrders, ordersColRef, fbUser]);
-  useEffect(() => {
-    if (!realtimeOrders || !ordersColRef || !fbUser) return;
-
-    // If shift hasn't started, show no orders and don't listen
-    if (!dayMeta?.startedAt) {
-      setOrders([]);
-      return;
-    }
-
-    const startTs = Timestamp.fromDate(new Date(dayMeta.startedAt));
-    const qy = query(
-      ordersColRef,
-      where("createdAt", ">=", startTs),
-      orderBy("createdAt", "desc")
-    );
-
-    const unsub = onSnapshot(qy, (snap) => {
-      const arr = [];
-      snap.forEach((d) => arr.push(orderFromCloudDoc(d.id, d.data())));
-      setOrders(arr);
-    });
-    return () => unsub();
- }, [realtimeOrders, ordersColRef, fbUser, dayMeta?.startedAt]);
-
-    // Calculate margin (revenue excl. delivery - expenses)
-    const validOrders = orders.filter((o) => !o.voided);
-    const revenueExclDelivery = validOrders.reduce(
-      (s, o) => s + Number(o.itemsTotal != null ? o.itemsTotal : (o.total - (o.deliveryFee || 0))),
-      0
-    );
-    const expensesTotal = expenses.reduce((s, e) => s + Number((e.qty || 0) * (e.unitPrice || 0)), 0);
-    const margin = revenueExclDelivery - expensesTotal;
-
-    // Auto add to Bank as next day's initial balance
-    const txs = [];
-    if (margin > 0) {
-      txs.push({
-        id: `tx_${Date.now()}`,
-        type: "init",
-        amount: margin,
-        worker: endBy,
-        note: "Auto Init from day margin",
-        date: new Date(),
-      });
-    } else if (margin < 0) {
-      txs.push({
-        id: `tx_${Date.now() + 1}`,
-        type: "adjustDown",
-        amount: Math.abs(margin),
-        worker: endBy,
-        note: "Auto Adjust Down (negative margin)",
-        date: new Date(),
-      });
-    }
-    if (txs.length) setBankTx((arr) => [...txs, ...arr]);
-
-    // Reset day locally
-    setOrders([]);
-    setNextOrderNo(1);
-    setInventoryLocked(false);
-    setInventoryLockedAt(null);
-
-    setDayMeta({
-      startedBy: "",
-      startedAt: null,
-      endedAt: null,
-      endedBy: "",
-      lastReportAt: null,
-      resetBy: "",
-      resetAt: null,
-      shiftChanges: [],
-    });
-
-    alert(`Day ended by ${endBy}. Report downloaded and day reset ✅`);
-  };
-
-  // --------- Inventory Locking / Unlock with PIN ----------
-  const lockInventoryForDay = () => {
-    if (inventoryLocked) return;
-    if (inventory.length === 0) return alert("Add at least one inventory item first.");
-    if (!window.confirm("Lock current inventory as Start-of-Day? You won't be able to edit until End the Day or admin unlock.")) return;
-
-    const snap = inventory.map((it) => ({
-      id: it.id,
-      name: it.name,
-      unit: it.unit,
-      qtyAtLock: it.qty,
-    }));
-    setInventorySnapshot(snap);
-    setInventoryLocked(true);
-    setInventoryLockedAt(new Date());
-  };
-
-  const promptAdminAndPin = () => {
-    const adminStr = window.prompt("Enter Admin number (1 to 6):", "1");
-    if (!adminStr) return null;
-    const n = Number(adminStr);
-    if (![1, 2, 3, 4, 5, 6].includes(n)) {
-      alert("Please enter a number from 1 to 6.");
-      return null;
-    }
-    const entered = window.prompt(`Enter PIN for Admin ${n}:`, "");
-    if (entered == null) return null;
-
-    const expected = norm(adminPins[n]);
-    const attempt = norm(entered);
-
-    if (!expected) {
-      alert(`Admin ${n} has no PIN set; set a PIN in Prices → Admin PINs.`);
-      return null;
-    }
-    if (attempt !== expected) {
-      alert("Invalid PIN.");
-      return null;
-    }
-    return n;
-  };
-
-  const unlockInventoryWithPin = () => {
-    if (!inventoryLocked) return alert("Inventory is already unlocked.");
-    const adminNum = promptAdminAndPin();
-    if (!adminNum) return;
-    if (!window.confirm(`Admin ${adminNum}: Unlock inventory for editing? Snapshot will be kept.`)) return;
-    setInventoryLocked(false);
-    alert("Inventory unlocked for editing.");
-  };
 
   // --------- Cart / Checkout ----------
   const addToCart = () => {
@@ -2859,6 +2743,7 @@ Bearbeiten
     </div>
   );
 }
+
 
 
 
