@@ -425,7 +425,6 @@ useEffect(() => {
       if (snap.exists()) {
         const data = snap.data() || {};
         const unpacked = unpackStateFromCloud(data, dayMeta);
-
         if (unpacked.menu) setMenu(unpacked.menu);
         if (unpacked.extraList) setExtraList(unpacked.extraList);
         if (unpacked.orders) setOrders(unpacked.orders);
@@ -453,7 +452,7 @@ useEffect(() => {
       setHydrated(true); // allow autosave to begin
     }
   })();
-}, [stateDocRef, fbUser, hydrated]); // important: include hydrated
+}, [stateDocRef, fbUser, hydrated, dayMeta]); // important: include hydrated
 
 
   // Manual cloud load (pull)
@@ -2710,5 +2709,6 @@ useEffect(() => {
     </div>
   );
 }
+
 
 
