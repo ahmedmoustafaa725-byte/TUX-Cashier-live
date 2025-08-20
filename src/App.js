@@ -611,27 +611,27 @@ useEffect(() => {
   return () => unsub();
 }, [realtimeOrders, ordersColRef, fbUser, dayMeta?.startedAt, dayMeta?.endedAt]);
 
-+
-+    // If shift hasn't started, show no orders and don't listen
-+    if (!dayMeta?.startedAt) {
-+      setOrders([]);
-+      return;
-+    }
-+
-+    const startTs = Timestamp.fromDate(new Date(dayMeta.startedAt));
-+    const qy = query(
-+      ordersColRef,
-+      where("createdAt", ">=", startTs),
-+      orderBy("createdAt", "desc")
-+    );
-+
-+    const unsub = onSnapshot(qy, (snap) => {
-+      const arr = [];
-+      snap.forEach((d) => arr.push(orderFromCloudDoc(d.id, d.data())));
-+      setOrders(arr);
-+    });
-+    return () => unsub();
-+  }, [realtimeOrders, ordersColRef, fbUser, dayMeta?.startedAt]);
+
+    // If shift hasn't started, show no orders and don't listen
+    if (!dayMeta?.startedAt) {
+      setOrders([]);
+      return;
+    }
+
+    const startTs = Timestamp.fromDate(new Date(dayMeta.startedAt));
+    const qy = query(
+      ordersColRef,
+      where("createdAt", ">=", startTs),
+      orderBy("createdAt", "desc")
+    );
+
+    const unsub = onSnapshot(qy, (snap) => {
+      const arr = [];
+      snap.forEach((d) => arr.push(orderFromCloudDoc(d.id, d.data())));
+      setOrders(arr);
+    });
+    return () => unsub();
+ }, [realtimeOrders, ordersColRef, fbUser, dayMeta?.startedAt]);
 
 
   /* --------------------------- EXISTING APP LOGIC --------------------------- */
@@ -2846,6 +2846,7 @@ Bearbeiten
     </div>
   );
 }
+
 
 
 
