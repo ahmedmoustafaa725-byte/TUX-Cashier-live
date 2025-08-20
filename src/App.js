@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
-import { initializeApp, getApps } from "firebase/app";
+import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth, onAuthStateChanged, signInAnonymously } from "firebase/auth";
 import {
   getFirestore,
@@ -21,46 +21,28 @@ import {
   doc as fsDoc,
 } from "firebase/firestore";
 
-
-
-
-// 1) Fill these with your project’s values from the Firebase console
-// Import the functions you need from the SDKs you need
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
-
-import { initializeApp, getApps, getApp } from "firebase/app";
-
+/* --------------------------- FIREBASE CONFIG --------------------------- */
 // keep your REAL config:
 const firebaseConfig = {
   apiKey: "AIzaSyAp1F6t8zgRiJI9xOzFkKJVsCQIT9BWXno",
   authDomain: "tux-cashier-system.firebaseapp.com",
   projectId: "tux-cashier-system",
-  storageBucket: "tux-cashier-system.appspot.com", // <-- make sure it's appspot.com
+  storageBucket: "tux-cashier-system.appspot.com",
   messagingSenderId: "978379497015",
   appId: "1:978379497015:web:ea165dcb6873e0c65929b2",
 };
 
-// reuse existing app if it’s already created
-const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
-
-
-
-
-// 2) Name your shop (used for collection/doc paths)
-const SHOP_ID = "tux"; // change if you manage multiple shops (e.g. "tux-truck-1")
-
+// Ensure Firebase is initialized exactly once and return auth/db
 function ensureFirebase() {
--  if (!getApps().length) initializeApp(FIREBASE_CONFIG);
--  const auth = getAuth();
--  const db = getFirestore();
-+  const theApp = getApps().length ? getApp() : initializeApp(firebaseConfig);
-+  const auth = getAuth(theApp);
-+  const db = getFirestore(theApp);
+  const theApp = getApps().length ? getApp() : initializeApp(firebaseConfig);
+  const auth = getAuth(theApp);
+  const db = getFirestore(theApp);
   return { auth, db };
 }
 
-
+/* --------------------------- APP SETTINGS --------------------------- */
+// 2) Name your shop (used for collection/doc paths)
+const SHOP_ID = "tux"; // change if you manage multiple shops (e.g. "tux-truck-1")
 
 // Pack current state (dates -> ISO) for Firestore
 function packStateForCloud(state) {
@@ -292,7 +274,6 @@ const DEFAULT_ORDER_TYPES = ["Take-Away", "Dine-in", "Delivery"];
 const DEFAULT_DELIVERY_FEE = 20;
 // ---- Editor PIN to protect PRICES tab
 const EDITOR_PIN = "0512";
-
 
 // ---------- PIN defaults + helpers ----------
 const DEFAULT_ADMIN_PINS = { 1: "1111", 2: "2222", 3: "3333", 4: "4444", 5: "5555", 6: "6666" };
@@ -1254,7 +1235,7 @@ export default function App() {
   }, [bankTx]);
 
   /* --------------------------- UI --------------------------- */
- const firebaseConfigured = !!(firebaseConfig && firebaseConfig.apiKey);
+  const firebaseConfigured = !!(firebaseConfig && firebaseConfig.apiKey);
 
   return (
     <div style={containerStyle}>
@@ -2652,13 +2633,20 @@ export default function App() {
                           Unlock row
                         </button>
                       ) : (
-                        <button
+                                               <button
                           onClick={() =>
                             setAdminPinsEditUnlocked((s) => ({ ...s, [n]: false }))
                           }
-                          style={{ background: "#9e9e9e", color: "white", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}
+                          style={{
+                            background: "#43a047",
+                            color: "white",
+                            border: "none",
+                            borderRadius: 6,
+                            padding: "4px 8px",
+                            cursor: "pointer",
+                          }}
                         >
-                          Lock row
+                          Save & Lock
                         </button>
                       )}
                     </td>
@@ -2667,14 +2655,14 @@ export default function App() {
               </tbody>
             </table>
             <div style={{ marginTop: 8, fontSize: 12, color: dark ? "#bbb" : "#666" }}>
-              Tip: To unlock a row, you must enter the current correct PIN for that Admin number.
+              Prices tab is protected by an Editor PIN. Admin rows can be edited after unlocking with a valid Admin PIN (1–6).
             </div>
           </div>
         </div>
       )}
+      {/* END PRICES TAB */}
+
     </div>
   );
 }
-
-
 
