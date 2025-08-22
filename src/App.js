@@ -20,10 +20,10 @@ import {
   where,
   doc as fsDoc,
   writeBatch,
+  runTransaction,          // <-- NEW: atomic counter
 } from "firebase/firestore";
 
 /* --------------------------- FIREBASE CONFIG --------------------------- */
-// keep your REAL config:
 const firebaseConfig = {
   apiKey: "AIzaSyAp1F6t8zgRiJI9xOzFkKJVsCQIT9BWXno",
   authDomain: "tux-cashier-system.firebaseapp.com",
@@ -33,7 +33,6 @@ const firebaseConfig = {
   appId: "1:978379497015:web:ea165dcb6873e0c65929b2",
 };
 
-// Ensure Firebase is initialized exactly once and return auth/db
 function ensureFirebase() {
   const theApp = getApps().length ? getApp() : initializeApp(firebaseConfig);
   const auth = getAuth(theApp);
@@ -42,29 +41,13 @@ function ensureFirebase() {
 }
 
 /* --------------------------- APP SETTINGS --------------------------- */
-// 2) Name your shop (used for collection/doc paths)
-const SHOP_ID = "tux"; // change if you manage multiple shops (e.g. "tux-truck-1")
+const SHOP_ID = "tux";
 
-// Pack current state (dates -> ISO) for Firestore
 function packStateForCloud(state) {
   const {
-    menu,
-    extraList,
-    orders,
-    inventory,
-    nextOrderNo,
-    dark,
-    workers,
-    paymentMethods,
-    inventoryLocked,
-    inventorySnapshot,
-    inventoryLockedAt,
-    adminPins,
-    orderTypes,
-    defaultDeliveryFee,
-    expenses,
-    dayMeta,
-    bankTx,
+    menu, extraList, orders, inventory, nextOrderNo, dark, workers, paymentMethods,
+    inventoryLocked, inventorySnapshot, inventoryLockedAt, adminPins, orderTypes,
+    defaultDeliveryFee, expenses, dayMeta, bankTx,
   } = state;
 
   return {
@@ -101,8 +84,7 @@ function packStateForCloud(state) {
           resetAt: dayMeta.resetAt ? dayMeta.resetAt.toISOString() : null,
           shiftChanges: Array.isArray(dayMeta.shiftChanges)
             ? dayMeta.shiftChanges.map((c) => ({
-                ...c,
-                at: c?.at ? new Date(c.at).toISOString() : null,
+                ...c, at: c?.at ? new Date(c.at).toISOString() : null,
               }))
             : [],
         }
@@ -114,7 +96,6 @@ function packStateForCloud(state) {
   };
 }
 
-// Unpack from Firestore (ISO -> Date)
 function unpackStateFromCloud(data, fallbackDayMeta = {}) {
   const out = {};
   if (Array.isArray(data.orders)) {
@@ -155,7 +136,6 @@ function unpackStateFromCloud(data, fallbackDayMeta = {}) {
     out.dayMeta = fallbackDayMeta;
   }
 
-  // easy fields
   if (data.menu) out.menu = data.menu;
   if (data.extras) out.extraList = data.extras;
   if (data.inventory) out.inventory = data.inventory;
@@ -172,7 +152,6 @@ function unpackStateFromCloud(data, fallbackDayMeta = {}) {
   return out;
 }
 
-// Normalize a single order for Firestore orders collection
 function normalizeOrderForCloud(order) {
   return {
     orderNo: order.orderNo,
@@ -188,15 +167,14 @@ function normalizeOrderForCloud(order) {
     date: order.date ? order.date.toISOString() : new Date().toISOString(),
     restockedAt: order.restockedAt ? order.restockedAt.toISOString() : null,
     cart: order.cart || [],
+    idemKey: order.idemKey || "",     // <-- NEW: idempotency guard
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
 }
 
-// Convert Firestore doc to local order shape
 function orderFromCloudDoc(id, d) {
-  const asDate = (v) =>
-    v instanceof Timestamp ? v.toDate() : v ? new Date(v) : new Date();
+  const asDate = (v) => (v instanceof Timestamp ? v.toDate() : v ? new Date(v) : new Date());
   return {
     cloudId: id,
     orderNo: d.orderNo,
@@ -212,27 +190,21 @@ function orderFromCloudDoc(id, d) {
     date: asDate(d.date || d.createdAt),
     restockedAt: d.restockedAt ? asDate(d.restockedAt) : undefined,
     cart: Array.isArray(d.cart) ? d.cart : [],
+    idemKey: d.idemKey || "",
   };
 }
 
-/* ---------- NEW: de-duplicate helper (by cloudId, fallback orderNo) ---------- */
+/* ---------- De-duplicate safety (keep latest per orderNo) ---------- */
 function dedupeOrders(list) {
-  const byKey = new Map();
+  const byNo = new Map();
   for (const o of list || []) {
-    const key = o.cloudId ? `id:${o.cloudId}` : `no:${o.orderNo}`;
-    const prev = byKey.get(key);
-    if (!prev) {
-      byKey.set(key, o);
-    } else {
-      // keep the newer one by date
-      if (+new Date(o.date) > +new Date(prev.date)) byKey.set(key, o);
-    }
+    const prev = byNo.get(o.orderNo);
+    if (!prev || +new Date(o.date) > +new Date(prev.date)) byNo.set(o.orderNo, o);
   }
-  return Array.from(byKey.values()).sort((a, b) => +new Date(b.date) - +new Date(a.date));
+  return Array.from(byNo.values()).sort((a, b) => +new Date(b.date) - +new Date(a.date));
 }
 
 /* --------------------------- HELPERS --------------------------- */
-// Load a file from /public as a Data URL for jsPDF
 async function loadAsDataURL(path) {
   const res = await fetch(path);
   const blob = await res.blob();
@@ -278,30 +250,23 @@ const BASE_EXTRAS = [
   { id: 112, name: "Mozzarella Cheese", price: 20, uses: {} },
   { id: 113, name: "Tux Hawawshi Sauce", price: 10, uses: {} },
 ];
-// Default inventory items
 const DEFAULT_INVENTORY = [
   { id: "meat", name: "Meat", unit: "g", qty: 0 },
   { id: "cheese", name: "Cheese", unit: "slices", qty: 0 },
 ];
-// Initial workers & payments (editable in UI)
 const BASE_WORKERS = ["Hassan", "Warda", "Ahmed"];
 const DEFAULT_PAYMENT_METHODS = ["Cash", "Card", "Instapay"];
-// Dine options (editable in Prices)
 const DEFAULT_ORDER_TYPES = ["Take-Away", "Dine-in", "Delivery"];
 const DEFAULT_DELIVERY_FEE = 20;
-// ---- Editor PIN to protect PRICES tab
 const EDITOR_PIN = "0512";
-
-// ---------- PIN defaults + helpers ----------
 const DEFAULT_ADMIN_PINS = { 1: "1111", 2: "2222", 3: "3333", 4: "4444", 5: "5555", 6: "6666" };
 const norm = (v) => String(v ?? "").trim();
 
-// Delete all order docs created between startDate and endDate (inclusive), in chunks
+// Bulk delete helper (used at endDay)
 async function purgeOrdersInCloud(db, ordersColRef, startDate, endDate) {
   try {
     const startTs = Timestamp.fromDate(startDate);
-    const endTs   = Timestamp.fromDate(endDate);
-    // Fetch this shift's orders by createdAt window
+    const endTs = Timestamp.fromDate(endDate);
     const qy = query(
       ordersColRef,
       where("createdAt", ">=", startTs),
@@ -312,7 +277,6 @@ async function purgeOrdersInCloud(db, ordersColRef, startDate, endDate) {
 
     const docs = ss.docs;
     let removed = 0;
-    // Firestore allows 500 ops per batch; use 400 for headroom
     for (let i = 0; i < docs.length; i += 400) {
       const chunk = docs.slice(i, i + 400);
       const batch = writeBatch(db);
@@ -327,6 +291,18 @@ async function purgeOrdersInCloud(db, ordersColRef, startDate, endDate) {
   }
 }
 
+/* --------------------------- COUNTER: Atomic orderNo --------------------------- */
+// We use a single doc: shops/{SHOP_ID}/state/counters  with field "lastOrderNo"
+async function allocateOrderNoAtomic(db, counterDocRef) {
+  const next = await runTransaction(db, async (tx) => {
+    const snap = await tx.get(counterDocRef);
+    const current = snap.exists() ? Number(snap.data().lastOrderNo || 0) : 0;
+    const n = current + 1;
+    tx.set(counterDocRef, { lastOrderNo: n, updatedAt: serverTimestamp() }, { merge: true });
+    return n;
+  });
+  return next;
+}
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("orders");
@@ -340,11 +316,9 @@ export default function App() {
   const [paymentMethods, setPaymentMethods] = useState(DEFAULT_PAYMENT_METHODS);
   const [newPayment, setNewPayment] = useState("");
 
-  // Order Type options & default delivery fee (Editable in Prices)
   const [orderTypes, setOrderTypes] = useState(DEFAULT_ORDER_TYPES);
   const [defaultDeliveryFee, setDefaultDeliveryFee] = useState(DEFAULT_DELIVERY_FEE);
 
-  // Order builder
   const [selectedBurger, setSelectedBurger] = useState(null);
   const [selectedExtras, setSelectedExtras] = useState([]);
   const [cart, setCart] = useState([]);
@@ -354,33 +328,24 @@ export default function App() {
   const [orderType, setOrderType] = useState(orderTypes[0] || "Take-Away");
   const [deliveryFee, setDeliveryFee] = useState(0);
 
-  // Dynamic inventory
   const [inventory, setInventory] = useState(DEFAULT_INVENTORY);
   const [newInvName, setNewInvName] = useState("");
   const [newInvUnit, setNewInvUnit] = useState("");
   const [newInvQty, setNewInvQty] = useState(0);
 
-  // Inventory lock & snapshot
   const [inventoryLocked, setInventoryLocked] = useState(false);
   const [inventorySnapshot, setInventorySnapshot] = useState([]);
   const [inventoryLockedAt, setInventoryLockedAt] = useState(null);
 
-  // Admin PINs
   const [adminPins, setAdminPins] = useState({ ...DEFAULT_ADMIN_PINS });
-
-  // Prices tab session unlock
   const [pricesUnlocked, setPricesUnlocked] = useState(false);
-
-  // Which admin rows are unlocked for editing (1..6)
   const [adminPinsEditUnlocked, setAdminPinsEditUnlocked] = useState({
     1: false, 2: false, 3: false, 4: false, 5: false, 6: false,
   });
 
-  // Orders
   const [orders, setOrders] = useState([]);
-  const [nextOrderNo, setNextOrderNo] = useState(1);
+  const [nextOrderNo, setNextOrderNo] = useState(1); // live preview of what will be allocated
 
-  // Expenses
   const [expenses, setExpenses] = useState([]);
   const [newExpName, setNewExpName] = useState("");
   const [newExpUnit, setNewExpUnit] = useState("pcs");
@@ -388,12 +353,10 @@ export default function App() {
   const [newExpUnitPrice, setNewExpUnitPrice] = useState(0);
   const [newExpNote, setNewExpNote] = useState("");
 
-  // Bank (admin pin protected)
   const [bankUnlocked, setBankUnlocked] = useState(false);
   const [bankTx, setBankTx] = useState([]);
   const [bankForm, setBankForm] = useState({ type: "deposit", amount: 0, worker: "", note: "" });
 
-  // Shift/day meta
   const [dayMeta, setDayMeta] = useState({
     startedBy: "",
     startedAt: null,
@@ -405,17 +368,14 @@ export default function App() {
     shiftChanges: [],
   });
 
-  // Reports sorting
   const [sortBy, setSortBy] = useState("date-desc");
 
-  // Live clock
   const [nowStr, setNowStr] = useState(new Date().toLocaleString());
   useEffect(() => {
     const t = setInterval(() => setNowStr(new Date().toLocaleString()), 1000);
     return () => clearInterval(t);
   }, []);
 
-  // ---------- Prices tab local editors ----------
   const [usesEditOpenMenu, setUsesEditOpenMenu] = useState({});
   const [usesEditOpenExtra, setUsesEditOpenExtra] = useState({});
   const [newMenuName, setNewMenuName] = useState("");
@@ -426,23 +386,18 @@ export default function App() {
   /* --------------------------- FIREBASE STATE --------------------------- */
   const [fbReady, setFbReady] = useState(false);
   const [fbUser, setFbUser] = useState(null);
-  const [cloudEnabled, setCloudEnabled] = useState(true); // autosave to state doc
-  const [realtimeOrders, setRealtimeOrders] = useState(true); // live board via orders collection
+  const [cloudEnabled, setCloudEnabled] = useState(true);
+  const [realtimeOrders, setRealtimeOrders] = useState(true);
   const [cloudStatus, setCloudStatus] = useState({ lastSaveAt: null, lastLoadAt: null, error: null });
-  const [hydrated, setHydrated] = useState(false); // <-- prevents autosave before initial load
+  const [hydrated, setHydrated] = useState(false);
 
-  // Init + Anonymous Auth
   useEffect(() => {
     try {
       const { auth } = ensureFirebase();
       setFbReady(true);
       const unsub = onAuthStateChanged(auth, async (u) => {
         if (!u) {
-          try {
-            await signInAnonymously(auth);
-          } catch (e) {
-            setCloudStatus((s) => ({ ...s, error: String(e) }));
-          }
+          try { await signInAnonymously(auth); } catch (e) { setCloudStatus((s) => ({ ...s, error: String(e) })); }
         } else {
           setFbUser(u);
         }
@@ -453,7 +408,6 @@ export default function App() {
     }
   }, []);
 
-  // Firestore refs
   const db = useMemo(() => (fbReady ? ensureFirebase().db : null), [fbReady]);
   const stateDocRef = useMemo(
     () => (db ? fsDoc(db, "shops", SHOP_ID, "state", "pos") : null),
@@ -463,8 +417,22 @@ export default function App() {
     () => (db ? collection(db, "shops", SHOP_ID, "orders") : null),
     [db]
   );
+  const counterDocRef = useMemo(
+    () => (db ? fsDoc(db, "shops", SHOP_ID, "state", "counters") : null),
+    [db]
+  );
 
-  // One-time initial load from cloud AFTER auth/refs are ready
+  // Keep UI's "next order #" in sync with the shared counter
+  useEffect(() => {
+    if (!counterDocRef || !fbUser) return;
+    const unsub = onSnapshot(counterDocRef, (snap) => {
+      const last = snap.exists() ? Number(snap.data().lastOrderNo || 0) : 0;
+      setNextOrderNo(last + 1);
+    });
+    return () => unsub();
+  }, [counterDocRef, fbUser]);
+
+  // One-time initial load for non-realtime state
   useEffect(() => {
     if (!stateDocRef || !fbUser || hydrated) return;
 
@@ -491,19 +459,18 @@ export default function App() {
           if (unpacked.expenses) setExpenses(unpacked.expenses);
           if (unpacked.dayMeta) setDayMeta(unpacked.dayMeta);
           if (unpacked.bankTx) setBankTx(unpacked.bankTx);
-
           setCloudStatus((s) => ({ ...s, lastLoadAt: new Date(), error: null }));
         }
       } catch (e) {
         console.warn("Initial cloud load failed:", e);
         setCloudStatus((s) => ({ ...s, error: String(e) }));
       } finally {
-        setHydrated(true); // allow autosave to begin
+        setHydrated(true);
       }
     })();
-  }, [stateDocRef, fbUser, hydrated, dayMeta, realtimeOrders]); // include realtimeOrders
+  }, [stateDocRef, fbUser, hydrated, dayMeta, realtimeOrders]);
 
-  // Manual cloud load (pull)
+  // Manual pull
   const loadFromCloud = async () => {
     if (!stateDocRef || !fbUser) return alert("Firebase not ready.");
     try {
@@ -537,16 +504,14 @@ export default function App() {
     }
   };
 
-  // Autosave to cloud (state doc) — debounced
+  // Autosave (state doc) – never saves orders when realtime is ON
   useEffect(() => {
     if (!cloudEnabled || !stateDocRef || !fbUser || !hydrated) return;
-
     const t = setTimeout(async () => {
       try {
         const body = packStateForCloud({
           menu,
           extraList,
-          // save orders only when realtime is OFF
           orders: realtimeOrders ? [] : orders,
           inventory,
           nextOrderNo,
@@ -569,74 +534,36 @@ export default function App() {
         setCloudStatus((s) => ({ ...s, error: String(e) }));
       }
     }, 1600);
-
     return () => clearTimeout(t);
-// eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    cloudEnabled,
-    stateDocRef,
-    fbUser,
-    hydrated,            // <-- added
-    menu,
-    extraList,
-    orders,
-    inventory,
-    nextOrderNo,
-    dark,
-    workers,
-    paymentMethods,
-    inventoryLocked,
-    inventorySnapshot,
-    inventoryLockedAt,
-    adminPins,
-    orderTypes,
-    defaultDeliveryFee,
-    expenses,
-    dayMeta,
-    bankTx,
-    realtimeOrders,      // ensure rebuild when toggled
+    cloudEnabled, stateDocRef, fbUser, hydrated, menu, extraList, orders, inventory, nextOrderNo,
+    dark, workers, paymentMethods, inventoryLocked, inventorySnapshot, inventoryLockedAt,
+    adminPins, orderTypes, defaultDeliveryFee, expenses, dayMeta, bankTx, realtimeOrders,
   ]);
 
-// --- Derive simple numbers for effect deps (shift window) ---
-const startedAtMs = dayMeta?.startedAt
-  ? new Date(dayMeta.startedAt).getTime()
-  : null;
+  const startedAtMs = dayMeta?.startedAt ? new Date(dayMeta.startedAt).getTime() : null;
+  const endedAtMs = dayMeta?.endedAt ? new Date(dayMeta.endedAt).getTime() : null;
 
-const endedAtMs = dayMeta?.endedAt
-  ? new Date(dayMeta.endedAt).getTime()
-  : null;
+  // Live board: only show orders within the active shift window
+  useEffect(() => {
+    if (!realtimeOrders || !ordersColRef || !fbUser) return;
+    if (!startedAtMs) { setOrders([]); return; }
 
-// --- Realtime orders stream limited to current shift window ---
-useEffect(() => {
-  if (!realtimeOrders || !ordersColRef || !fbUser) return;
+    const startTs = Timestamp.fromMillis(startedAtMs);
+    const constraints = [where("createdAt", ">=", startTs), orderBy("createdAt", "desc")];
+    if (endedAtMs) constraints.unshift(where("createdAt", "<=", Timestamp.fromMillis(endedAtMs)));
 
-  // If shift hasn't started, show no orders and don't listen
-  if (!startedAtMs) {
-    setOrders([]);
-    return;
-  }
+    const qy = query(ordersColRef, ...constraints);
+    const unsub = onSnapshot(qy, (snap) => {
+      const arr = [];
+      snap.forEach((d) => arr.push(orderFromCloudDoc(d.id, d.data())));
+      setOrders(dedupeOrders(arr)); // keep latest per orderNo
+    });
+    return () => unsub();
+  }, [realtimeOrders, ordersColRef, fbUser, startedAtMs, endedAtMs]);
 
-  const startTs = Timestamp.fromMillis(startedAtMs);
-  const constraints = [where("createdAt", ">=", startTs), orderBy("createdAt", "desc")];
-
-  if (endedAtMs) {
-    const endTs = Timestamp.fromMillis(endedAtMs);
-    constraints.unshift(where("createdAt", "<=", endTs));
-  }
-
-  const qy = query(ordersColRef, ...constraints);
-  const unsub = onSnapshot(qy, (snap) => {
-    const arr = [];
-    snap.forEach((d) => arr.push(orderFromCloudDoc(d.id, d.data())));
-    setOrders(dedupeOrders(arr)); // extra safety
-  });
-
-  return () => unsub();
-}, [realtimeOrders, ordersColRef, fbUser, startedAtMs, endedAtMs]);
-
-
-
-  /* --------------------------- EXISTING APP LOGIC --------------------------- */
+  /* --------------------------- APP LOGIC --------------------------- */
   const toggleExtra = (extra) => {
     setSelectedExtras((prev) =>
       prev.find((e) => e.id === extra.id)
@@ -651,61 +578,41 @@ useEffect(() => {
     return map;
   }, [inventory]);
 
-  // ---- Admin PIN helper & inventory lock/unlock ----
-const promptAdminAndPin = () => {
-  const adminStr = window.prompt("Enter Admin number (1 to 6):", "1");
-  if (!adminStr) return null;
-  const n = Number(adminStr);
-  if (![1, 2, 3, 4, 5, 6].includes(n)) {
-    alert("Please enter a number from 1 to 6.");
-    return null;
-  }
-  const entered = window.prompt(`Enter PIN for Admin ${n}:`, "");
-  if (entered == null) return null;
+  const promptAdminAndPin = () => {
+    const adminStr = window.prompt("Enter Admin number (1 to 6):", "1");
+    if (!adminStr) return null;
+    const n = Number(adminStr);
+    if (![1, 2, 3, 4, 5, 6].includes(n)) { alert("Please enter a number from 1 to 6."); return null; }
+    const entered = window.prompt(`Enter PIN for Admin ${n}:`, "");
+    if (entered == null) return null;
 
-  const expected = norm(adminPins[n]);
-  const attempt = norm(entered);
+    const expected = norm(adminPins[n]);
+    const attempt = norm(entered);
+    if (!expected) { alert(`Admin ${n} has no PIN set; set a PIN in Prices → Admin PINs.`); return null; }
+    if (attempt !== expected) { alert("Invalid PIN."); return null; }
+    return n;
+  };
 
-  if (!expected) {
-    alert(`Admin ${n} has no PIN set; set a PIN in Prices → Admin PINs.`);
-    return null;
-  }
-  if (attempt !== expected) {
-    alert("Invalid PIN.");
-    return null;
-  }
-  return n;
-};
+  const lockInventoryForDay = () => {
+    if (inventoryLocked) return;
+    if (inventory.length === 0) return alert("Add at least one inventory item first.");
+    if (!window.confirm("Lock current inventory as Start-of-Day? You won't be able to edit until End the Day or admin unlock.")) return;
 
-const lockInventoryForDay = () => {
-  if (inventoryLocked) return;
-  if (inventory.length === 0) return alert("Add at least one inventory item first.");
-  if (!window.confirm(
-    "Lock current inventory as Start-of-Day? You won't be able to edit until End the Day or admin unlock."
-  )) return;
+    const snap = inventory.map((it) => ({ id: it.id, name: it.name, unit: it.unit, qtyAtLock: it.qty }));
+    setInventorySnapshot(snap);
+    setInventoryLocked(true);
+    setInventoryLockedAt(new Date());
+  };
 
-  const snap = inventory.map((it) => ({
-    id: it.id,
-    name: it.name,
-    unit: it.unit,
-    qtyAtLock: it.qty,
-  }));
-  setInventorySnapshot(snap);
-  setInventoryLocked(true);
-  setInventoryLockedAt(new Date());
-};
+  const unlockInventoryWithPin = () => {
+    if (!inventoryLocked) return alert("Inventory is already unlocked.");
+    const adminNum = promptAdminAndPin();
+    if (!adminNum) return;
+    if (!window.confirm(`Admin ${adminNum}: Unlock inventory for editing? Snapshot will be kept.`)) return;
+    setInventoryLocked(false);
+    alert("Inventory unlocked for editing.");
+  };
 
-const unlockInventoryWithPin = () => {
-  if (!inventoryLocked) return alert("Inventory is already unlocked.");
-  const adminNum = promptAdminAndPin();
-  if (!adminNum) return;
-  if (!window.confirm(`Admin ${adminNum}: Unlock inventory for editing? Snapshot will be kept.`)) return;
-  setInventoryLocked(false);
-  alert("Inventory unlocked for editing.");
-};
-
-
-  // --------- Shift Controls ----------
   const startShift = () => {
     if (dayMeta.startedAt && !dayMeta.endedAt) return alert("Shift already started.");
     const nameInput = worker || window.prompt("Enter worker name to START shift (or select in Orders tab then return):", "");
@@ -726,13 +633,10 @@ const unlockInventoryWithPin = () => {
     }
   };
 
-  // RENAMED: End Shift -> Change Shift
   const changeShift = () => {
     if (!dayMeta.startedAt || dayMeta.endedAt) return alert("Start a shift first.");
     const current = window.prompt(`Enter the CURRENT worker name to confirm:`, "");
-    if (norm(current) !== norm(dayMeta.startedBy)) {
-      return alert(`Only ${dayMeta.startedBy} can hand over the shift.`);
-    }
+    if (norm(current) !== norm(dayMeta.startedBy)) return alert(`Only ${dayMeta.startedBy} can hand over the shift.`);
     const next = window.prompt(`Enter the NEW worker name to take over:`, "");
     const newName = norm(next);
     if (!newName) return alert("New worker name required.");
@@ -745,95 +649,75 @@ const unlockInventoryWithPin = () => {
     alert(`Shift changed: ${dayMeta.startedBy} → ${newName}`);
   };
 
-// NEW: End the Day (replaces Reset Day)
-const endDay = async () => {
-  if (!dayMeta.startedAt) return alert("Start a shift first.");
-  const who = window.prompt("Enter your name to END THE DAY:", "");
-  const endBy = norm(who);
-  if (!endBy) return alert("Name is required.");
+  const endDay = async () => {
+    if (!dayMeta.startedAt) return alert("Start a shift first.");
+    const who = window.prompt("Enter your name to END THE DAY:", "");
+    const endBy = norm(who);
+    if (!endBy) return alert("Name is required.");
 
-  // Mark end time now for the final PDF
-  const endTime = new Date();
-  const metaForReport = { ...dayMeta, endedAt: endTime, endedBy: endBy };
+    const endTime = new Date();
+    const metaForReport = { ...dayMeta, endedAt: endTime, endedBy: endBy };
 
-  // Download PDF first
-  generatePDF(false, metaForReport);
+    generatePDF(false, metaForReport);
 
-  // Purge this shift's orders from Firestore so the board is clean next time
-  if (cloudEnabled && ordersColRef && fbUser && db) {
-    try {
-      // Prefer the recorded shift start; if missing, derive from earliest order
-      const start = dayMeta.startedAt
-        ? new Date(dayMeta.startedAt)
-        : (orders.length ? new Date(Math.min(...orders.map(o => +o.date))) : endTime);
-
-      const removed = await purgeOrdersInCloud(db, ordersColRef, start, endTime);
-      console.log(`Purged ${removed} cloud orders for the shift.`);
-    } catch (e) {
-      console.warn("Cloud purge on endDay failed:", e);
+    if (cloudEnabled && ordersColRef && fbUser && db) {
+      try {
+        const start = dayMeta.startedAt
+          ? new Date(dayMeta.startedAt)
+          : (orders.length ? new Date(Math.min(...orders.map(o => +o.date))) : endTime);
+        await purgeOrdersInCloud(db, ordersColRef, start, endTime);
+      } catch (e) {
+        console.warn("Cloud purge on endDay failed:", e);
+      }
+      // Reset the shared counter to start from #1 next day
+      try {
+        if (counterDocRef) {
+          await setDoc(counterDocRef, { lastOrderNo: 0, updatedAt: serverTimestamp() }, { merge: true });
+        }
+      } catch (e) {
+        console.warn("Counter reset failed:", e);
+      }
     }
-  }
 
-  // Calculate margin (revenue excl. delivery - expenses)
-  const validOrders = orders.filter((o) => !o.voided);
-  const revenueExclDelivery = validOrders.reduce(
-    (s, o) =>
-      s +
-      Number(o.itemsTotal != null ? o.itemsTotal : (o.total - (o.deliveryFee || 0))),
-    0
-  );
-  const expensesTotal = expenses.reduce(
-    (s, e) => s + Number((e.qty || 0) * (e.unitPrice || 0)),
-    0
-  );
-  const margin = revenueExclDelivery - expensesTotal;
+    // Daily margin into Bank
+    const validOrders = orders.filter((o) => !o.voided);
+    const revenueExclDelivery = validOrders.reduce(
+      (s, o) => s + Number(o.itemsTotal != null ? o.itemsTotal : (o.total - (o.deliveryFee || 0))), 0
+    );
+    const expensesTotal = expenses.reduce((s, e) => s + Number((e.qty || 0) * (e.unitPrice || 0)), 0);
+    const margin = revenueExclDelivery - expensesTotal;
 
-  // Auto add to Bank as next day's initial balance (or adjust down)
-  const txs = [];
-  if (margin > 0) {
-    txs.push({
-      id: `tx_${Date.now()}`,
-      type: "init",
-      amount: margin,
-      worker: endBy,
-      note: "Auto Init from day margin",
-      date: new Date(),
+    const txs = [];
+    if (margin > 0) {
+      txs.push({ id: `tx_${Date.now()}`, type: "init", amount: margin, worker: endBy, note: "Auto Init from day margin", date: new Date() });
+    } else if (margin < 0) {
+      txs.push({ id: `tx_${Date.now() + 1}`, type: "adjustDown", amount: Math.abs(margin), worker: endBy, note: "Auto Adjust Down (negative margin)", date: new Date() });
+    }
+    if (txs.length) setBankTx((arr) => [...txs, ...arr]);
+
+    setOrders([]);
+    setNextOrderNo(1);
+    setInventoryLocked(false);
+    setInventoryLockedAt(null);
+    setDayMeta({
+      startedBy: "",
+      startedAt: null,
+      endedAt: null,
+      endedBy: "",
+      lastReportAt: null,
+      resetBy: "",
+      resetAt: null,
+      shiftChanges: [],
     });
-  } else if (margin < 0) {
-    txs.push({
-      id: `tx_${Date.now() + 1}`,
-      type: "adjustDown",
-      amount: Math.abs(margin),
-      worker: endBy,
-      note: "Auto Adjust Down (negative margin)",
-      date: new Date(),
-    });
-  }
-  if (txs.length) setBankTx((arr) => [...txs, ...arr]);
 
-  // Reset day locally
-  setOrders([]);
-  setNextOrderNo(1);
-  setInventoryLocked(false);
-  setInventoryLockedAt(null);
-  setDayMeta({
-    startedBy: "",
-    startedAt: null,
-    endedAt: null,
-    endedBy: "",
-    lastReportAt: null,
-    resetBy: "",
-    resetAt: null,
-    shiftChanges: [],
-  });
-
-  alert(`Day ended by ${endBy}. Report downloaded and day reset ✅`);
-};
+    alert(`Day ended by ${endBy}. Report downloaded and day reset ✅`);
+  };
 
   // --------- Cart / Checkout ----------
+  const [isCheckingOut, setIsCheckingOut] = useState(false); // <-- NEW: guard against double taps
+
   const addToCart = () => {
     if (!selectedBurger) return alert("Select a burger/item first.");
-
     const uses = {};
     const prodUses = selectedBurger.uses || {};
     for (const k of Object.keys(prodUses)) uses[k] = (uses[k] || 0) + (prodUses[k] || 0);
@@ -841,14 +725,7 @@ const endDay = async () => {
       const exUses = ex.uses || {};
       for (const k of Object.keys(exUses)) uses[k] = (uses[k] || 0) + (exUses[k] || 0);
     }
-
-    const line = {
-      ...selectedBurger,
-      extras: [...selectedExtras],
-      price: selectedBurger.price,
-      uses,
-    };
-
+    const line = { ...selectedBurger, extras: [...selectedExtras], price: selectedBurger.price, uses };
     setCart((c) => [...c, line]);
     setSelectedBurger(null);
     setSelectedExtras([]);
@@ -857,121 +734,113 @@ const endDay = async () => {
   const removeFromCart = (i) => setCart((c) => c.filter((_, idx) => idx !== i));
 
   const checkout = async () => {
-    if (!dayMeta.startedAt || dayMeta.endedAt) {
-      return alert("Start a shift first (Shift → Start Shift).");
-    }
-    if (cart.length === 0) return alert("Cart is empty.");
-    if (!worker) return alert("Select worker.");
-    if (!payment) return alert("Select payment.");
-    if (!orderType) return alert("Select order type.");
+    if (isCheckingOut) return;
+    setIsCheckingOut(true);
 
-    // Sum required inventory across all cart lines
-    const required = {};
-    for (const line of cart) {
-      const uses = line.uses || {};
-      for (const k of Object.keys(uses)) {
-        required[k] = (required[k] || 0) + (uses[k] || 0);
+    try {
+      if (!dayMeta.startedAt || dayMeta.endedAt) return alert("Start a shift first (Shift → Start Shift).");
+      if (cart.length === 0) return alert("Cart is empty.");
+      if (!worker) return alert("Select worker.");
+      if (!payment) return alert("Select payment.");
+      if (!orderType) return alert("Select order type.");
+
+      // Stock check
+      const required = {};
+      for (const line of cart) {
+        const uses = line.uses || {};
+        for (const k of Object.keys(uses)) required[k] = (required[k] || 0) + (uses[k] || 0);
       }
-    }
-    // Check stock
-    for (const k of Object.keys(required)) {
-      const invItem = invById[k];
-      if (!invItem) continue;
-      if ((invItem.qty || 0) < required[k]) {
-        return alert(`Not enough ${invItem.name} in stock. Need ${required[k]} ${invItem.unit}, have ${invItem.qty} ${invItem.unit}.`);
-      }
-    }
-    // Deduct inventory
-    setInventory((inv) =>
-      inv.map((it) => {
-        const need = required[it.id] || 0;
-        return need ? { ...it, qty: it.qty - need } : it;
-      })
-    );
-
-    // Totals
-    const baseSubtotal = cart.reduce((s, b) => s + Number(b.price || 0), 0);
-    const extrasSubtotal = cart.reduce(
-      (s, b) => s + (b.extras || []).reduce((t, e) => t + Number(e.price || 0), 0),
-      0
-    );
-    const itemsTotal = baseSubtotal + extrasSubtotal;
-    const delFee = orderType === "Delivery" ? Math.max(0, Number(deliveryFee || 0)) : 0;
-    const total = itemsTotal + delFee;
-
-    const order = {
-      orderNo: nextOrderNo,
-      date: new Date(),
-      worker,
-      payment,
-      orderType,
-      deliveryFee: delFee,
-      total,
-      itemsTotal,
-      cart,
-      done: false,
-      voided: false,
-      restockedAt: undefined,
-      note: orderNote.trim(),
-    };
-
-    // IMPORTANT: if realtime is ON, don't add locally; wait for onSnapshot
-    if (!realtimeOrders) {
-      setOrders((o) => [order, ...o]);
-    }
-    setNextOrderNo((n) => n + 1);
-
-    // Cloud write (orders collection)
-    if (cloudEnabled && ordersColRef && fbUser) {
-      try {
-        const ref = await addDoc(ordersColRef, normalizeOrderForCloud(order));
-        if (!realtimeOrders) {
-          // attach cloudId to local order only in offline mode
-          setOrders((prev) =>
-            prev.map((oo) => (oo.orderNo === order.orderNo ? { ...oo, cloudId: ref.id } : oo))
-          );
+      for (const k of Object.keys(required)) {
+        const invItem = invById[k];
+        if (!invItem) continue;
+        if ((invItem.qty || 0) < required[k]) {
+          return alert(`Not enough ${invItem.name} in stock. Need ${required[k]} ${invItem.unit}, have ${invItem.qty} ${invItem.unit}.`);
         }
-      } catch (e) {
-        console.warn("Cloud order write failed:", e);
       }
+      // Deduct
+      setInventory((inv) =>
+        inv.map((it) => {
+          const need = required[it.id] || 0;
+          return need ? { ...it, qty: it.qty - need } : it;
+        })
+      );
+
+      const baseSubtotal = cart.reduce((s, b) => s + Number(b.price || 0), 0);
+      const extrasSubtotal = cart.reduce((s, b) => s + (b.extras || []).reduce((t, e) => t + Number(e.price || 0), 0), 0);
+      const itemsTotal = baseSubtotal + extrasSubtotal;
+      const delFee = orderType === "Delivery" ? Math.max(0, Number(deliveryFee || 0)) : 0;
+      const total = itemsTotal + delFee;
+
+      // Allocate a UNIQUE order number from Firestore (atomic across devices)
+      let allocatedNo = nextOrderNo;
+      if (cloudEnabled && counterDocRef && fbUser && db) {
+        try {
+          allocatedNo = await allocateOrderNoAtomic(db, counterDocRef);
+        } catch (e) {
+          console.warn("Atomic order number allocation failed, using local nextOrderNo.", e);
+        }
+      }
+      setNextOrderNo(allocatedNo + 1); // UI feedback
+
+      const order = {
+        orderNo: allocatedNo,
+        date: new Date(),
+        worker,
+        payment,
+        orderType,
+        deliveryFee: delFee,
+        total,
+        itemsTotal,
+        cart,
+        done: false,
+        voided: false,
+        restockedAt: undefined,
+        note: orderNote.trim(),
+        idemKey: `idk_${fbUser ? fbUser.uid : "anon"}_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      };
+
+      if (!realtimeOrders) setOrders((o) => [order, ...o]);
+
+      if (cloudEnabled && ordersColRef && fbUser) {
+        try {
+          const ref = await addDoc(ordersColRef, normalizeOrderForCloud(order));
+          if (!realtimeOrders) {
+            setOrders((prev) => prev.map((oo) => (oo.orderNo === order.orderNo ? { ...oo, cloudId: ref.id } : oo)));
+          }
+        } catch (e) {
+          console.warn("Cloud order write failed:", e);
+        }
+      }
+
+      printThermalTicket(order, 58, "Customer");
+
+      setCart([]);
+      setWorker("");
+      setPayment("");
+      setOrderNote("");
+      setOrderType(orderTypes[0] || "Take-Away");
+      setDeliveryFee(orderType === "Delivery" ? defaultDeliveryFee : 0);
+    } finally {
+      setIsCheckingOut(false);
     }
-
-    // Print customer receipt (58 mm)
-    printThermalTicket(order, 58, "Customer");
-
-    // reset builder
-    setCart([]);
-    setWorker("");
-    setPayment("");
-    setOrderNote("");
-    setOrderType(orderTypes[0] || "Take-Away");
-    setDeliveryFee(orderType === "Delivery" ? defaultDeliveryFee : 0);
   };
 
   // --------- Order actions ----------
   const markOrderDone = async (orderNo) => {
     setOrders((o) =>
-      o.map((ord) => {
-        if (ord.orderNo !== orderNo) return ord;
-        if (ord.done) return ord;
-        return { ...ord, done: true };
-      })
+      o.map((ord) => (ord.orderNo !== orderNo || ord.done ? ord : { ...ord, done: true }))
     );
-
-    // Cloud update
     try {
       if (!cloudEnabled || !ordersColRef || !fbUser) return;
       let targetId = orders.find((o) => o.orderNo === orderNo)?.cloudId;
       if (!targetId) {
-        // best-effort find by orderNo
         const qy = query(ordersColRef, where("orderNo", "==", orderNo));
         const ss = await getDocs(qy);
         if (!ss.empty) targetId = ss.docs[0].id;
       }
       if (targetId) {
         await updateDoc(fsDoc(db, "shops", SHOP_ID, "orders", targetId), {
-          done: true,
-          updatedAt: serverTimestamp(),
+          done: true, updatedAt: serverTimestamp(),
         });
       }
     } catch (e) {
@@ -989,9 +858,7 @@ const endDay = async () => {
     const giveBack = {};
     for (const line of ord.cart) {
       const uses = line.uses || {};
-      for (const k of Object.keys(uses)) {
-        giveBack[k] = (giveBack[k] || 0) + (uses[k] || 0);
-      }
+      for (const k of Object.keys(uses)) giveBack[k] = (giveBack[k] || 0) + (uses[k] || 0);
     }
     setInventory((inv) =>
       inv.map((it) => {
@@ -999,11 +866,8 @@ const endDay = async () => {
         return back ? { ...it, qty: it.qty + back } : it;
       })
     );
-    setOrders((o) =>
-      o.map((x) => (x.orderNo === orderNo ? { ...x, voided: true, restockedAt: new Date() } : x))
-    );
+    setOrders((o) => o.map((x) => (x.orderNo === orderNo ? { ...x, voided: true, restockedAt: new Date() } : x)));
 
-    // Cloud update
     try {
       if (!cloudEnabled || !ordersColRef || !fbUser) return;
       let targetId = ord.cloudId;
@@ -1014,9 +878,7 @@ const endDay = async () => {
       }
       if (targetId) {
         await updateDoc(fsDoc(db, "shops", SHOP_ID, "orders", targetId), {
-          voided: true,
-          restockedAt: new Date().toISOString(),
-          updatedAt: serverTimestamp(),
+          voided: true, restockedAt: new Date().toISOString(), updatedAt: serverTimestamp(),
         });
       }
     } catch (e) {
@@ -1037,8 +899,7 @@ const endDay = async () => {
   const totals = useMemo(() => {
     const validOrders = orders.filter((o) => !o.voided);
     const revenueTotal = validOrders.reduce(
-      (s, o) => s + Number(o.itemsTotal != null ? o.itemsTotal : (o.total - (o.deliveryFee || 0))),
-      0
+      (s, o) => s + Number(o.itemsTotal != null ? o.itemsTotal : (o.total - (o.deliveryFee || 0))), 0
     );
     const byPay = {};
     for (const p of paymentMethods) byPay[p] = 0;
@@ -1051,7 +912,7 @@ const endDay = async () => {
     for (const t of orderTypes) byType[t] = 0;
     for (const o of validOrders) {
       const itemsOnly = Number(o.itemsTotal != null ? o.itemsTotal : (o.total - (o.deliveryFee || 0)));
-      if (byType[o.orderType] == null) byType[o.orderType] = 0;
+      if (byType[o.orderType] == null) byType[o.orderType] += 0;
       byType[o.orderType] += itemsOnly;
     }
     const deliveryFeesTotal = validOrders.reduce((s, o) => s + (o.deliveryFee || 0), 0);
@@ -1065,18 +926,14 @@ const endDay = async () => {
     const extraMap = new Map();
     const add = (map, id, name, count, revenue) => {
       const prev = map.get(id) || { id, name, count: 0, revenue: 0 };
-      prev.count += count;
-      prev.revenue += revenue;
-      map.set(id, prev);
+      prev.count += count; prev.revenue += revenue; map.set(id, prev);
     };
     for (const o of orders) {
       if (o.voided) continue;
       for (const line of o.cart || []) {
         const base = Number(line.price || 0);
         add(itemMap, line.id, line.name, 1, base);
-        for (const ex of line.extras || []) {
-          add(extraMap, ex.id, ex.name, 1, Number(ex.price || 0));
-        }
+        for (const ex of line.extras || []) add(extraMap, ex.id, ex.name, 1, Number(ex.price || 0));
       }
     }
     const items = Array.from(itemMap.values()).sort((a, b) => b.count - a.count || b.revenue - a.revenue);
@@ -1136,15 +993,8 @@ const endDay = async () => {
       autoTable(doc, {
         head: [["#", "Date", "Worker", "Payment", "Type", "Delivery (E£)", "Total (E£)", "Done", "Voided"]],
         body: getSortedOrders().map((o) => [
-          o.orderNo,
-          o.date.toLocaleString(),
-          o.worker,
-          o.payment,
-          o.orderType || "",
-          (o.deliveryFee || 0).toFixed(2),
-          o.total.toFixed(2),
-          o.done ? "Yes" : "No",
-          o.voided ? "Yes" : "No",
+          o.orderNo, o.date.toLocaleString(), o.worker, o.payment, o.orderType || "",
+          (o.deliveryFee || 0).toFixed(2), o.total.toFixed(2), o.done ? "Yes" : "No", o.voided ? "Yes" : "No",
         ]),
         startY: y + 4,
         styles: { fontSize: 9 },
@@ -1159,28 +1009,17 @@ const endDay = async () => {
         ["Expenses (Shift)", totals.expensesTotal.toFixed(2)],
         ["Margin (Revenue - Expenses)", totals.margin.toFixed(2)],
       ];
-      for (const p of Object.keys(totals.byPay)) {
-        totalsBody.push([`By Payment — ${p} (items only)`, (totals.byPay[p] || 0).toFixed(2)]);
-      }
-      for (const t of Object.keys(totals.byType)) {
-        totalsBody.push([`By Order Type — ${t} (items only)`, (totals.byType[t] || 0).toFixed(2)]);
-      }
+      for (const p of Object.keys(totals.byPay)) totalsBody.push([`By Payment — ${p} (items only)`, (totals.byPay[p] || 0).toFixed(2)]);
+      for (const t of Object.keys(totals.byType)) totalsBody.push([`By Order Type — ${t} (items only)`, (totals.byType[t] || 0).toFixed(2)]);
 
-      autoTable(doc, {
-        head: [["Metric", "Amount (E£)"]],
-        body: totalsBody,
-        startY: y + 4,
-        theme: "grid",
-        styles: { fontSize: 10 },
-      });
+      autoTable(doc, { head: [["Metric", "Amount (E£)"]], body: totalsBody, startY: y + 4, theme: "grid", styles: { fontSize: 10 } });
 
       y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : y + 40;
       doc.text("Items — Times Ordered", 14, y);
       autoTable(doc, {
         head: [["Item", "Times", "Revenue (E£)"]],
         body: salesStats.items.map((r) => [r.name, String(r.count), r.revenue.toFixed(2)]),
-        startY: y + 4,
-        theme: "grid",
+        startY: y + 4, theme: "grid",
       });
 
       y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : y + 40;
@@ -1188,8 +1027,7 @@ const endDay = async () => {
       autoTable(doc, {
         head: [["Extra", "Times", "Revenue (E£)"]],
         body: salesStats.extras.map((r) => [r.name, String(r.count), r.revenue.toFixed(2)]),
-        startY: y + 4,
-        theme: "grid",
+        startY: y + 4, theme: "grid",
       });
 
       y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : y + 40;
@@ -1199,15 +1037,13 @@ const endDay = async () => {
         autoTable(doc, {
           head: [["Info"]],
           body: [["No inventory snapshot yet. Lock inventory to capture start-of-day."]],
-          startY: y + 4,
-          theme: "grid",
+          startY: y + 4, theme: "grid",
         });
       } else {
         autoTable(doc, {
           head: [["Item", "Unit", "Start Qty", "Current Qty", "Used"]],
           body: inventoryReportRows.map((r) => [r.name, r.unit, String(r.start), String(r.now), String(r.used)]),
-          startY: y + 4,
-          theme: "grid",
+          startY: y + 4, theme: "grid",
         });
       }
 
@@ -1216,17 +1052,11 @@ const endDay = async () => {
       autoTable(doc, {
         head: [["Name", "Unit", "Qty", "Unit Price (E£)", "Total (E£)", "Date", "Note"]],
         body: expenses.map((e) => [
-          e.name,
-          e.unit,
-          String(e.qty),
-          Number(e.unitPrice || 0).toFixed(2),
+          e.name, e.unit, String(e.qty), Number(e.unitPrice || 0).toFixed(2),
           (Number(e.qty || 0) * Number(e.unitPrice || 0)).toFixed(2),
-          e.date ? new Date(e.date).toLocaleString() : "",
-          e.note || "",
+          e.date ? new Date(e.date).toLocaleString() : "", e.note || "",
         ]),
-        startY: y + 4,
-        theme: "grid",
-        styles: { fontSize: 9 },
+        startY: y + 4, theme: "grid", styles: { fontSize: 9 },
       });
 
       setDayMeta((d) => ({ ...d, lastReportAt: new Date() }));
@@ -1238,7 +1068,7 @@ const endDay = async () => {
     }
   };
 
-  // --------------------------- PDF: THERMAL TICKETS ---------------------------
+  // --------------------------- PDF: THERMAL ---------------------------
   const printThermalTicket = async (order, widthMm = 58, copy = "Customer") => {
     try {
       if (order.voided) return alert("This order is voided; no tickets can be printed.");
@@ -1276,15 +1106,13 @@ const endDay = async () => {
       }
 
       if (order.note) {
-        doc.setFont("helvetica", "normal"); doc.text("NOTE:", margin, y);
-        doc.setFont("helvetica", "normal"); y += 5;
+        doc.text("NOTE:", margin, y); y += 5;
         const wrapped = doc.splitTextToSize(safe(order.note), widthMm - margin * 2);
         wrapped.forEach(line => { doc.text(line, margin, y); y += 4; });
         y += 2;
       }
 
-      doc.setFont("helvetica", "normal"); doc.text("Items", margin, y); y += 5;
-      doc.setFont("helvetica", "normal");
+      doc.text("Items", margin, y); y += 5;
 
       order.cart.forEach((ci) => {
         const nameWrapped = doc.splitTextToSize(safe(ci.name), widthMm - margin * 2);
@@ -1305,7 +1133,6 @@ const endDay = async () => {
       });
 
       doc.line(margin, y, widthMm - margin, y); y += 3;
-      doc.setFont("helvetica", "normal");
       doc.text("TOTAL", margin, y);
       doc.text(`E£${Number(order.total || 0).toFixed(2)}`, widthMm - margin, y, { align: "right" });
       y += 6;
@@ -1325,7 +1152,7 @@ const endDay = async () => {
             _im.onerror = reject;
             _im.src = imgData;
           });
-          const targetW = Math.min(38, widthMm - margin * 2);
+          const targetW = Math.min(38, widthMm - 8);
           const targetH = targetW * (im.height / im.width || 1);
           doc.addImage(imgData, "JPEG", (widthMm - targetW) / 2, y, targetW, targetH);
           y += targetH + 2;
@@ -1343,24 +1170,16 @@ const endDay = async () => {
   const softBg = dark ? "#1e1e1e" : "#f5f5f5";
   const btnBorder = "#ccc";
   const containerStyle = {
-    maxWidth: 1024,
-    margin: "0 auto",
-    padding: 16,
-    background: dark ? "#121212" : "white",
-    color: dark ? "#eee" : "black",
-    minHeight: "100vh",
-    transition: "background 0.2s ease, color 0.2s ease",
+    maxWidth: 1024, margin: "0 auto", padding: 16,
+    background: dark ? "#121212" : "white", color: dark ? "#eee" : "black",
+    minHeight: "100vh", transition: "background 0.2s ease, color 0.2s ease",
   };
 
-  // Intercept clicking protected tabs
   const handleTabClick = (key) => {
     if (key === "prices" && !pricesUnlocked) {
       const entered = window.prompt("Enter Editor PIN to open Prices:", "");
       if (entered == null) return;
-      if (norm(entered) !== norm(EDITOR_PIN)) {
-        alert("Wrong PIN.");
-        return;
-      }
+      if (norm(entered) !== norm(EDITOR_PIN)) return alert("Wrong PIN.");
       setPricesUnlocked(true);
     }
     if (key === "bank" && !bankUnlocked) {
@@ -1371,7 +1190,6 @@ const endDay = async () => {
     setActiveTab(key);
   };
 
-  // Bank balance
   const bankBalance = useMemo(() => {
     return bankTx.reduce((sum, t) => {
       const a = Number(t.amount || 0);
@@ -1392,26 +1210,17 @@ const endDay = async () => {
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <small>{nowStr}</small>
 
-          {/* Cloud controls */}
           <div style={{ display: "flex", gap: 6, alignItems: "center", padding: "2px 6px", borderRadius: 6, border: `1px solid ${btnBorder}`, background: dark ? "#222" : "#f3f3f3" }}>
             <span>☁</span>
             {!firebaseConfigured && <small style={{ color: "#c62828" }}>Setup Firebase config</small>}
             {firebaseConfigured && (
               <>
                 <label style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                  <input
-                    type="checkbox"
-                    checked={cloudEnabled}
-                    onChange={(e) => setCloudEnabled(e.target.checked)}
-                  />
+                  <input type="checkbox" checked={cloudEnabled} onChange={(e) => setCloudEnabled(e.target.checked)} />
                   <small>Autosync</small>
                 </label>
                 <label style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                  <input
-                    type="checkbox"
-                    checked={realtimeOrders}
-                    onChange={(e) => setRealtimeOrders(e.target.checked)}
-                  />
+                  <input type="checkbox" checked={realtimeOrders} onChange={(e) => setRealtimeOrders(e.target.checked)} />
                   <small>Realtime Orders</small>
                 </label>
                 <button
@@ -1419,23 +1228,9 @@ const endDay = async () => {
                     try {
                       if (!stateDocRef || !fbUser) return;
                       const body = packStateForCloud({
-                        menu,
-                        extraList,
-                        orders: realtimeOrders ? [] : orders, // save empty when realtime
-                        inventory,
-                        nextOrderNo,
-                        dark,
-                        workers,
-                        paymentMethods,
-                        inventoryLocked,
-                        inventorySnapshot,
-                        inventoryLockedAt,
-                        adminPins,
-                        orderTypes,
-                        defaultDeliveryFee,
-                        expenses,
-                        dayMeta,
-                        bankTx,
+                        menu, extraList, orders: realtimeOrders ? [] : orders, inventory, nextOrderNo, dark, workers,
+                        paymentMethods, inventoryLocked, inventorySnapshot, inventoryLockedAt, adminPins, orderTypes,
+                        defaultDeliveryFee, expenses, dayMeta, bankTx,
                       });
                       await setDoc(stateDocRef, body, { merge: true });
                       setCloudStatus((s) => ({ ...s, lastSaveAt: new Date(), error: null }));
@@ -1464,14 +1259,7 @@ const endDay = async () => {
 
           <button
             onClick={() => setDark((d) => !d)}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 6,
-              border: `1px solid ${btnBorder}`,
-              background: dark ? "#333" : "#eee",
-              color: dark ? "#fff" : "#000",
-              cursor: "pointer",
-            }}
+            style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${btnBorder}`, background: dark ? "#333" : "#eee", color: dark ? "#fff" : "#000", cursor: "pointer" }}
           >
             {dark ? "Light Mode" : "Dark Mode"}
           </button>
@@ -1483,10 +1271,7 @@ const endDay = async () => {
         {!dayMeta.startedAt ? (
           <>
             <span><b>Shift not started.</b></span>
-            <button
-              onClick={startShift}
-              style={{ background: "#2e7d32", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
-            >
+            <button onClick={startShift} style={{ background: "#2e7d32", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}>
               Start Shift
             </button>
             <small style={{ opacity: 0.8 }}>Select/enter worker first (Orders tab) or you'll be prompted.</small>
@@ -1494,22 +1279,13 @@ const endDay = async () => {
         ) : (
           <>
             <span>Started by <b>{dayMeta.startedBy}</b> at <b>{new Date(dayMeta.startedAt).toLocaleString()}</b></span>
-            <button
-              onClick={() => generatePDF()}
-              style={{ background: "#7e57c2", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
-            >
+            <button onClick={() => generatePDF()} style={{ background: "#7e57c2", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}>
               Download PDF Report
             </button>
-            <button
-              onClick={changeShift}
-              style={{ background: "#37474f", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
-            >
+            <button onClick={changeShift} style={{ background: "#37474f", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}>
               Change Shift
             </button>
-            <button
-              onClick={endDay}
-              style={{ background: "#e53935", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
-            >
+            <button onClick={endDay} style={{ background: "#e53935", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}>
               End the Day (requires PDF)
             </button>
           </>
@@ -1531,12 +1307,9 @@ const endDay = async () => {
             key={key}
             onClick={() => handleTabClick(key)}
             style={{
-              padding: "8px 12px",
-              borderRadius: 6,
-              border: `1px solid ${btnBorder}`,
+              padding: "8px 12px", borderRadius: 6, border: `1px solid ${btnBorder}`,
               background: activeTab === key ? "#ffd54f" : (dark ? "#333" : "#eee"),
-              color: dark ? "#fff" : "#000",
-              cursor: "pointer",
+              color: dark ? "#fff" : "#000", cursor: "pointer",
             }}
           >
             {label}
@@ -1550,7 +1323,6 @@ const endDay = async () => {
           <h2>Select item</h2>
 
           <div style={{ display: "flex", gap: 24, alignItems: "flex-start", flexWrap: "wrap" }}>
-            {/* Vertical menu list */}
             <div style={{ flex: 1, minWidth: 300 }}>
               <h3>Burgers & Items</h3>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -1559,13 +1331,9 @@ const endDay = async () => {
                     key={item.id}
                     onClick={() => setSelectedBurger(item)}
                     style={{
-                      textAlign: "left",
-                      padding: 10,
-                      border: `1px solid ${btnBorder}`,
-                      borderRadius: 6,
+                      textAlign: "left", padding: 10, border: `1px solid ${btnBorder}`, borderRadius: 6,
                       background: selectedBurger?.id === item.id ? "#c8e6c9" : (dark ? "#1e1e1e" : "#fafafa"),
-                      color: dark ? "#eee" : "#000",
-                      cursor: "pointer",
+                      color: dark ? "#eee" : "#000", cursor: "pointer",
                     }}
                   >
                     {item.name} — E£{item.price}
@@ -1574,7 +1342,6 @@ const endDay = async () => {
               </div>
             </div>
 
-            {/* Vertical extras list */}
             <div style={{ flex: 1, minWidth: 300 }}>
               <h3>Extras (for selected item)</h3>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -1584,20 +1351,12 @@ const endDay = async () => {
                     <label
                       key={ex.id}
                       style={{
-                        padding: 10,
-                        border: `1px solid ${btnBorder}`,
-                        borderRadius: 6,
+                        padding: 10, border: `1px solid ${btnBorder}`, borderRadius: 6,
                         background: checked ? "#e1f5fe" : (dark ? "#1e1e1e" : "#fafafa"),
-                        color: dark ? "#eee" : "#000",
-                        cursor: "pointer",
+                        color: dark ? "#eee" : "#000", cursor: "pointer",
                       }}
                     >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleExtra(ex)}
-                        style={{ marginRight: 8 }}
-                      />
+                      <input type="checkbox" checked={checked} onChange={() => toggleExtra(ex)} style={{ marginRight: 8 }} />
                       {ex.name} — E£{ex.price}
                     </label>
                   );
@@ -1606,15 +1365,7 @@ const endDay = async () => {
 
               <button
                 onClick={addToCart}
-                style={{
-                  marginTop: 12,
-                  padding: "10px 14px",
-                  borderRadius: 6,
-                  border: "none",
-                  background: "#42a5f5",
-                  color: "white",
-                  cursor: "pointer",
-                }}
+                style={{ marginTop: 12, padding: "10px 14px", borderRadius: 6, border: "none", background: "#42a5f5", color: "white", cursor: "pointer" }}
               >
                 Add to cart
               </button>
@@ -1629,35 +1380,21 @@ const endDay = async () => {
               <li
                 key={idx}
                 style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  border: `1px solid ${cardBorder}`,
-                  borderRadius: 6,
-                  padding: 8,
-                  marginBottom: 6,
-                  background: dark ? "#1a1a1a" : "transparent",
+                  display: "flex", justifyContent: "space-between", border: `1px solid ${cardBorder}`,
+                  borderRadius: 6, padding: 8, marginBottom: 6, background: dark ? "#1a1a1a" : "transparent",
                 }}
               >
                 <div>
                   <strong>{it.name}</strong> — E£{it.price}
                   {it.extras?.length > 0 && (
                     <ul style={{ margin: "4px 0 0 16px", color: dark ? "#bbb" : "#555" }}>
-                      {it.extras.map((e) => (
-                        <li key={e.id}>+ {e.name}</li>
-                      ))}
+                      {it.extras.map((e) => (<li key={e.id}>+ {e.name}</li>))}
                     </ul>
                   )}
                 </div>
                 <button
                   onClick={() => removeFromCart(idx)}
-                  style={{
-                    background: "#ef5350",
-                    color: "white",
-                    border: "none",
-                    borderRadius: 6,
-                    padding: "6px 10px",
-                    cursor: "pointer",
-                  }}
+                  style={{ background: "#ef5350", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
                 >
                   Remove
                 </button>
@@ -1666,7 +1403,8 @@ const endDay = async () => {
           </ul>
 
           <p>
-            <strong>Items Total:</strong> E£{
+            <strong>Items Total:</strong>{" "}
+            E£{
               cart.reduce(
                 (s, b) => s + Number(b.price || 0) + (b.extras || []).reduce((t, e) => t + Number(e.price || 0), 0),
                 0
@@ -1674,23 +1412,15 @@ const endDay = async () => {
             }
           </p>
 
-          {/* Order notes */}
           <div style={{ margin: "8px 0 12px" }}>
             <label>
               <strong>Order notes:</strong>{" "}
               <input
-                type="text"
-                value={orderNote}
-                placeholder="e.g., no pickles, extra spicy"
+                type="text" value={orderNote} placeholder="e.g., no pickles, extra spicy"
                 onChange={(e) => setOrderNote(e.target.value)}
                 style={{
-                  width: 420,
-                  maxWidth: "90%",
-                  padding: "6px 8px",
-                  borderRadius: 6,
-                  border: `1px solid ${btnBorder}`,
-                  background: dark ? "#1e1e1e" : "white",
-                  color: dark ? "#eee" : "#000",
+                  width: 420, maxWidth: "90%", padding: "6px 8px", borderRadius: 6, border: `1px solid ${btnBorder}`,
+                  background: dark ? "#1e1e1e" : "white", color: dark ? "#eee" : "#000",
                 }}
               />
             </label>
@@ -1699,20 +1429,12 @@ const endDay = async () => {
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <select value={worker} onChange={(e) => setWorker(e.target.value)}>
               <option value="">Select worker</option>
-              {workers.map((w) => (
-                <option key={w} value={w}>
-                  {w}
-                </option>
-              ))}
+              {workers.map((w) => (<option key={w} value={w}>{w}</option>))}
             </select>
 
             <select value={payment} onChange={(e) => setPayment(e.target.value)}>
               <option value="">Select payment</option>
-              {paymentMethods.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
+              {paymentMethods.map((p) => (<option key={p} value={p}>{p}</option>))}
             </select>
 
             <select
@@ -1723,41 +1445,31 @@ const endDay = async () => {
                 setDeliveryFee(v === "Delivery" ? (deliveryFee || defaultDeliveryFee) : 0);
               }}
             >
-              {orderTypes.map((t) => (
-                <option key={t} value={t}>{t}</option>
-              ))}
+              {orderTypes.map((t) => (<option key={t} value={t}>{t}</option>))}
             </select>
 
             {orderType === "Delivery" && (
               <>
                 <label>
                   Delivery fee:&nbsp;
-                  <input
-                    type="number"
-                    value={deliveryFee}
-                    onChange={(e) => setDeliveryFee(Number(e.target.value || 0))}
-                    style={{ width: 120 }}
-                  />
+                  <input type="number" value={deliveryFee} onChange={(e) => setDeliveryFee(Number(e.target.value || 0))} style={{ width: 120 }} />
                 </label>
-                <small style={{ opacity: 0.75 }}>
-                  (Default: E£{Number(defaultDeliveryFee || 0).toFixed(2)})
-                </small>
+                <small style={{ opacity: 0.75 }}>(Default: E£{Number(defaultDeliveryFee || 0).toFixed(2)})</small>
               </>
             )}
 
             <button
               onClick={checkout}
+              disabled={isCheckingOut}
               style={{
-                background: "#43a047",
-                color: "white",
-                border: "none",
-                borderRadius: 6,
-                padding: "8px 12px",
-                cursor: "pointer",
+                background: isCheckingOut ? "#9e9e9e" : "#43a047",
+                color: "white", border: "none", borderRadius: 6, padding: "8px 12px",
+                cursor: isCheckingOut ? "not-allowed" : "pointer",
               }}
             >
-              Checkout
+              {isCheckingOut ? "Processing..." : "Checkout"}
             </button>
+            <small>Next order #: <b>{nextOrderNo}</b></small>
           </div>
 
           <p style={{ marginTop: 8 }}>
@@ -1784,31 +1496,21 @@ const endDay = async () => {
               <li
                 key={`${o.cloudId || "local"}_${o.orderNo}`}
                 style={{
-                  border: `1px solid ${cardBorder}`,
-                  borderRadius: 6,
-                  padding: 10,
-                  marginBottom: 8,
+                  border: `1px solid ${cardBorder}`, borderRadius: 6, padding: 10, marginBottom: 8,
                   background: o.voided ? (dark ? "#4a2b2b" : "#ffebee")
                     : o.done ? (dark ? "#14331a" : "#e8f5e9")
                     : (dark ? "#333018" : "#fffde7"),
                 }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-                  <strong>
-                    Order #{o.orderNo} — E£{o.total.toFixed(2)} {o.cloudId ? "☁" : ""}
-                  </strong>
+                  <strong>Order #{o.orderNo} — E£{o.total.toFixed(2)} {o.cloudId ? "☁" : ""}</strong>
                   <span>{o.date.toLocaleString()}</span>
                 </div>
                 <div style={{ color: dark ? "#ccc" : "#555", marginTop: 4 }}>
                   Worker: {o.worker} • Payment: {o.payment} • Type: {o.orderType || "-"}
                   {o.orderType === "Delivery" && <> • Delivery: E£{Number(o.deliveryFee || 0).toFixed(2)}</>}
-                  {" "}• Status:{" "}
-                  <strong>
-                    {o.voided ? "Voided & Restocked" : o.done ? "Done" : "Not done"}
-                  </strong>
-                  {o.voided && o.restockedAt && (
-                    <span> • Restocked at: {o.restockedAt.toLocaleString()}</span>
-                  )}
+                  {" "}• Status: <strong>{o.voided ? "Voided & Restocked" : o.done ? "Done" : "Not done"}</strong>
+                  {o.voided && o.restockedAt && (<span> • Restocked at: {o.restockedAt.toLocaleString()}</span>)}
                 </div>
 
                 {o.note && (
@@ -1823,9 +1525,7 @@ const endDay = async () => {
                       • {ci.name} — E£{ci.price}
                       {ci.extras?.length > 0 && (
                         <ul style={{ margin: "2px 0 6px 18px", color: dark ? "#bbb" : "#555" }}>
-                          {ci.extras.map((ex) => (
-                            <li key={ex.id}>+ {ex.name} (E£{ex.price})</li>
-                          ))}
+                          {ci.extras.map((ex) => (<li key={ex.id}>+ {ex.name} (E£{ex.price})</li>))}
                         </ul>
                       )}
                     </li>
@@ -1836,30 +1536,13 @@ const endDay = async () => {
                   {!o.done && !o.voided && (
                     <button
                       onClick={() => markOrderDone(o.orderNo)}
-                      style={{
-                        background: "#43a047",
-                        color: "white",
-                        border: "none",
-                        borderRadius: 6,
-                        padding: "6px 10px",
-                        cursor: "pointer",
-                      }}
+                      style={{ background: "#43a047", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
                     >
                       Mark DONE (locks)
                     </button>
                   )}
                   {o.done && (
-                    <button
-                      disabled
-                      style={{
-                        background: "#9e9e9e",
-                        color: "white",
-                        border: "none",
-                        borderRadius: 6,
-                        padding: "6px 10px",
-                        cursor: "not-allowed",
-                      }}
-                    >
+                    <button disabled style={{ background: "#9e9e9e", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "not-allowed" }}>
                       DONE (locked)
                     </button>
                   )}
@@ -1869,10 +1552,7 @@ const endDay = async () => {
                     disabled={o.done || o.voided}
                     style={{
                       background: o.done || o.voided ? "#b39ddb" : "#7e57c2",
-                      color: "white",
-                      border: "none",
-                      borderRadius: 6,
-                      padding: "6px 10px",
+                      color: "white", border: "none", borderRadius: 6, padding: "6px 10px",
                       cursor: o.done || o.voided ? "not-allowed" : "pointer",
                     }}
                   >
@@ -1883,10 +1563,7 @@ const endDay = async () => {
                     disabled={o.done || o.voided}
                     style={{
                       background: o.done || o.voided ? "#8e24aa88" : "#6a1b9a",
-                      color: "white",
-                      border: "none",
-                      borderRadius: 6,
-                      padding: "6px 10px",
+                      color: "white", border: "none", borderRadius: 6, padding: "6px 10px",
                       cursor: o.done || o.voided ? "not-allowed" : "pointer",
                     }}
                   >
@@ -1895,28 +1572,14 @@ const endDay = async () => {
                   <button
                     onClick={() => printThermalTicket(o, 58, "Customer")}
                     disabled={o.voided}
-                    style={{
-                      background: o.voided ? "#26a69a88" : "#00897b",
-                      color: "white",
-                      border: "none",
-                      borderRadius: 6,
-                      padding: "6px 10px",
-                      cursor: "pointer",
-                    }}
+                    style={{ background: o.voided ? "#26a69a88" : "#00897b", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
                   >
                     Receipt 58mm
                   </button>
                   <button
                     onClick={() => printThermalTicket(o, 80, "Customer")}
                     disabled={o.voided}
-                    style={{
-                      background: o.voided ? "#00695c88" : "#00695c",
-                      color: "white",
-                      border: "none",
-                      borderRadius: 6,
-                      padding: "6px 10px",
-                      cursor: "pointer",
-                    }}
+                    style={{ background: o.voided ? "#00695c88" : "#00695c", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
                   >
                     Receipt 80mm
                   </button>
@@ -1924,14 +1587,7 @@ const endDay = async () => {
                   <button
                     onClick={() => voidOrderAndRestock(o.orderNo)}
                     disabled={o.done || o.voided}
-                    style={{
-                      background: o.done || o.voided ? "#ef9a9a" : "#c62828",
-                      color: "white",
-                      border: "none",
-                      borderRadius: 6,
-                      padding: "6px 10px",
-                      cursor: o.done || o.voided ? "not-allowed" : "pointer",
-                    }}
+                    style={{ background: o.done || o.voided ? "#ef9a9a" : "#c62828", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: o.done || o.voided ? "not-allowed" : "pointer" }}
                   >
                     Void & Restock
                   </button>
@@ -1955,20 +1611,14 @@ const endDay = async () => {
                   Start-of-day captured {inventoryLockedAt ? `at ${new Date(inventoryLockedAt).toLocaleString()}` : ""}.
                   Editing disabled until <b>End the Day</b> or admin unlock.
                 </span>
-                <button
-                  onClick={unlockInventoryWithPin}
-                  style={{ background: "#8e24aa", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
-                >
+                <button onClick={unlockInventoryWithPin} style={{ background: "#8e24aa", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}>
                   Unlock Inventory (Admin PIN)
                 </button>
               </div>
             ) : (
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <span>Set your quantities, then:</span>
-                <button
-                  onClick={lockInventoryForDay}
-                  style={{ background: "#2e7d32", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
-                >
+                <button onClick={lockInventoryForDay} style={{ background: "#2e7d32", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}>
                   Lock Inventory (start of day)
                 </button>
               </div>
@@ -1992,9 +1642,7 @@ const endDay = async () => {
                     <td style={{ padding: 6 }}>{it.unit}</td>
                     <td style={{ padding: 6 }}>
                       <input
-                        type="number"
-                        value={it.qty}
-                        disabled={inventoryLocked}
+                        type="number" value={it.qty} disabled={inventoryLocked}
                         onChange={(e) => {
                           const v = Math.max(0, Number(e.target.value || 0));
                           setInventory((inv) => inv.map((x) => (x.id === it.id ? { ...x, qty: v } : x)));
@@ -2053,11 +1701,7 @@ const endDay = async () => {
             <div style={{ marginTop: 12, padding: 10, background: softBg, borderRadius: 6 }}>
               <strong>Start-of-Day Snapshot</strong>
               <ul style={{ marginTop: 6 }}>
-                {inventorySnapshot.map((s) => (
-                  <li key={s.id}>
-                    {s.name}: {s.qtyAtLock} {s.unit}
-                  </li>
-                ))}
+                {inventorySnapshot.map((s) => (<li key={s.id}>{s.name}: {s.qtyAtLock} {s.unit}</li>))}
               </ul>
             </div>
           )}
@@ -2101,10 +1745,7 @@ const endDay = async () => {
           </div>
 
           <div style={{ marginBottom: 8 }}>
-            <strong>
-              Total Expenses: E£
-              {expenses.reduce((s, e) => s + (Number(e.qty || 0) * Number(e.unitPrice || 0)), 0).toFixed(2)}
-            </strong>
+            <strong>Total Expenses: E£{expenses.reduce((s, e) => s + (Number(e.qty || 0) * Number(e.unitPrice || 0)), 0).toFixed(2)}</strong>
           </div>
 
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -2267,44 +1908,22 @@ const endDay = async () => {
             </select>
             <button
               onClick={() => generatePDF()}
-              style={{
-                background: "#7e57c2",
-                color: "white",
-                border: "none",
-                borderRadius: 6,
-                padding: "6px 10px",
-                cursor: "pointer",
-              }}
+              style={{ background: "#7e57c2", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
             >
               Download PDF Report
             </button>
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              gap: 16,
-              flexWrap: "wrap",
-              padding: 10,
-              background: softBg,
-              borderRadius: 6,
-              marginBottom: 12,
-            }}
-          >
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", padding: 10, background: softBg, borderRadius: 6, marginBottom: 12 }}>
             <div><strong>Revenue (Shift):</strong> E£{totals.revenueTotal.toFixed(2)}</div>
             <div><strong>Delivery Fees:</strong> E£{totals.deliveryFeesTotal.toFixed(2)}</div>
             <div><strong>Expenses (Shift):</strong> E£{totals.expensesTotal.toFixed(2)}</div>
             <div><strong>Margin:</strong> E£{totals.margin.toFixed(2)}</div>
-            {Object.keys(totals.byPay).map((k) => (
-              <div key={k}><strong>{k}:</strong> E£{(totals.byPay[k] || 0).toFixed(2)}</div>
-            ))}
-            {Object.keys(totals.byType).map((k) => (
-              <div key={k}><strong>{k}:</strong> E£{(totals.byType[k] || 0).toFixed(2)}</div>
-            ))}
+            {Object.keys(totals.byPay).map((k) => (<div key={k}><strong>{k}:</strong> E£{(totals.byPay[k] || 0).toFixed(2)}</div>))}
+            {Object.keys(totals.byType).map((k) => (<div key={k}><strong>{k}:</strong> E£{(totals.byType[k] || 0).toFixed(2)}</div>))}
           </div>
 
           <div style={{ marginTop: 12, padding: 10, background: softBg , borderRadius: 6 }}>
-            {/* Top Items & Extras */}
             <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
               <div style={{ flex: 1, minWidth: 280 }}>
                 <h3 style={{ marginTop: 0 }}>Items — Times Ordered</h3>
@@ -2368,7 +1987,7 @@ const endDay = async () => {
         </div>
       )}
 
-      {/* PRICES (PIN gated by Editor PIN) */}
+      {/* PRICES */}
       {activeTab === "prices" && (
         <div>
           <h2>Prices & Settings</h2>
@@ -2392,30 +2011,23 @@ const endDay = async () => {
                       <input
                         value={m.name}
                         onChange={(e) =>
-                          setMenu((arr) =>
-                            arr.map((x) => (x.id === m.id ? { ...x, name: e.target.value } : x))
-                          )
+                          setMenu((arr) => arr.map((x) => (x.id === m.id ? { ...x, name: e.target.value } : x)))
                         }
                         style={{ width: "100%" }}
                       />
                     </td>
                     <td style={{ padding: 6, textAlign: "right" }}>
                       <input
-                        type="number"
-                        value={m.price}
+                        type="number" value={m.price}
                         onChange={(e) =>
-                          setMenu((arr) =>
-                            arr.map((x) => (x.id === m.id ? { ...x, price: Number(e.target.value || 0) } : x))
-                          )
+                          setMenu((arr) => arr.map((x) => (x.id === m.id ? { ...x, price: Number(e.target.value || 0) } : x)))
                         }
                         style={{ width: 120, textAlign: "right" }}
                       />
                     </td>
                     <td style={{ padding: 6 }}>
                       <button
-                        onClick={() =>
-                          setUsesEditOpenMenu((s) => ({ ...s, [m.id]: !s[m.id] }))
-                        }
+                        onClick={() => setUsesEditOpenMenu((s) => ({ ...s, [m.id]: !s[m.id] }))}
                         style={{ background: "#1976d2", color: "white", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}
                       >
                         {usesEditOpenMenu[m.id] ? "Hide Uses" : "Edit Uses"}
@@ -2428,8 +2040,7 @@ const endDay = async () => {
                               <label key={inv.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                                 <span style={{ minWidth: 90 }}>{inv.name} ({inv.unit}):</span>
                                 <input
-                                  type="number"
-                                  value={v}
+                                  type="number" value={v}
                                   onChange={(e) => {
                                     const num = Math.max(0, Number(e.target.value || 0));
                                     setMenu((arr) =>
@@ -2468,16 +2079,11 @@ const endDay = async () => {
 
             <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <input
-                placeholder="New item name"
-                value={newMenuName}
-                onChange={(e) => setNewMenuName(e.target.value)}
+                placeholder="New item name" value={newMenuName} onChange={(e) => setNewMenuName(e.target.value)}
                 style={{ minWidth: 220 }}
               />
               <input
-                type="number"
-                placeholder="Price (E£)"
-                value={newMenuPrice}
-                onChange={(e) => setNewMenuPrice(Number(e.target.value || 0))}
+                type="number" placeholder="Price (E£)" value={newMenuPrice} onChange={(e) => setNewMenuPrice(Number(e.target.value || 0))}
                 style={{ width: 140 }}
               />
               <button
@@ -2486,8 +2092,7 @@ const endDay = async () => {
                   if (!nm) return alert("Enter item name");
                   const nextId = Math.max(0, ...menu.map((x) => Number(x.id) || 0), ...extraList.map((x) => Number(x.id) || 0)) + 1;
                   setMenu((arr) => [...arr, { id: nextId, name: nm, price: Math.max(0, newMenuPrice), uses: {} }]);
-                  setNewMenuName("");
-                  setNewMenuPrice(0);
+                  setNewMenuName(""); setNewMenuPrice(0);
                 }}
                 style={{ background: "#1976d2", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
               >
@@ -2515,30 +2120,23 @@ const endDay = async () => {
                       <input
                         value={ex.name}
                         onChange={(e) =>
-                          setExtraList((arr) =>
-                            arr.map((x) => (x.id === ex.id ? { ...x, name: e.target.value } : x))
-                          )
+                          setExtraList((arr) => arr.map((x) => (x.id === ex.id ? { ...x, name: e.target.value } : x)))
                         }
                         style={{ width: "100%" }}
                       />
                     </td>
                     <td style={{ padding: 6, textAlign: "right" }}>
                       <input
-                        type="number"
-                        value={ex.price}
+                        type="number" value={ex.price}
                         onChange={(e) =>
-                          setExtraList((arr) =>
-                            arr.map((x) => (x.id === ex.id ? { ...x, price: Number(e.target.value || 0) } : x))
-                          )
+                          setExtraList((arr) => arr.map((x) => (x.id === ex.id ? { ...x, price: Number(e.target.value || 0) } : x)))
                         }
                         style={{ width: 120, textAlign: "right" }}
                       />
                     </td>
                     <td style={{ padding: 6 }}>
                       <button
-                        onClick={() =>
-                          setUsesEditOpenExtra((s) => ({ ...s, [ex.id]: !s[ex.id] }))
-                        }
+                        onClick={() => setUsesEditOpenExtra((s) => ({ ...s, [ex.id]: !s[ex.id] }))}
                         style={{ background: "#1976d2", color: "white", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}
                       >
                         {usesEditOpenExtra[ex.id] ? "Hide Uses" : "Edit Uses"}
@@ -2551,8 +2149,7 @@ const endDay = async () => {
                               <label key={inv.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                                 <span style={{ minWidth: 90 }}>{inv.name} ({inv.unit}):</span>
                                 <input
-                                  type="number"
-                                  value={v}
+                                  type="number" value={v}
                                   onChange={(e) => {
                                     const num = Math.max(0, Number(e.target.value || 0));
                                     setExtraList((arr) =>
@@ -2591,16 +2188,11 @@ const endDay = async () => {
 
             <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <input
-                placeholder="New extra name"
-                value={newExtraName}
-                onChange={(e) => setNewExtraName(e.target.value)}
+                placeholder="New extra name" value={newExtraName} onChange={(e) => setNewExtraName(e.target.value)}
                 style={{ minWidth: 220 }}
               />
               <input
-                type="number"
-                placeholder="Price (E£)"
-                value={newExtraPrice}
-                onChange={(e) => setNewExtraPrice(Number(e.target.value || 0))}
+                type="number" placeholder="Price (E£)" value={newExtraPrice} onChange={(e) => setNewExtraPrice(Number(e.target.value || 0))}
                 style={{ width: 140 }}
               />
               <button
@@ -2609,8 +2201,7 @@ const endDay = async () => {
                   if (!nm) return alert("Enter extra name");
                   const nextId = Math.max(0, ...menu.map((x) => Number(x.id) || 0), ...extraList.map((x) => Number(x.id) || 0)) + 1;
                   setExtraList((arr) => [...arr, { id: nextId, name: nm, price: Math.max(0, newExtraPrice), uses: {} }]);
-                  setNewExtraName("");
-                  setNewExtraPrice(0);
+                  setNewExtraName(""); setNewExtraPrice(0);
                 }}
                 style={{ background: "#1976d2", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
               >
@@ -2651,12 +2242,7 @@ const endDay = async () => {
             <div>
               <label>
                 Default Delivery Fee (E£):&nbsp;
-                <input
-                  type="number"
-                  value={defaultDeliveryFee}
-                  onChange={(e) => setDefaultDeliveryFee(Number(e.target.value || 0))}
-                  style={{ width: 140 }}
-                />
+                <input type="number" value={defaultDeliveryFee} onChange={(e) => setDefaultDeliveryFee(Number(e.target.value || 0))} style={{ width: 140 }} />
               </label>
             </div>
           </div>
@@ -2669,22 +2255,14 @@ const endDay = async () => {
                 {workers.map((w) => (
                   <span key={w} style={{ display: "inline-flex", alignItems: "center", gap: 6, border: `1px solid ${btnBorder}`, borderRadius: 6, padding: "4px 8px" }}>
                     {w}
-                    <button
-                      onClick={() => setWorkers((arr) => arr.filter((x) => x !== w))}
-                      style={{ background: "#ef5350", color: "white", border: "none", borderRadius: 4, padding: "2px 6px", cursor: "pointer" }}
-                    >
+                    <button onClick={() => setWorkers((arr) => arr.filter((x) => x !== w))} style={{ background: "#ef5350", color: "white", border: "none", borderRadius: 4, padding: "2px 6px", cursor: "pointer" }}>
                       ×
                     </button>
                   </span>
                 ))}
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <input
-                  placeholder="Add worker"
-                  value={newWorker}
-                  onChange={(e) => setNewWorker(e.target.value)}
-                  style={{ flex: 1 }}
-                />
+                <input placeholder="Add worker" value={newWorker} onChange={(e) => setNewWorker(e.target.value)} style={{ flex: 1 }} />
                 <button
                   onClick={() => {
                     const v = newWorker.trim();
@@ -2706,22 +2284,14 @@ const endDay = async () => {
                 {paymentMethods.map((p) => (
                   <span key={p} style={{ display: "inline-flex", alignItems: "center", gap: 6, border: `1px solid ${btnBorder}`, borderRadius: 6, padding: "4px 8px" }}>
                     {p}
-                    <button
-                      onClick={() => setPaymentMethods((arr) => arr.filter((x) => x !== p))}
-                      style={{ background: "#ef5350", color: "white", border: "none", borderRadius: 4, padding: "2px 6px", cursor: "pointer" }}
-                    >
+                    <button onClick={() => setPaymentMethods((arr) => arr.filter((x) => x !== p))} style={{ background: "#ef5350", color: "white", border: "none", borderRadius: 4, padding: "2px 6px", cursor: "pointer" }}>
                       ×
                     </button>
                   </span>
                 ))}
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <input
-                  placeholder="Add payment method"
-                  value={newPayment}
-                  onChange={(e) => setNewPayment(e.target.value)}
-                  style={{ flex: 1 }}
-                />
+                <input placeholder="Add payment method" value={newPayment} onChange={(e) => setNewPayment(e.target.value)} style={{ flex: 1 }} />
                 <button
                   onClick={() => {
                     const v = newPayment.trim();
@@ -2755,12 +2325,8 @@ const endDay = async () => {
                     <td style={{ padding: 6 }}>Admin {n}</td>
                     <td style={{ padding: 6 }}>
                       <input
-                        type="password"
-                        value={adminPins[n] || ""}
-                        disabled={!adminPinsEditUnlocked[n]}
-                        onChange={(e) =>
-                          setAdminPins((p) => ({ ...p, [n]: e.target.value }))
-                        }
+                        type="password" value={adminPins[n] || ""} disabled={!adminPinsEditUnlocked[n]}
+                        onChange={(e) => setAdminPins((p) => ({ ...p, [n]: e.target.value }))}
                         style={{ width: 180 }}
                       />
                     </td>
@@ -2769,29 +2335,17 @@ const endDay = async () => {
                         <button
                           onClick={() => {
                             const ok = promptAdminAndPin();
-                            if (ok === n) {
-                              setAdminPinsEditUnlocked((s) => ({ ...s, [n]: true }));
-                            } else if (ok) {
-                              alert("You unlocked a different admin. Try again.");
-                            }
+                            if (ok === n) setAdminPinsEditUnlocked((s) => ({ ...s, [n]: true }));
+                            else if (ok) alert("You unlocked a different admin. Try again.");
                           }}
                           style={{ background: "#1976d2", color: "white", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}
                         >
                           Unlock row
                         </button>
                       ) : (
-                                               <button
-                          onClick={() =>
-                            setAdminPinsEditUnlocked((s) => ({ ...s, [n]: false }))
-                          }
-                          style={{
-                            background: "#43a047",
-                            color: "white",
-                            border: "none",
-                            borderRadius: 6,
-                            padding: "4px 8px",
-                            cursor: "pointer",
-                          }}
+                        <button
+                          onClick={() => setAdminPinsEditUnlocked((s) => ({ ...s, [n]: false }))}
+                          style={{ background: "#43a047", color: "white", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}
                         >
                           Save & Lock
                         </button>
@@ -2808,7 +2362,6 @@ const endDay = async () => {
         </div>
       )}
       {/* END PRICES TAB */}
-
     </div>
   );
 }
