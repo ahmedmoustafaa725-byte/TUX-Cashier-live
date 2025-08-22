@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -44,8 +44,26 @@ function ensureFirebase() {
 /* --------------------------- APP SETTINGS --------------------------- */
 // 2) Name your shop (used for collection/doc paths)
 const SHOP_ID = "tux"; // change if you manage multiple shops (e.g. "tux-truck-1")
+const LOCAL_KEY = `tux-${SHOP_ID}-state-v1`;
 
-// Pack current state (dates -> ISO) for Firestore
+// small helper to download text files (JSON backup)
+function downloadText(filename, text) {
+  try {
+    const blob = new Blob([text], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  } catch (e) {
+    alert("Could not download file: " + e);
+  }
+}
+
+// Pack current state (dates -> ISO) for Firestore/Local
 function packStateForCloud(state) {
   const {
     menu,
@@ -69,7 +87,7 @@ function packStateForCloud(state) {
 
   return {
     version: 1,
-    updatedAt: serverTimestamp(),
+    updatedAt: serverTimestamp?.() ?? null, // serverTimestamp for cloud; harmless in local
     menu,
     extras: extraList,
     orders: (orders || []).map((o) => ({
@@ -114,7 +132,7 @@ function packStateForCloud(state) {
   };
 }
 
-// Unpack from Firestore (ISO -> Date)
+// Unpack from Firestore/Local (ISO -> Date)
 function unpackStateFromCloud(data, fallbackDayMeta = {}) {
   const out = {};
   if (Array.isArray(data.orders)) {
@@ -311,7 +329,6 @@ async function purgeOrdersInCloud(db, ordersColRef, startDate, endDate) {
   }
 }
 
-
 export default function App() {
   const [activeTab, setActiveTab] = useState("orders");
   const [dark, setDark] = useState(false);
@@ -413,7 +430,10 @@ export default function App() {
   const [cloudEnabled, setCloudEnabled] = useState(true); // autosave to state doc
   const [realtimeOrders, setRealtimeOrders] = useState(true); // live board via orders collection
   const [cloudStatus, setCloudStatus] = useState({ lastSaveAt: null, lastLoadAt: null, error: null });
-  const [hydrated, setHydrated] = useState(false); // <-- prevents autosave before initial load
+  const [hydrated, setHydrated] = useState(false); // <-- prevents autosave before initial cloud load
+
+  // Local JSON restore ref
+  const restoreInputRef = useRef(null);
 
   // Init + Anonymous Auth
   useEffect(() => {
@@ -448,45 +468,124 @@ export default function App() {
     [db]
   );
 
-  // One-time initial load from cloud AFTER auth/refs are ready
-useEffect(() => {
-  if (!stateDocRef || !fbUser || hydrated) return;
-
-  (async () => {
+  // -------- Local backup: PRELOAD from localStorage if present (no autosave yet) --------
+  useEffect(() => {
     try {
-      const snap = await getDoc(stateDocRef);
-      if (snap.exists()) {
-        const data = snap.data() || {};
-        const unpacked = unpackStateFromCloud(data, dayMeta);
-        if (unpacked.menu) setMenu(unpacked.menu);
-        if (unpacked.extraList) setExtraList(unpacked.extraList);
-        if (unpacked.orders) setOrders(unpacked.orders);
-        if (unpacked.inventory) setInventory(unpacked.inventory);
-        if (unpacked.nextOrderNo != null) setNextOrderNo(unpacked.nextOrderNo);
-        if (unpacked.dark != null) setDark(unpacked.dark);
-        if (unpacked.workers) setWorkers(unpacked.workers);
-        if (unpacked.paymentMethods) setPaymentMethods(unpacked.paymentMethods);
-        if (unpacked.inventoryLocked != null) setInventoryLocked(unpacked.inventoryLocked);
-        if (unpacked.inventorySnapshot) setInventorySnapshot(unpacked.inventorySnapshot);
-        if (unpacked.inventoryLockedAt != null) setInventoryLockedAt(unpacked.inventoryLockedAt);
-        if (unpacked.adminPins) setAdminPins({ ...DEFAULT_ADMIN_PINS, ...unpacked.adminPins });
-        if (unpacked.orderTypes) setOrderTypes(unpacked.orderTypes);
-        if (unpacked.defaultDeliveryFee != null) setDefaultDeliveryFee(unpacked.defaultDeliveryFee);
-        if (unpacked.expenses) setExpenses(unpacked.expenses);
-        if (unpacked.dayMeta) setDayMeta(unpacked.dayMeta);
-        if (unpacked.bankTx) setBankTx(unpacked.bankTx);
-
-        setCloudStatus((s) => ({ ...s, lastLoadAt: new Date(), error: null }));
-      }
+      const raw = localStorage.getItem(LOCAL_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      const unpacked = unpackStateFromCloud(data, dayMeta);
+      if (unpacked.menu) setMenu(unpacked.menu);
+      if (unpacked.extraList) setExtraList(unpacked.extraList);
+      if (unpacked.orders) setOrders(unpacked.orders);
+      if (unpacked.inventory) setInventory(unpacked.inventory);
+      if (unpacked.nextOrderNo != null) setNextOrderNo(unpacked.nextOrderNo);
+      if (unpacked.dark != null) setDark(unpacked.dark);
+      if (unpacked.workers) setWorkers(unpacked.workers);
+      if (unpacked.paymentMethods) setPaymentMethods(unpacked.paymentMethods);
+      if (unpacked.inventoryLocked != null) setInventoryLocked(unpacked.inventoryLocked);
+      if (unpacked.inventorySnapshot) setInventorySnapshot(unpacked.inventorySnapshot);
+      if (unpacked.inventoryLockedAt != null) setInventoryLockedAt(unpacked.inventoryLockedAt);
+      if (unpacked.adminPins) setAdminPins({ ...DEFAULT_ADMIN_PINS, ...unpacked.adminPins });
+      if (unpacked.orderTypes) setOrderTypes(unpacked.orderTypes);
+      if (unpacked.defaultDeliveryFee != null) setDefaultDeliveryFee(unpacked.defaultDeliveryFee);
+      if (unpacked.expenses) setExpenses(unpacked.expenses);
+      if (unpacked.dayMeta) setDayMeta((d) => ({ ...d, ...unpacked.dayMeta }));
+      if (unpacked.bankTx) setBankTx(unpacked.bankTx);
     } catch (e) {
-      console.warn("Initial cloud load failed:", e);
-      setCloudStatus((s) => ({ ...s, error: String(e) }));
-    } finally {
-      setHydrated(true); // allow autosave to begin
+      console.warn("Local preload failed:", e);
     }
-  })();
-}, [stateDocRef, fbUser, hydrated, dayMeta]); // important: include hydrated
+  }, []);
 
+  // -------- Local backup: SAVE to localStorage (debounced) --------
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try {
+        const body = packStateForCloud({
+          menu,
+          extraList,
+          orders,
+          inventory,
+          nextOrderNo,
+          dark,
+          workers,
+          paymentMethods,
+          inventoryLocked,
+          inventorySnapshot,
+          inventoryLockedAt,
+          adminPins,
+          orderTypes,
+          defaultDeliveryFee,
+          expenses,
+          dayMeta,
+          bankTx,
+        });
+        // strip Firestore sentinel for local backup
+        const { updatedAt, ...rest } = body;
+        localStorage.setItem(LOCAL_KEY, JSON.stringify(rest));
+      } catch (e) {
+        console.warn("Local backup failed:", e);
+      }
+    }, 800);
+    return () => clearTimeout(t);
+  }, [
+    menu,
+    extraList,
+    orders,
+    inventory,
+    nextOrderNo,
+    dark,
+    workers,
+    paymentMethods,
+    inventoryLocked,
+    inventorySnapshot,
+    inventoryLockedAt,
+    adminPins,
+    orderTypes,
+    defaultDeliveryFee,
+    expenses,
+    dayMeta,
+    bankTx,
+  ]);
+
+  // One-time initial load from cloud AFTER auth/refs are ready
+  useEffect(() => {
+    if (!stateDocRef || !fbUser || hydrated) return;
+
+    (async () => {
+      try {
+        const snap = await getDoc(stateDocRef);
+        if (snap.exists()) {
+          const data = snap.data() || {};
+          const unpacked = unpackStateFromCloud(data, dayMeta);
+          if (unpacked.menu) setMenu(unpacked.menu);
+          if (unpacked.extraList) setExtraList(unpacked.extraList);
+          if (unpacked.orders) setOrders(unpacked.orders);
+          if (unpacked.inventory) setInventory(unpacked.inventory);
+          if (unpacked.nextOrderNo != null) setNextOrderNo(unpacked.nextOrderNo);
+          if (unpacked.dark != null) setDark(unpacked.dark);
+          if (unpacked.workers) setWorkers(unpacked.workers);
+          if (unpacked.paymentMethods) setPaymentMethods(unpacked.paymentMethods);
+          if (unpacked.inventoryLocked != null) setInventoryLocked(unpacked.inventoryLocked);
+          if (unpacked.inventorySnapshot) setInventorySnapshot(unpacked.inventorySnapshot);
+          if (unpacked.inventoryLockedAt != null) setInventoryLockedAt(unpacked.inventoryLockedAt);
+          if (unpacked.adminPins) setAdminPins({ ...DEFAULT_ADMIN_PINS, ...unpacked.adminPins });
+          if (unpacked.orderTypes) setOrderTypes(unpacked.orderTypes);
+          if (unpacked.defaultDeliveryFee != null) setDefaultDeliveryFee(unpacked.defaultDeliveryFee);
+          if (unpacked.expenses) setExpenses(unpacked.expenses);
+          if (unpacked.dayMeta) setDayMeta(unpacked.dayMeta);
+          if (unpacked.bankTx) setBankTx(unpacked.bankTx);
+
+          setCloudStatus((s) => ({ ...s, lastLoadAt: new Date(), error: null }));
+        }
+      } catch (e) {
+        console.warn("Initial cloud load failed:", e);
+        setCloudStatus((s) => ({ ...s, error: String(e) }));
+      } finally {
+        setHydrated(true); // allow autosave to begin
+      }
+    })();
+  }, [stateDocRef, fbUser, hydrated, dayMeta]); // important: include hydrated
 
   // Manual cloud load (pull)
   const loadFromCloud = async () => {
@@ -523,101 +622,99 @@ useEffect(() => {
   };
 
   // Autosave to cloud (state doc) — debounced
- useEffect(() => {
-  if (!cloudEnabled || !stateDocRef || !fbUser || !hydrated) return;
+  useEffect(() => {
+    if (!cloudEnabled || !stateDocRef || !fbUser || !hydrated) return;
 
-  const t = setTimeout(async () => {
-    try {
-      const body = packStateForCloud({
-        menu,
-        extraList,
-        orders,
-        inventory,
-        nextOrderNo,
-        dark,
-        workers,
-        paymentMethods,
-        inventoryLocked,
-        inventorySnapshot,
-        inventoryLockedAt,
-        adminPins,
-        orderTypes,
-        defaultDeliveryFee,
-        expenses,
-        dayMeta,
-        bankTx,
-      });
-      await setDoc(stateDocRef, body, { merge: true });
-      setCloudStatus((s) => ({ ...s, lastSaveAt: new Date(), error: null }));
-    } catch (e) {
-      setCloudStatus((s) => ({ ...s, error: String(e) }));
+    const t = setTimeout(async () => {
+      try {
+        const body = packStateForCloud({
+          menu,
+          extraList,
+          orders,
+          inventory,
+          nextOrderNo,
+          dark,
+          workers,
+          paymentMethods,
+          inventoryLocked,
+          inventorySnapshot,
+          inventoryLockedAt,
+          adminPins,
+          orderTypes,
+          defaultDeliveryFee,
+          expenses,
+          dayMeta,
+          bankTx,
+        });
+        await setDoc(stateDocRef, body, { merge: true });
+        setCloudStatus((s) => ({ ...s, lastSaveAt: new Date(), error: null }));
+      } catch (e) {
+        setCloudStatus((s) => ({ ...s, error: String(e) }));
+      }
+    }, 1600);
+
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    cloudEnabled,
+    stateDocRef,
+    fbUser,
+    hydrated,            // <-- added
+    menu,
+    extraList,
+    orders,
+    inventory,
+    nextOrderNo,
+    dark,
+    workers,
+    paymentMethods,
+    inventoryLocked,
+    inventorySnapshot,
+    inventoryLockedAt,
+    adminPins,
+    orderTypes,
+    defaultDeliveryFee,
+    expenses,
+    dayMeta,
+    bankTx,
+  ]);
+
+  // --- Derive simple numbers for effect deps (shift window) ---
+  const startedAtMs = dayMeta?.startedAt
+    ? new Date(dayMeta.startedAt).getTime()
+    : null;
+
+  const endedAtMs = dayMeta?.endedAt
+    ? new Date(dayMeta.endedAt).getTime()
+    : null;
+
+  // --- Realtime orders stream limited to current shift window ---
+  useEffect(() => {
+    if (!realtimeOrders || !ordersColRef || !fbUser) return;
+
+    // If shift hasn't started, show no orders and don't listen
+    if (!startedAtMs) {
+      setOrders([]);
+      return;
     }
-  }, 1600);
 
-  return () => clearTimeout(t);
-// eslint-disable-next-line react-hooks/exhaustive-deps
-}, [
-  cloudEnabled,
-  stateDocRef,
-  fbUser,
-  hydrated,            // <-- added
-  menu,
-  extraList,
-  orders,
-  inventory,
-  nextOrderNo,
-  dark,
-  workers,
-  paymentMethods,
-  inventoryLocked,
-  inventorySnapshot,
-  inventoryLockedAt,
-  adminPins,
-  orderTypes,
-  defaultDeliveryFee,
-  expenses,
-  dayMeta,
-  bankTx,
-]);
+    const startTs = Timestamp.fromMillis(startedAtMs);
+    const constraints = [where("createdAt", ">=", startTs), orderBy("createdAt", "desc")];
 
-// --- Derive simple numbers for effect deps (shift window) ---
-const startedAtMs = dayMeta?.startedAt
-  ? new Date(dayMeta.startedAt).getTime()
-  : null;
+    if (endedAtMs) {
+      const endTs = Timestamp.fromMillis(endedAtMs);
+      constraints.unshift(where("createdAt", "<=", endTs));
+    }
 
-const endedAtMs = dayMeta?.endedAt
-  ? new Date(dayMeta.endedAt).getTime()
-  : null;
+    const qy = query(ordersColRef, ...constraints);
+    const unsub = onSnapshot(qy, (snap) => {
+      const arr = [];
+      snap.forEach((d) => arr.push(orderFromCloudDoc(d.id, d.data())));
+      setOrders(arr);
+    });
 
-// --- Realtime orders stream limited to current shift window ---
-useEffect(() => {
-  if (!realtimeOrders || !ordersColRef || !fbUser) return;
-
-  // If shift hasn't started, show no orders and don't listen
-  if (!startedAtMs) {
-    setOrders([]);
-    return;
-  }
-
-  const startTs = Timestamp.fromMillis(startedAtMs);
-  const constraints = [where("createdAt", ">=", startTs), orderBy("createdAt", "desc")];
-
-  if (endedAtMs) {
-    const endTs = Timestamp.fromMillis(endedAtMs);
-    constraints.unshift(where("createdAt", "<=", endTs));
-  }
-
-  const qy = query(ordersColRef, ...constraints);
-  const unsub = onSnapshot(qy, (snap) => {
-    const arr = [];
-    snap.forEach((d) => arr.push(orderFromCloudDoc(d.id, d.data())));
-    setOrders(arr);
-  });
-
-  return () => unsub();
-}, [realtimeOrders, ordersColRef, fbUser, startedAtMs, endedAtMs]);
-
-
+    return () => unsub();
+  }, [realtimeOrders, ordersColRef, fbUser, startedAtMs, endedAtMs]);
 
   /* --------------------------- EXISTING APP LOGIC --------------------------- */
   const toggleExtra = (extra) => {
@@ -635,58 +732,57 @@ useEffect(() => {
   }, [inventory]);
 
   // ---- Admin PIN helper & inventory lock/unlock ----
-const promptAdminAndPin = () => {
-  const adminStr = window.prompt("Enter Admin number (1 to 6):", "1");
-  if (!adminStr) return null;
-  const n = Number(adminStr);
-  if (![1, 2, 3, 4, 5, 6].includes(n)) {
-    alert("Please enter a number from 1 to 6.");
-    return null;
-  }
-  const entered = window.prompt(`Enter PIN for Admin ${n}:`, "");
-  if (entered == null) return null;
+  const promptAdminAndPin = () => {
+    const adminStr = window.prompt("Enter Admin number (1 to 6):", "1");
+    if (!adminStr) return null;
+    const n = Number(adminStr);
+    if (![1, 2, 3, 4, 5, 6].includes(n)) {
+      alert("Please enter a number from 1 to 6.");
+      return null;
+    }
+    const entered = window.prompt(`Enter PIN for Admin ${n}:`, "");
+    if (entered == null) return null;
 
-  const expected = norm(adminPins[n]);
-  const attempt = norm(entered);
+    const expected = norm(adminPins[n]);
+    const attempt = norm(entered);
 
-  if (!expected) {
-    alert(`Admin ${n} has no PIN set; set a PIN in Prices → Admin PINs.`);
-    return null;
-  }
-  if (attempt !== expected) {
-    alert("Invalid PIN.");
-    return null;
-  }
-  return n;
-};
+    if (!expected) {
+      alert(`Admin ${n} has no PIN set; set a PIN in Prices → Admin PINs.`);
+      return null;
+    }
+    if (attempt !== expected) {
+      alert("Invalid PIN.");
+      return null;
+    }
+    return n;
+  };
 
-const lockInventoryForDay = () => {
-  if (inventoryLocked) return;
-  if (inventory.length === 0) return alert("Add at least one inventory item first.");
-  if (!window.confirm(
-    "Lock current inventory as Start-of-Day? You won't be able to edit until End the Day or admin unlock."
-  )) return;
+  const lockInventoryForDay = () => {
+    if (inventoryLocked) return;
+    if (inventory.length === 0) return alert("Add at least one inventory item first.");
+    if (!window.confirm(
+      "Lock current inventory as Start-of-Day? You won't be able to edit until End the Day or admin unlock."
+    )) return;
 
-  const snap = inventory.map((it) => ({
-    id: it.id,
-    name: it.name,
-    unit: it.unit,
-    qtyAtLock: it.qty,
-  }));
-  setInventorySnapshot(snap);
-  setInventoryLocked(true);
-  setInventoryLockedAt(new Date());
-};
+    const snap = inventory.map((it) => ({
+      id: it.id,
+      name: it.name,
+      unit: it.unit,
+      qtyAtLock: it.qty,
+    }));
+    setInventorySnapshot(snap);
+    setInventoryLocked(true);
+    setInventoryLockedAt(new Date());
+  };
 
-const unlockInventoryWithPin = () => {
-  if (!inventoryLocked) return alert("Inventory is already unlocked.");
-  const adminNum = promptAdminAndPin();
-  if (!adminNum) return;
-  if (!window.confirm(`Admin ${adminNum}: Unlock inventory for editing? Snapshot will be kept.`)) return;
-  setInventoryLocked(false);
-  alert("Inventory unlocked for editing.");
-};
-
+  const unlockInventoryWithPin = () => {
+    if (!inventoryLocked) return alert("Inventory is already unlocked.");
+    const adminNum = promptAdminAndPin();
+    if (!adminNum) return;
+    if (!window.confirm(`Admin ${adminNum}: Unlock inventory for editing? Snapshot will be kept.`)) return;
+    setInventoryLocked(false);
+    alert("Inventory unlocked for editing.");
+  };
 
   // --------- Shift Controls ----------
   const startShift = () => {
@@ -728,90 +824,90 @@ const unlockInventoryWithPin = () => {
     alert(`Shift changed: ${dayMeta.startedBy} → ${newName}`);
   };
 
-// NEW: End the Day (replaces Reset Day)
-const endDay = async () => {
-  if (!dayMeta.startedAt) return alert("Start a shift first.");
-  const who = window.prompt("Enter your name to END THE DAY:", "");
-  const endBy = norm(who);
-  if (!endBy) return alert("Name is required.");
+  // NEW: End the Day (replaces Reset Day)
+  const endDay = async () => {
+    if (!dayMeta.startedAt) return alert("Start a shift first.");
+    const who = window.prompt("Enter your name to END THE DAY:", "");
+    const endBy = norm(who);
+    if (!endBy) return alert("Name is required.");
 
-  // Mark end time now for the final PDF
-  const endTime = new Date();
-  const metaForReport = { ...dayMeta, endedAt: endTime, endedBy: endBy };
+    // Mark end time now for the final PDF
+    const endTime = new Date();
+    const metaForReport = { ...dayMeta, endedAt: endTime, endedBy: endBy };
 
-  // Download PDF first
-  generatePDF(false, metaForReport);
+    // Download PDF first
+    generatePDF(false, metaForReport);
 
-  // Purge this shift's orders from Firestore so the board is clean next time
-  if (cloudEnabled && ordersColRef && fbUser && db) {
-    try {
-      // Prefer the recorded shift start; if missing, derive from earliest order
-      const start = dayMeta.startedAt
-        ? new Date(dayMeta.startedAt)
-        : (orders.length ? new Date(Math.min(...orders.map(o => +o.date))) : endTime);
+    // Purge this shift's orders from Firestore so the board is clean next time
+    if (cloudEnabled && ordersColRef && fbUser && db) {
+      try {
+        // Prefer the recorded shift start; if missing, derive from earliest order
+        const start = dayMeta.startedAt
+          ? new Date(dayMeta.startedAt)
+          : (orders.length ? new Date(Math.min(...orders.map(o => +o.date))) : endTime);
 
-      const removed = await purgeOrdersInCloud(db, ordersColRef, start, endTime);
-      console.log(`Purged ${removed} cloud orders for the shift.`);
-    } catch (e) {
-      console.warn("Cloud purge on endDay failed:", e);
+        const removed = await purgeOrdersInCloud(db, ordersColRef, start, endTime);
+        console.log(`Purged ${removed} cloud orders for the shift.`);
+      } catch (e) {
+        console.warn("Cloud purge on endDay failed:", e);
+      }
     }
-  }
 
-  // Calculate margin (revenue excl. delivery - expenses)
-  const validOrders = orders.filter((o) => !o.voided);
-  const revenueExclDelivery = validOrders.reduce(
-    (s, o) =>
-      s +
-      Number(o.itemsTotal != null ? o.itemsTotal : (o.total - (o.deliveryFee || 0))),
-    0
-  );
-  const expensesTotal = expenses.reduce(
-    (s, e) => s + Number((e.qty || 0) * (e.unitPrice || 0)),
-    0
-  );
-  const margin = revenueExclDelivery - expensesTotal;
+    // Calculate margin (revenue excl. delivery - expenses)
+    const validOrders = orders.filter((o) => !o.voided);
+    const revenueExclDelivery = validOrders.reduce(
+      (s, o) =>
+        s +
+        Number(o.itemsTotal != null ? o.itemsTotal : (o.total - (o.deliveryFee || 0))),
+      0
+    );
+    const expensesTotal = expenses.reduce(
+      (s, e) => s + Number((e.qty || 0) * (e.unitPrice || 0)),
+      0
+    );
+    const margin = revenueExclDelivery - expensesTotal;
 
-  // Auto add to Bank as next day's initial balance (or adjust down)
-  const txs = [];
-  if (margin > 0) {
-    txs.push({
-      id: `tx_${Date.now()}`,
-      type: "init",
-      amount: margin,
-      worker: endBy,
-      note: "Auto Init from day margin",
-      date: new Date(),
+    // Auto add to Bank as next day's initial balance (or adjust down)
+    const txs = [];
+    if (margin > 0) {
+      txs.push({
+        id: `tx_${Date.now()}`,
+        type: "init",
+        amount: margin,
+        worker: endBy,
+        note: "Auto Init from day margin",
+        date: new Date(),
+      });
+    } else if (margin < 0) {
+      txs.push({
+        id: `tx_${Date.now() + 1}`,
+        type: "adjustDown",
+        amount: Math.abs(margin),
+        worker: endBy,
+        note: "Auto Adjust Down (negative margin)",
+        date: new Date(),
+      });
+    }
+    if (txs.length) setBankTx((arr) => [...txs, ...arr]);
+
+    // Reset day locally
+    setOrders([]);
+    setNextOrderNo(1);
+    setInventoryLocked(false);
+    setInventoryLockedAt(null);
+    setDayMeta({
+      startedBy: "",
+      startedAt: null,
+      endedAt: null,
+      endedBy: "",
+      lastReportAt: null,
+      resetBy: "",
+      resetAt: null,
+      shiftChanges: [],
     });
-  } else if (margin < 0) {
-    txs.push({
-      id: `tx_${Date.now() + 1}`,
-      type: "adjustDown",
-      amount: Math.abs(margin),
-      worker: endBy,
-      note: "Auto Adjust Down (negative margin)",
-      date: new Date(),
-    });
-  }
-  if (txs.length) setBankTx((arr) => [...txs, ...arr]);
 
-  // Reset day locally
-  setOrders([]);
-  setNextOrderNo(1);
-  setInventoryLocked(false);
-  setInventoryLockedAt(null);
-  setDayMeta({
-    startedBy: "",
-    startedAt: null,
-    endedAt: null,
-    endedBy: "",
-    lastReportAt: null,
-    resetBy: "",
-    resetAt: null,
-    shiftChanges: [],
-  });
-
-  alert(`Day ended by ${endBy}. Report downloaded and day reset ✅`);
-};
+    alert(`Day ended by ${endBy}. Report downloaded and day reset ✅`);
+  };
 
   // --------- Cart / Checkout ----------
   const addToCart = () => {
@@ -1279,1524 +1375,906 @@ const endDay = async () => {
             y += 4;
           });
         });
-        y += 1;
+        y += 1; // small gap between items
       });
 
-      doc.line(margin, y, widthMm - margin, y); y += 3;
-      doc.setFont("helvetica", "normal");
-      doc.text("TOTAL", margin, y);
-      doc.text(`E£${Number(order.total || 0).toFixed(2)}`, widthMm - margin, y, { align: "right" });
-      y += 6;
+      // Subtotals
+      y += 2;
+      doc.line(margin, y, colRight, y); y += 3;
 
-      doc.setFontSize(8);
-      if (order.voided) doc.text("VOIDED / RESTOCKED", margin, y);
-      else if (order.done) doc.text("DONE", margin, y);
-      else doc.text("Thank you! @TUX", margin, y);
-      y += 4;
+      const baseSubtotal = order.cart.reduce((s, b) => s + Number(b.price || 0), 0);
+      const extrasSubtotal = order.cart.reduce(
+        (s, b) => s + (b.extras || []).reduce((t, e) => t + Number(e.price || 0), 0),
+        0
+      );
+      const itemsTotal = baseSubtotal + extrasSubtotal;
 
-      if (copy === "Customer") {
-        try {
-          const imgData = await loadAsDataURL("/tux-receipt.jpg");
-          const im = await new Promise((resolve, reject) => {
-            const _im = new Image();
-            _im.onload = () => resolve(_im);
-            _im.onerror = reject;
-            _im.src = imgData;
-          });
-          const targetW = Math.min(38, widthMm - margin * 2);
-          const targetH = targetW * (im.height / im.width || 1);
-          doc.addImage(imgData, "JPEG", (widthMm - targetW) / 2, y, targetW, targetH);
-          y += targetH + 2;
-        } catch {}
+      doc.text("Items Subtotal", margin, y);
+      doc.text(`E£${itemsTotal.toFixed(2)}`, colRight, y, { align: "right" }); y += 5;
+
+      if (order.orderType === "Delivery" && (order.deliveryFee || 0) > 0) {
+        doc.text("Delivery Fee", margin, y);
+        doc.text(`E£${Number(order.deliveryFee || 0).toFixed(2)}`, colRight, y, { align: "right" }); y += 5;
       }
 
-      doc.save(`tux_${copy.toLowerCase()}_${widthMm}mm_order_${order.orderNo}.pdf`);
+      doc.setFont("helvetica", "bold");
+      doc.text("TOTAL", margin, y);
+      doc.text(`E£${Number(order.total || 0).toFixed(2)}`, colRight, y, { align: "right" }); y += 6;
+      doc.setFont("helvetica", "normal");
+
+      doc.line(margin, y, colRight, y); y += 4;
+
+      // Footer
+      doc.setFontSize(8);
+      doc.text("Thank you! Follow us @TUX", margin, y); y += 4;
+      doc.text("No returns on food items once served.", margin, y); y += 4;
+
+      // Trim the paper height to content
+      const usedHeight = Math.min(y + margin, MAX_H);
+      doc.internal.pageSize.setHeight(usedHeight);
+
+      doc.save(`tux_order_${order.orderNo}_${copy.toLowerCase()}.pdf`);
     } catch (err) {
       console.error(err);
-      alert("Could not print ticket. Try again (ensure pop-ups/downloads are allowed).");
+      alert("Could not generate receipt. Make sure pop-ups are allowed.");
     }
   };
 
-  const cardBorder = dark ? "#555" : "#ddd";
-  const softBg = dark ? "#1e1e1e" : "#f5f5f5";
-  const btnBorder = "#ccc";
-  const containerStyle = {
-    maxWidth: 1024,
-    margin: "0 auto",
-    padding: 16,
-    background: dark ? "#121212" : "white",
-    color: dark ? "#eee" : "black",
-    minHeight: "100vh",
-    transition: "background 0.2s ease, color 0.2s ease",
+  /* --------------------------- MINIMAL UI --------------------------- */
+  const addExpense = () => {
+    const qty = Number(newExpQty || 0);
+    const unitPrice = Number(newExpUnitPrice || 0);
+    if (!newExpName || qty <= 0) return alert("Enter a valid expense name and qty.");
+    setExpenses((e) => [
+      {
+        id: `exp_${Date.now()}`,
+        name: newExpName,
+        unit: newExpUnit || "pcs",
+        qty,
+        unitPrice,
+        note: newExpNote || "",
+        date: new Date(),
+      },
+      ...e,
+    ]);
+    setNewExpName("");
+    setNewExpUnit("pcs");
+    setNewExpQty(1);
+    setNewExpUnitPrice(0);
+    setNewExpNote("");
   };
 
-  // Intercept clicking protected tabs
-  const handleTabClick = (key) => {
-    if (key === "prices" && !pricesUnlocked) {
-      const entered = window.prompt("Enter Editor PIN to open Prices:", "");
-      if (entered == null) return;
-      if (norm(entered) !== norm(EDITOR_PIN)) {
-        alert("Wrong PIN.");
-        return;
+  const addInventoryItem = () => {
+    if (!newInvName || !newInvUnit) return alert("Enter inventory name and unit.");
+    setInventory((inv) => [
+      ...inv,
+      { id: newInvName.toLowerCase().replace(/\s+/g, "-"), name: newInvName, unit: newInvUnit, qty: Number(newInvQty || 0) },
+    ]);
+    setNewInvName("");
+    setNewInvUnit("");
+    setNewInvQty(0);
+  };
+
+  const exportJSON = () => {
+    const body = packStateForCloud({
+      menu, extraList, orders, inventory, nextOrderNo, dark, workers, paymentMethods,
+      inventoryLocked, inventorySnapshot, inventoryLockedAt, adminPins, orderTypes,
+      defaultDeliveryFee, expenses, dayMeta, bankTx
+    });
+    const { updatedAt, ...rest } = body;
+    downloadText(`tux_state_${Date.now()}.json`, JSON.stringify(rest, null, 2));
+  };
+
+  const importJSONLocal = (file) => {
+    if (!file) return;
+    const fr = new FileReader();
+    fr.onload = () => {
+      try {
+        const data = JSON.parse(String(fr.result || "{}"));
+        const unpacked = unpackStateFromCloud(data, dayMeta);
+        if (unpacked.menu) setMenu(unpacked.menu);
+        if (unpacked.extraList) setExtraList(unpacked.extraList);
+        if (unpacked.orders) setOrders(unpacked.orders);
+        if (unpacked.inventory) setInventory(unpacked.inventory);
+        if (unpacked.nextOrderNo != null) setNextOrderNo(unpacked.nextOrderNo);
+        if (unpacked.dark != null) setDark(unpacked.dark);
+        if (unpacked.workers) setWorkers(unpacked.workers);
+        if (unpacked.paymentMethods) setPaymentMethods(unpacked.paymentMethods);
+        if (unpacked.inventoryLocked != null) setInventoryLocked(unpacked.inventoryLocked);
+        if (unpacked.inventorySnapshot) setInventorySnapshot(unpacked.inventorySnapshot);
+        if (unpacked.inventoryLockedAt != null) setInventoryLockedAt(unpacked.inventoryLockedAt);
+        if (unpacked.adminPins) setAdminPins({ ...DEFAULT_ADMIN_PINS, ...unpacked.adminPins });
+        if (unpacked.orderTypes) setOrderTypes(unpacked.orderTypes);
+        if (unpacked.defaultDeliveryFee != null) setDefaultDeliveryFee(unpacked.defaultDeliveryFee);
+        if (unpacked.expenses) setExpenses(unpacked.expenses);
+        if (unpacked.dayMeta) setDayMeta(unpacked.dayMeta);
+        if (unpacked.bankTx) setBankTx(unpacked.bankTx);
+        alert("Local JSON imported ✓");
+      } catch (e) {
+        alert("Invalid JSON file.");
       }
-      setPricesUnlocked(true);
-    }
-    if (key === "bank" && !bankUnlocked) {
-      const ok = !!promptAdminAndPin();
-      if (!ok) return;
-      setBankUnlocked(true);
-    }
-    setActiveTab(key);
+    };
+    fr.readAsText(file);
   };
 
-  // Bank balance
-  const bankBalance = useMemo(() => {
-    return bankTx.reduce((sum, t) => {
-      const a = Number(t.amount || 0);
-      if (t.type === "deposit" || t.type === "init" || t.type === "adjustUp") return sum + a;
-      if (t.type === "withdraw" || t.type === "adjustDown") return sum - a;
-      return sum;
-    }, 0);
-  }, [bankTx]);
-
-  /* --------------------------- UI --------------------------- */
-  const firebaseConfigured = !!(firebaseConfig && firebaseConfig.apiKey);
-
+  /* --------------------------- RENDER --------------------------- */
   return (
-    <div style={containerStyle}>
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 8, flexWrap: "wrap" }}>
-        <h1 style={{ margin: 0 }}>🍔 TUX — Burger Truck POS</h1>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <small>{nowStr}</small>
-
-          {/* Cloud controls */}
-          <div style={{ display: "flex", gap: 6, alignItems: "center", padding: "2px 6px", borderRadius: 6, border: `1px solid ${btnBorder}`, background: dark ? "#222" : "#f3f3f3" }}>
-            <span>☁</span>
-            {!firebaseConfigured && <small style={{ color: "#c62828" }}>Setup Firebase config</small>}
-            {firebaseConfigured && (
-              <>
-                <label style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                  <input
-                    type="checkbox"
-                    checked={cloudEnabled}
-                    onChange={(e) => setCloudEnabled(e.target.checked)}
-                  />
-                  <small>Autosync</small>
-                </label>
-                <label style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                  <input
-                    type="checkbox"
-                    checked={realtimeOrders}
-                    onChange={(e) => setRealtimeOrders(e.target.checked)}
-                  />
-                  <small>Realtime Orders</small>
-                </label>
-                <button
-                  onClick={async () => {
-                    try {
-                      if (!stateDocRef || !fbUser) return;
-                      const body = packStateForCloud({
-                        menu,
-                        extraList,
-                        orders,
-                        inventory,
-                        nextOrderNo,
-                        dark,
-                        workers,
-                        paymentMethods,
-                        inventoryLocked,
-                        inventorySnapshot,
-                        inventoryLockedAt,
-                        adminPins,
-                        orderTypes,
-                        defaultDeliveryFee,
-                        expenses,
-                        dayMeta,
-                        bankTx,
-                      });
-                      await setDoc(stateDocRef, body, { merge: true });
-                      setCloudStatus((s) => ({ ...s, lastSaveAt: new Date(), error: null }));
-                      alert("Synced to cloud ✔");
-                    } catch (e) {
-                      setCloudStatus((s) => ({ ...s, error: String(e) }));
-                      alert("Cloud sync failed: " + e);
-                    }
-                  }}
-                  style={{ padding: "4px 8px", borderRadius: 6, border: `1px solid ${btnBorder}`, background: "#e0f2f1", cursor: "pointer" }}
-                >
-                  Sync now
-                </button>
-                <button
-                  onClick={loadFromCloud}
-                  style={{ padding: "4px 8px", borderRadius: 6, border: `1px solid ${btnBorder}`, background: "#e3f2fd", cursor: "pointer" }}
-                >
-                  Load from cloud
-                </button>
-                <small style={{ opacity: 0.7 }}>
-                  {cloudStatus.lastSaveAt ? `Saved: ${cloudStatus.lastSaveAt.toLocaleTimeString()}` : ""}
-                </small>
-              </>
-            )}
-          </div>
-
-          <button
-            onClick={() => setDark((d) => !d)}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 6,
-              border: `1px solid ${btnBorder}`,
-              background: dark ? "#333" : "#eee",
-              color: dark ? "#fff" : "#000",
-              cursor: "pointer",
-            }}
-          >
-            {dark ? "Light Mode" : "Dark Mode"}
-          </button>
+    <div style={{ fontFamily: "system-ui, Arial", padding: 12, maxWidth: 1200, margin: "0 auto" }}>
+      <header style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <h2 style={{ margin: 0 }}>TUX POS</h2>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+          <span>{nowStr}</span>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <input type="checkbox" checked={dark} onChange={(e) => setDark(e.target.checked)} />
+            Dark
+          </label>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <input type="checkbox" checked={cloudEnabled} onChange={(e) => setCloudEnabled(e.target.checked)} />
+            Cloud Autosave
+          </label>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <input type="checkbox" checked={realtimeOrders} onChange={(e) => setRealtimeOrders(e.target.checked)} />
+            Live Board
+          </label>
         </div>
-      </div>
+      </header>
 
-      {/* Shift Control Bar */}
-      <div style={{ padding: 10, borderRadius: 6, background: softBg, marginBottom: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        {!dayMeta.startedAt ? (
-          <>
-            <span><b>Shift not started.</b></span>
-            <button
-              onClick={startShift}
-              style={{ background: "#2e7d32", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
-            >
-              Start Shift
-            </button>
-            <small style={{ opacity: 0.8 }}>Select/enter worker first (Orders tab) or you'll be prompted.</small>
-          </>
-        ) : (
-          <>
-            <span>Started by <b>{dayMeta.startedBy}</b> at <b>{new Date(dayMeta.startedAt).toLocaleString()}</b></span>
-            <button
-              onClick={() => generatePDF()}
-              style={{ background: "#7e57c2", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
-            >
-              Download PDF Report
-            </button>
-            <button
-              onClick={changeShift}
-              style={{ background: "#37474f", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
-            >
-              Change Shift
-            </button>
-            <button
-              onClick={endDay}
-              style={{ background: "#e53935", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
-            >
-              End the Day (requires PDF)
-            </button>
-          </>
-        )}
-      </div>
-
-      {/* Tabs */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-        {[
-          ["orders", "Orders"],
-          ["board", "Orders Board"],
-          ["inventory", "Inventory"],
-          ["expenses", "Expenses"],
-          ["bank", "Bank"],
-          ["reports", "Reports"],
-          ["prices", "Prices"],
-        ].map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => handleTabClick(key)}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 6,
-              border: `1px solid ${btnBorder}`,
-              background: activeTab === key ? "#ffd54f" : (dark ? "#333" : "#eee"),
-              color: dark ? "#fff" : "#000",
-              cursor: "pointer",
-            }}
-          >
-            {label}
+      <nav style={{ display: "flex", gap: 8, margin: "12px 0" }}>
+        {["orders","inventory","expenses","reports","settings"].map((t) => (
+          <button key={t}
+            onClick={() => setActiveTab(t)}
+            style={{ padding: "6px 10px", background: activeTab===t ? "#222" : "#eee", color: activeTab===t ? "#fff" : "#000", border: "1px solid #ccc", borderRadius: 6 }}>
+            {t.toUpperCase()}
           </button>
         ))}
-      </div>
+      </nav>
 
-      {/* ORDERS */}
       {activeTab === "orders" && (
-        <div>
-          <h2>Select item</h2>
-
-          <div style={{ display: "flex", gap: 24, alignItems: "flex-start", flexWrap: "wrap" }}>
-            {/* Vertical menu list */}
-            <div style={{ flex: 1, minWidth: 300 }}>
-              <h3>Burgers & Items</h3>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {menu.map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => setSelectedBurger(item)}
-                    style={{
-                      textAlign: "left",
-                      padding: 10,
-                      border: `1px solid ${btnBorder}`,
-                      borderRadius: 6,
-                      background: selectedBurger?.id === item.id ? "#c8e6c9" : (dark ? "#1e1e1e" : "#fafafa"),
-                      color: dark ? "#eee" : "#000",
-                      cursor: "pointer",
-                    }}
-                  >
-                    {item.name} — E£{item.price}
-                  </button>
-                ))}
+        <section style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div style={{ border: "1px solid #ddd", borderRadius: 8, padding: 10 }}>
+            <h3 style={{ marginTop: 0 }}>Builder</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <div>
+                <label>Worker</label>
+                <select value={worker} onChange={(e) => setWorker(e.target.value)} style={{ width: "100%" }}>
+                  <option value="">—</option>
+                  {workers.map((w) => <option key={w} value={w}>{w}</option>)}
+                </select>
+              </div>
+              <div>
+                <label>Payment</label>
+                <select value={payment} onChange={(e) => setPayment(e.target.value)} style={{ width: "100%" }}>
+                  <option value="">—</option>
+                  {paymentMethods.map((p) => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+              <div>
+                <label>Order Type</label>
+                <select value={orderType} onChange={(e) => setOrderType(e.target.value)} style={{ width: "100%" }}>
+                  {orderTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <label>Delivery Fee</label>
+                <input type="number" value={deliveryFee} onChange={(e)=>setDeliveryFee(Number(e.target.value||0))}
+                  disabled={orderType!=="Delivery"} style={{ width: "100%" }}/>
               </div>
             </div>
 
-            {/* Vertical extras list */}
-            <div style={{ flex: 1, minWidth: 300 }}>
-              <h3>Extras (for selected item)</h3>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {extraList.map((ex) => {
-                  const checked = !!selectedExtras.find((e) => e.id === ex.id);
-                  return (
-                    <label
-                      key={ex.id}
+            <div style={{ marginTop: 8 }}>
+              <label>Note</label>
+              <textarea value={orderNote} on
+Change={(e) => setOrderNote(e.target.value)} rows={2} style={{ width: "100%" }} />
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
+              <div>
+                <h4 style={{ margin: "6px 0" }}>Menu</h4>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, maxHeight: 280, overflow: "auto", border: "1px solid #eee", padding: 6, borderRadius: 6 }}>
+                  {menu.map((m) => (
+                    <button
+                      key={m.id}
+                      onClick={() => setSelectedBurger(m)}
                       style={{
-                        padding: 10,
-                        border: `1px solid ${btnBorder}`,
+                        padding: "8px 10px",
                         borderRadius: 6,
-                        background: checked ? "#e1f5fe" : (dark ? "#1e1e1e" : "#fafafa"),
-                        color: dark ? "#eee" : "#000",
-                        cursor: "pointer",
+                        border: "1px solid #ccc",
+                        background: selectedBurger?.id === m.id ? "#222" : "#f8f8f8",
+                        color: selectedBurger?.id === m.id ? "#fff" : "#000",
+                        textAlign: "left"
                       }}
                     >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleExtra(ex)}
-                        style={{ marginRight: 8 }}
-                      />
-                      {ex.name} — E£{ex.price}
-                    </label>
-                  );
-                })}
+                      <div style={{ fontWeight: 600 }}>{m.name}</div>
+                      <div style={{ fontSize: 12 }}>E£ {Number(m.price || 0).toFixed(2)}</div>
+                    </button>
+                  ))}
+                </div>
               </div>
+              <div>
+                <h4 style={{ margin: "6px 0" }}>Extras</h4>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, maxHeight: 280, overflow: "auto", border: "1px solid #eee", padding: 6, borderRadius: 6 }}>
+                  {extraList.map((ex) => {
+                    const on = !!selectedExtras.find((e) => e.id === ex.id);
+                    return (
+                      <button
+                        key={ex.id}
+                        onClick={() => toggleExtra(ex)}
+                        style={{
+                          padding: "8px 10px",
+                          borderRadius: 6,
+                          border: "1px solid #ccc",
+                          background: on ? "#222" : "#f8f8f8",
+                          color: on ? "#fff" : "#000",
+                          textAlign: "left"
+                        }}
+                      >
+                        <div style={{ fontWeight: 600 }}>{ex.name}</div>
+                        <div style={{ fontSize: 12 }}>E£ {Number(ex.price || 0).toFixed(2)}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
 
+            <div style={{ marginTop: 10, borderTop: "1px dashed #ccc", paddingTop: 8 }}>
+              <div style={{ marginBottom: 6 }}>
+                <strong>Selected:</strong>{" "}
+                {selectedBurger ? selectedBurger.name : "—"}{" "}
+                {selectedExtras.length ? `(+ ${selectedExtras.length} extras)` : ""}
+              </div>
+              <button onClick={addToCart} style={{ padding: "8px 12px", borderRadius: 6, border: "1px solid #888", background: "#28a745", color: "#fff" }}>
+                Add to Cart
+              </button>
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <h4 style={{ margin: "6px 0" }}>Cart</h4>
+              {cart.length === 0 ? (
+                <div style={{ color: "#777" }}>Cart is empty.</div>
+              ) : (
+                <div style={{ border: "1px solid #eee", borderRadius: 6 }}>
+                  {cart.map((ci, idx) => (
+                    <div key={idx} style={{ padding: 8, borderBottom: "1px solid #f0f0f0" }}>
+                      <div style={{ display: "flex", alignItems: "center" }}>
+                        <div style={{ fontWeight: 600, flex: 1 }}>{ci.name}</div>
+                        <div style={{ marginRight: 10 }}>E£ {Number(ci.price || 0).toFixed(2)}</div>
+                        <button onClick={() => removeFromCart(idx)} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #aaa" }}>
+                          remove
+                        </button>
+                      </div>
+                      {(ci.extras || []).length > 0 && (
+                        <div style={{ fontSize: 12, marginTop: 4 }}>
+                          {(ci.extras || []).map((e, i) => (
+                            <div key={i} style={{ display: "flex", justifyContent: "space-between" }}>
+                              <span>+ {e.name}</span>
+                              <span>E£ {Number(e.price || 0).toFixed(2)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  <div style={{ padding: 8, display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
+                    <span>Items Total</span>
+                    <span>
+                      E£{" "}
+                      {(
+                        cart.reduce((s, b) => s + Number(b.price || 0), 0) +
+                        cart.reduce((s, b) => s + (b.extras || []).reduce((t, e) => t + Number(e.price || 0), 0), 0)
+                      ).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
+              <button onClick={checkout} style={{ padding: "10px 14px", borderRadius: 8, border: "1px solid #888", background: "#0d6efd", color: "#fff" }}>
+                Checkout
+              </button>
               <button
-                onClick={addToCart}
-                style={{
-                  marginTop: 12,
-                  padding: "10px 14px",
-                  borderRadius: 6,
-                  border: "none",
-                  background: "#42a5f5",
-                  color: "white",
-                  cursor: "pointer",
+                onClick={() => {
+                  setCart([]);
+                  setOrderNote("");
                 }}
+                style={{ padding: "10px 14px", borderRadius: 8, border: "1px solid #aaa", background: "#eee" }}
               >
-                Add to cart
+                Clear Cart
               </button>
             </div>
           </div>
 
-          {/* Cart */}
-          <h3 style={{ marginTop: 16 }}>Cart</h3>
-          {cart.length === 0 && <p>No items yet.</p>}
-          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-            {cart.map((it, idx) => (
-              <li
-                key={idx}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  border: `1px solid ${cardBorder}`,
-                  borderRadius: 6,
-                  padding: 8,
-                  marginBottom: 6,
-                  background: dark ? "#1a1a1a" : "transparent",
-                }}
-              >
-                <div>
-                  <strong>{it.name}</strong> — E£{it.price}
-                  {it.extras?.length > 0 && (
-                    <ul style={{ margin: "4px 0 0 16px", color: dark ? "#bbb" : "#555" }}>
-                      {it.extras.map((e) => (
-                        <li key={e.id}>+ {e.name}</li>
+          <div style={{ border: "1px solid #ddd", borderRadius: 8, padding: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <h3 style={{ marginTop: 0, marginBottom: 6, flex: 1 }}>Orders Board</h3>
+              <button onClick={startShift} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #aaa", background: "#e8fff2" }}>
+                Start Shift
+              </button>
+              <button onClick={changeShift} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #aaa", background: "#fff9e6" }}>
+                Change Shift
+              </button>
+              <button onClick={endDay} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #aaa", background: "#ffe8e8" }}>
+                End Day
+              </button>
+            </div>
+
+            <div style={{ fontSize: 12, marginBottom: 8, color: "#666" }}>
+              Shift: {dayMeta.startedAt ? new Date(dayMeta.startedAt).toLocaleString() : "—"} →{" "}
+              {dayMeta.endedAt ? new Date(dayMeta.endedAt).toLocaleString() : "…"} | Worker:{" "}
+              {dayMeta.startedBy || "—"}
+            </div>
+
+            {orders.length === 0 ? (
+              <div style={{ color: "#777" }}>No orders yet.</div>
+            ) : (
+              <div style={{ display: "grid", gap: 8, maxHeight: 520, overflow: "auto" }}>
+                {getSortedOrders().map((o) => (
+                  <div key={o.orderNo} style={{ border: "1px solid #eee", borderRadius: 6, padding: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ fontWeight: 700, fontSize: 16 }}>#{o.orderNo}</div>
+                      <div style={{ color: "#666", fontSize: 12, flex: 1 }}>{o.date?.toLocaleString?.() || ""}</div>
+                      <span style={{ padding: "2px 6px", borderRadius: 6, background: o.done ? "#e8fff2" : "#fff9e6", border: "1px solid #ccc", fontSize: 12 }}>
+                        {o.done ? "DONE" : "PENDING"}
+                      </span>
+                      {o.voided && <span style={{ padding: "2px 6px", borderRadius: 6, background: "#ffe8e8", border: "1px solid #ccc", fontSize: 12 }}>VOIDED</span>}
+                    </div>
+                    <div style={{ fontSize: 12, marginTop: 4, color: "#333" }}>
+                      <div>Worker: {o.worker} | Payment: {o.payment} | Type: {o.orderType}</div>
+                      {o.orderType === "Delivery" && <div>Delivery Fee: E£ {Number(o.deliveryFee || 0).toFixed(2)}</div>}
+                      {o.note && <div>Note: {o.note}</div>}
+                    </div>
+                    <div style={{ marginTop: 6, fontSize: 13 }}>
+                      {(o.cart || []).map((ci, idx) => (
+                        <div key={idx} style={{ display: "flex", justifyContent: "space-between" }}>
+                          <span>{ci.name}{(ci.extras || []).length ? ` (+${(ci.extras || []).length} extras)` : ""}</span>
+                          <span>E£ {Number(ci.price || 0).toFixed(2)}</span>
+                        </div>
                       ))}
-                    </ul>
-                  )}
-                </div>
-                <button
-                  onClick={() => removeFromCart(idx)}
-                  style={{
-                    background: "#ef5350",
-                    color: "white",
-                    border: "none",
-                    borderRadius: 6,
-                    padding: "6px 10px",
-                    cursor: "pointer",
-                  }}
-                >
-                  Remove
-                </button>
-              </li>
-            ))}
-          </ul>
+                    </div>
+                    <div style={{ marginTop: 6, display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
+                      <span>Items Total</span>
+                      <span>
+                        E£{" "}
+                        {(
+                          (o.itemsTotal != null ? Number(o.itemsTotal) :
+                            (o.total - (o.deliveryFee || 0)))
+                        ).toFixed(2)}
+                      </span>
+                    </div>
 
-          <p>
-            <strong>Items Total:</strong> E£{
-              cart.reduce(
-                (s, b) => s + Number(b.price || 0) + (b.extras || []).reduce((t, e) => t + Number(e.price || 0), 0),
-                0
-              ).toFixed(2)
-            }
-          </p>
+                    <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {!o.done && !o.voided && (
+                        <button onClick={() => markOrderDone(o.orderNo)} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #aaa", background: "#e8fff2" }}>
+                          Mark Done
+                        </button>
+                      )}
+                      {!o.voided && !o.done && (
+                        <button onClick={() => voidOrderAndRestock(o.orderNo)} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #aaa", background: "#ffe8e8" }}>
+                          Void & Restock
+                        </button>
+                      )}
+                      {!o.voided && (
+                        <>
+                          <button onClick={() => printThermalTicket(o, 58, "Customer")} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #aaa" }}>
+                            Print Customer
+                          </button>
+                          {!o.done && (
+                            <button onClick={() => printThermalTicket(o, 58, "Kitchen")} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #aaa" }}>
+                              Print Kitchen
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
-          {/* Order notes */}
-          <div style={{ margin: "8px 0 12px" }}>
-            <label>
-              <strong>Order notes:</strong>{" "}
-              <input
-                type="text"
-                value={orderNote}
-                placeholder="e.g., no pickles, extra spicy"
-                onChange={(e) => setOrderNote(e.target.value)}
-                style={{
-                  width: 420,
-                  maxWidth: "90%",
-                  padding: "6px 8px",
-                  borderRadius: 6,
-                  border: `1px solid ${btnBorder}`,
-                  background: dark ? "#1e1e1e" : "white",
-                  color: dark ? "#eee" : "#000",
-                }}
-              />
-            </label>
+      {activeTab === "inventory" && (
+        <section style={{ border: "1px solid #ddd", borderRadius: 8, padding: 10 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <h3 style={{ marginTop: 0, marginBottom: 6, flex: 1 }}>Inventory</h3>
+            {!inventoryLocked ? (
+              <button onClick={lockInventoryForDay} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #aaa", background: "#fff9e6" }}>
+                Lock as Start-of-Day
+              </button>
+            ) : (
+              <button onClick={unlockInventoryWithPin} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #aaa", background: "#ffe8e8" }}>
+                Unlock (Admin PIN)
+              </button>
+            )}
           </div>
 
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <select value={worker} onChange={(e) => setWorker(e.target.value)}>
-              <option value="">Select worker</option>
-              {workers.map((w) => (
-                <option key={w} value={w}>
-                  {w}
-                </option>
-              ))}
-            </select>
+          <div style={{ fontSize: 12, color: "#666", marginBottom: 8 }}>
+            Locked: {inventoryLocked ? "Yes" : "No"} {inventoryLockedAt ? `at ${new Date(inventoryLockedAt).toLocaleString()}` : ""}
+          </div>
 
-            <select value={payment} onChange={(e) => setPayment(e.target.value)}>
-              <option value="">Select payment</option>
-              {paymentMethods.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, fontWeight: 700, marginTop: 6 }}>
+            <div>Name</div><div>Unit</div><div>Qty</div><div>Actions</div>
+          </div>
+          <div style={{ display: "grid", gap: 6, marginTop: 4 }}>
+            {inventory.map((it, idx) => (
+              <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, alignItems: "center" }}>
+                <input value={it.name} disabled style={{ width: "100%" }} readOnly />
+                <input value={it.unit} disabled style={{ width: "100%" }} readOnly />
+                <input
+                  type="number"
+                  value={it.qty}
+                  onChange={(e) => {
+                    if (inventoryLocked) return alert("Inventory is locked.");
+                    const v = Number(e.target.value || 0);
+                    setInventory((inv) => inv.map((x, i) => (i === idx ? { ...x, qty: v } : x)));
+                  }}
+                  style={{ width: "100%" }}
+                  disabled={inventoryLocked}
+                />
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button
+                    onClick={() => {
+                      if (inventoryLocked) return alert("Inventory is locked.");
+                      setInventory((inv) => inv.map((x, i) => (i === idx ? { ...x, qty: (x.qty || 0) + 1 } : x)));
+                    }}
+                    style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #aaa" }}
+                    disabled={inventoryLocked}
+                  >
+                    +1
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (inventoryLocked) return alert("Inventory is locked.");
+                      setInventory((inv) => inv.map((x, i) => (i === idx ? { ...x, qty: Math.max(0, (x.qty || 0) - 1) } : x)));
+                    }}
+                    style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #aaa" }}
+                    disabled={inventoryLocked}
+                  >
+                    -1
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (inventoryLocked) return alert("Inventory is locked.");
+                      setInventory((inv) => inv.filter((_, i) => i !== idx));
+                    }}
+                    style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #aaa" }}
+                    disabled={inventoryLocked}
+                  >
+                    remove
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
 
-            <select
-              value={orderType}
-              onChange={(e) => {
-                const v = e.target.value;
-                setOrderType(v);
-                setDeliveryFee(v === "Delivery" ? (deliveryFee || defaultDeliveryFee) : 0);
-              }}
-            >
-              {orderTypes.map((t) => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
+          <div style={{ marginTop: 12, borderTop: "1px dashed #ccc", paddingTop: 8 }}>
+            <h4 style={{ margin: "6px 0" }}>Add Inventory Item</h4>
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr auto", gap: 8 }}>
+              <input placeholder="Name (e.g., Meat)" value={newInvName} onChange={(e) => setNewInvName(e.target.value)} />
+              <input placeholder="Unit (e.g., g, pcs, slices)" value={newInvUnit} onChange={(e) => setNewInvUnit(e.target.value)} />
+              <input type="number" placeholder="Qty" value={newInvQty} onChange={(e) => setNewInvQty(Number(e.target.value || 0))} />
+              <button onClick={addInventoryItem} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #aaa" }}>
+                Add
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
 
-            {orderType === "Delivery" && (
-              <>
-                <label>
-                  Delivery fee:&nbsp;
-                  <input
-                    type="number"
-                    value={deliveryFee}
-                    onChange={(e) => setDeliveryFee(Number(e.target.value || 0))}
-                    style={{ width: 120 }}
-                  />
-                </label>
-                <small style={{ opacity: 0.75 }}>
-                  (Default: E£{Number(defaultDeliveryFee || 0).toFixed(2)})
-                </small>
-              </>
-            )}
+      {activeTab === "expenses" && (
+        <section style={{ border: "1px solid #ddd", borderRadius: 8, padding: 10 }}>
+          <h3 style={{ marginTop: 0 }}>Expenses</h3>
 
-            <button
-              onClick={checkout}
-              style={{
-                background: "#43a047",
-                color: "white",
-                border: "none",
-                borderRadius: 6,
-                padding: "8px 12px",
-                cursor: "pointer",
-              }}
-            >
-              Checkout
+          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 2fr auto", gap: 8 }}>
+            <input placeholder="Name" value={newExpName} onChange={(e) => setNewExpName(e.target.value)} />
+            <input placeholder="Unit" value={newExpUnit} onChange={(e) => setNewExpUnit(e.target.value)} />
+            <input type="number" placeholder="Qty" value={newExpQty} onChange={(e) => setNewExpQty(Number(e.target.value || 0))} />
+            <input type="number" placeholder="Unit Price" value={newExpUnitPrice} onChange={(e) => setNewExpUnitPrice(Number(e.target.value || 0))} />
+            <input placeholder="Note" value={newExpNote} onChange={(e) => setNewExpNote(e.target.value)} />
+            <button onClick={addExpense} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #aaa" }}>
+              Add
             </button>
           </div>
 
-          <p style={{ marginTop: 8 }}>
-            <strong>Order Total (incl. delivery if any):</strong>{" "}
-            E£{
-              (
-                cart.reduce(
-                  (s, b) => s + Number(b.price || 0) + (b.extras || []).reduce((t, e) => t + Number(e.price || 0), 0),
-                  0
-                ) + (orderType === "Delivery" ? Number(deliveryFee || 0) : 0)
-              ).toFixed(2)
-            }
-          </p>
-        </div>
-      )}
-
-      {/* ORDERS BOARD */}
-      {activeTab === "board" && (
-        <div>
-          <h2>Orders Board {realtimeOrders ? "(Live)" : ""}</h2>
-          {orders.length === 0 && <p>No orders yet.</p>}
-          <ul style={{ listStyle: "none", padding: 0 }}>
-            {orders.map((o) => (
-              <li
-                key={`${o.cloudId || "local"}_${o.orderNo}`}
-                style={{
-                  border: `1px solid ${cardBorder}`,
-                  borderRadius: 6,
-                  padding: 10,
-                  marginBottom: 8,
-                  background: o.voided ? (dark ? "#4a2b2b" : "#ffebee")
-                    : o.done ? (dark ? "#14331a" : "#e8f5e9")
-                    : (dark ? "#333018" : "#fffde7"),
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-                  <strong>
-                    Order #{o.orderNo} — E£{o.total.toFixed(2)} {o.cloudId ? "☁" : ""}
-                  </strong>
-                  <span>{o.date.toLocaleString()}</span>
-                </div>
-                <div style={{ color: dark ? "#ccc" : "#555", marginTop: 4 }}>
-                  Worker: {o.worker} • Payment: {o.payment} • Type: {o.orderType || "-"}
-                  {o.orderType === "Delivery" && <> • Delivery: E£{Number(o.deliveryFee || 0).toFixed(2)}</>}
-                  {" "}• Status:{" "}
-                  <strong>
-                    {o.voided ? "Voided & Restocked" : o.done ? "Done" : "Not done"}
-                  </strong>
-                  {o.voided && o.restockedAt && (
-                    <span> • Restocked at: {o.restockedAt.toLocaleString()}</span>
-                  )}
-                </div>
-
-                {o.note && (
-                  <div style={{ marginTop: 6, padding: 6, background: dark ? "#2a2a2a" : "#f0f7ff", borderRadius: 6 }}>
-                    <strong>Note:</strong> {o.note}
-                  </div>
-                )}
-
-                <ul style={{ marginTop: 8, marginBottom: 8 }}>
-                  {o.cart.map((ci, idx) => (
-                    <li key={idx} style={{ marginLeft: 12 }}>
-                      • {ci.name} — E£{ci.price}
-                      {ci.extras?.length > 0 && (
-                        <ul style={{ margin: "2px 0 6px 18px", color: dark ? "#bbb" : "#555" }}>
-                          {ci.extras.map((ex) => (
-                            <li key={ex.id}>+ {ex.name} (E£{ex.price})</li>
-                          ))}
-                        </ul>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {!o.done && !o.voided && (
-                    <button
-                      onClick={() => markOrderDone(o.orderNo)}
-                      style={{
-                        background: "#43a047",
-                        color: "white",
-                        border: "none",
-                        borderRadius: 6,
-                        padding: "6px 10px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Mark DONE (locks)
-                    </button>
-                  )}
-                  {o.done && (
-                    <button
-                      disabled
-                      style={{
-                        background: "#9e9e9e",
-                        color: "white",
-                        border: "none",
-                        borderRadius: 6,
-                        padding: "6px 10px",
-                        cursor: "not-allowed",
-                      }}
-                    >
-                      DONE (locked)
-                    </button>
-                  )}
-
-                  <button
-                    onClick={() => printThermalTicket(o, 58, "Kitchen")}
-                    disabled={o.done || o.voided}
-                    style={{
-                      background: o.done || o.voided ? "#b39ddb" : "#7e57c2",
-                      color: "white",
-                      border: "none",
-                      borderRadius: 6,
-                      padding: "6px 10px",
-                      cursor: o.done || o.voided ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    Kitchen 58mm
-                  </button>
-                  <button
-                    onClick={() => printThermalTicket(o, 80, "Kitchen")}
-                    disabled={o.done || o.voided}
-                    style={{
-                      background: o.done || o.voided ? "#8e24aa88" : "#6a1b9a",
-                      color: "white",
-                      border: "none",
-                      borderRadius: 6,
-                      padding: "6px 10px",
-                      cursor: o.done || o.voided ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    Kitchen 80mm
-                  </button>
-                  <button
-                    onClick={() => printThermalTicket(o, 58, "Customer")}
-                    disabled={o.voided}
-                    style={{
-                      background: o.voided ? "#26a69a88" : "#00897b",
-                      color: "white",
-                      border: "none",
-                      borderRadius: 6,
-                      padding: "6px 10px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Receipt 58mm
-                  </button>
-                  <button
-                    onClick={() => printThermalTicket(o, 80, "Customer")}
-                    disabled={o.voided}
-                    style={{
-                      background: o.voided ? "#00695c88" : "#00695c",
-                      color: "white",
-                      border: "none",
-                      borderRadius: 6,
-                      padding: "6px 10px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Receipt 80mm
-                  </button>
-
-                  <button
-                    onClick={() => voidOrderAndRestock(o.orderNo)}
-                    disabled={o.done || o.voided}
-                    style={{
-                      background: o.done || o.voided ? "#ef9a9a" : "#c62828",
-                      color: "white",
-                      border: "none",
-                      borderRadius: 6,
-                      padding: "6px 10px",
-                      cursor: o.done || o.voided ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    Void & Restock
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* INVENTORY */}
-      {activeTab === "inventory" && (
-        <div>
-          <h2>Inventory</h2>
-
-          <div style={{ padding: 10, borderRadius: 6, background: inventoryLocked ? (dark ? "#2b3a2b" : "#e8f5e9") : (dark ? "#332d1e" : "#fffde7"), marginBottom: 10 }}>
-            {inventoryLocked ? (
-              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <strong>Locked:</strong>
-                <span>
-                  Start-of-day captured {inventoryLockedAt ? `at ${new Date(inventoryLockedAt).toLocaleString()}` : ""}.
-                  Editing disabled until <b>End the Day</b> or admin unlock.
-                </span>
-                <button
-                  onClick={unlockInventoryWithPin}
-                  style={{ background: "#8e24aa", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
-                >
-                  Unlock Inventory (Admin PIN)
-                </button>
-              </div>
+          <div style={{ marginTop: 12 }}>
+            {expenses.length === 0 ? (
+              <div style={{ color: "#777" }}>No expenses.</div>
             ) : (
-              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <span>Set your quantities, then:</span>
-                <button
-                  onClick={lockInventoryForDay}
-                  style={{ background: "#2e7d32", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
-                >
-                  Lock Inventory (start of day)
-                </button>
+              <div style={{ display: "grid", gap: 6 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 2fr 1fr", gap: 8, fontWeight: 700 }}>
+                  <div>Name</div><div>Unit</div><div>Qty</div><div>Unit Price</div><div>Note</div><div>Total</div>
+                </div>
+                {expenses.map((e) => (
+                  <div key={e.id} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 2fr 1fr", gap: 8 }}>
+                    <div>{e.name}</div>
+                    <div>{e.unit}</div>
+                    <div>{e.qty}</div>
+                    <div>E£ {Number(e.unitPrice || 0).toFixed(2)}</div>
+                    <div>{e.note || ""}</div>
+                    <div>E£ {(Number(e.qty || 0) * Number(e.unitPrice || 0)).toFixed(2)}</div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
-
-          <div style={{ marginTop: 8 }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr style={{ textAlign: "left" }}>
-                  <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Item</th>
-                  <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit</th>
-                  <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Qty</th>
-                  <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {inventory.map((it) => (
-                  <tr key={it.id}>
-                    <td style={{ padding: 6 }}>{it.name}</td>
-                    <td style={{ padding: 6 }}>{it.unit}</td>
-                    <td style={{ padding: 6 }}>
-                      <input
-                        type="number"
-                        value={it.qty}
-                        disabled={inventoryLocked}
-                        onChange={(e) => {
-                          const v = Math.max(0, Number(e.target.value || 0));
-                          setInventory((inv) => inv.map((x) => (x.id === it.id ? { ...x, qty: v } : x)));
-                        }}
-                        style={{ width: 120 }}
-                      />
-                    </td>
-                    <td style={{ padding: 6 }}>
-                      <button
-                        onClick={() => setInventory((inv) => inv.filter((x) => x.id !== it.id))}
-                        disabled={inventoryLocked}
-                        style={{ background: inventoryLocked ? "#ef9a9a" : "#ef5350", color: "white", border: "none", borderRadius: 6, padding: "4px 8px", cursor: inventoryLocked ? "not-allowed" : "pointer" }}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {inventory.length === 0 && (
-                  <tr>
-                    <td colSpan={4} style={{ padding: 6, color: dark ? "#bbb" : "#666" }}>
-                      No inventory items yet.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          <div style={{ marginTop: 12, padding: 10, background: softBg, borderRadius: 6 }}>
-            <strong>Add Inventory Item</strong>
-            <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-              <input placeholder="Name (e.g., Buns)" value={newInvName} onChange={(e) => setNewInvName(e.target.value)} disabled={inventoryLocked} />
-              <input placeholder="Unit (e.g., pcs/ml/g)" value={newInvUnit} onChange={(e) => setNewInvUnit(e.target.value)} disabled={inventoryLocked} />
-              <input type="number" placeholder="Qty" value={newInvQty} onChange={(e) => setNewInvQty(Number(e.target.value || 0))} disabled={inventoryLocked} />
-              <button
-                onClick={() => {
-                  const nm = newInvName.trim();
-                  const un = newInvUnit.trim() || "pcs";
-                  const id = nm.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "").slice(0, 24) || `inv_${Date.now()}`;
-                  if (!nm) return alert("Enter a name");
-                  if (inventory.find((x) => x.id === id)) return alert("An inventory item with similar name/id exists. Try a different name.");
-                  setInventory((inv) => [...inv, { id, name: nm, unit: un, qty: Math.max(0, newInvQty) }]);
-                  setNewInvName(""); setNewInvUnit(""); setNewInvQty(0);
-                }}
-                disabled={inventoryLocked}
-                style={{ background: inventoryLocked ? "#90caf9" : "#1976d2", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: inventoryLocked ? "not-allowed" : "pointer" }}
-              >
-                Add
-              </button>
-            </div>
-            {inventoryLocked && <div style={{ marginTop: 6, fontSize: 12, color: dark ? "#bbb" : "#666" }}>Locked — add/edit is disabled until End the Day or admin unlock.</div>}
-          </div>
-
-          {inventorySnapshot.length > 0 && (
-            <div style={{ marginTop: 12, padding: 10, background: softBg, borderRadius: 6 }}>
-              <strong>Start-of-Day Snapshot</strong>
-              <ul style={{ marginTop: 6 }}>
-                {inventorySnapshot.map((s) => (
-                  <li key={s.id}>
-                    {s.name}: {s.qtyAtLock} {s.unit}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
+        </section>
       )}
 
-      {/* EXPENSES */}
-      {activeTab === "expenses" && (
-        <div>
-          <h2>Expenses</h2>
-
-          <div style={{ padding: 10, background: softBg, borderRadius: 6, marginBottom: 10 }}>
-            <strong>Add Expense</strong>
-            <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-              <input placeholder="Name" value={newExpName} onChange={(e) => setNewExpName(e.target.value)} style={{ minWidth: 200 }} />
-              <input placeholder="Unit (e.g., pcs/kg)" value={newExpUnit} onChange={(e) => setNewExpUnit(e.target.value)} style={{ width: 120 }} />
-              <input type="number" placeholder="Qty" value={newExpQty} onChange={(e) => setNewExpQty(Number(e.target.value || 0))} style={{ width: 110 }} />
-              <input type="number" placeholder="Unit Price (E£)" value={newExpUnitPrice} onChange={(e) => setNewExpUnitPrice(Number(e.target.value || 0))} style={{ width: 160 }} />
-              <input placeholder="Note" value={newExpNote} onChange={(e) => setNewExpNote(e.target.value)} style={{ minWidth: 200 }} />
-              <button
-                onClick={() => {
-                  const nm = newExpName.trim();
-                  if (!nm) return alert("Enter expense name");
-                  const exp = {
-                    id: `exp_${Date.now()}`,
-                    name: nm,
-                    unit: newExpUnit.trim() || "pcs",
-                    qty: Math.max(0, Number(newExpQty || 0)),
-                    unitPrice: Math.max(0, Number(newExpUnitPrice || 0)),
-                    date: new Date(),
-                    note: newExpNote.trim(),
-                  };
-                  setExpenses((e) => [exp, ...e]);
-                  setNewExpName(""); setNewExpUnit("pcs"); setNewExpQty(1); setNewExpUnitPrice(0); setNewExpNote("");
-                }}
-                style={{ background: "#1976d2", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
-              >
-                Add
-              </button>
-            </div>
+      {activeTab === "reports" && (
+        <section style={{ border: "1px solid #ddd", borderRadius: 8, padding: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <h3 style={{ marginTop: 0, marginBottom: 6, flex: 1 }}>Reports</h3>
+            <button onClick={() => generatePDF(false)} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #aaa", background: "#e8fff2" }}>
+              Download Shift PDF
+            </button>
+            <button onClick={exportJSON} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #aaa" }}>
+              Export JSON
+            </button>
+            <button onClick={() => restoreInputRef.current?.click?.()} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #aaa" }}>
+              Import JSON
+            </button>
+            <input
+              ref={restoreInputRef}
+              type="file"
+              accept="application/json"
+              style={{ display: "none" }}
+              onChange={(e) => importJSONLocal(e.target.files?.[0])}
+            />
           </div>
 
-          <div style={{ marginBottom: 8 }}>
-            <strong>
-              Total Expenses: E£
-              {expenses.reduce((s, e) => s + (Number(e.qty || 0) * Number(e.unitPrice || 0)), 0).toFixed(2)}
-            </strong>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+            <label>Sort Orders:</label>
+            <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+              <option value="date-desc">Date ↓</option>
+              <option value="date-asc">Date ↑</option>
+              <option value="worker">Worker</option>
+              <option value="payment">Payment</option>
+            </select>
           </div>
 
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Name</th>
-                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit</th>
-                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Qty</th>
-                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit Price</th>
-                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Total</th>
-                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Date</th>
-                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Note</th>
-                <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {expenses.map((e) => (
-                <tr key={e.id}>
-                  <td style={{ padding: 6 }}>{e.name}</td>
-                  <td style={{ padding: 6 }}>{e.unit}</td>
-                  <td style={{ padding: 6, textAlign: "right" }}>{e.qty}</td>
-                  <td style={{ padding: 6, textAlign: "right" }}>{Number(e.unitPrice || 0).toFixed(2)}</td>
-                  <td style={{ padding: 6, textAlign: "right" }}>{(Number(e.qty || 0) * Number(e.unitPrice || 0)).toFixed(2)}</td>
-                  <td style={{ padding: 6 }}>{e.date ? new Date(e.date).toLocaleString() : ""}</td>
-                  <td style={{ padding: 6 }}>{e.note || ""}</td>
-                  <td style={{ padding: 6 }}>
-                    <button
-                      onClick={() => setExpenses((arr) => arr.filter((x) => x.id !== e.id))}
-                      style={{ background: "#ef5350", color: "white", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {expenses.length === 0 && (
-                <tr>
-                  <td colSpan={8} style={{ padding: 6, color: dark ? "#bbb" : "#666" }}>
-                    No expenses yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* BANK (PIN protected) */}
-      {activeTab === "bank" && (
-        <div>
-          <h2>Bank / Cash on Hand</h2>
-
-          {!bankUnlocked ? (
-            <div style={{ padding: 10, background: softBg, borderRadius: 6 }}>
-              <p>This tab is protected. Please reopen it and pass Admin PIN.</p>
-            </div>
-          ) : (
-            <>
-              <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
-                <div><strong>Balance:</strong> E£{Number(bankBalance || 0).toFixed(2)}</div>
+          <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div style={{ border: "1px solid #eee", padding: 8, borderRadius: 6 }}>
+              <h4 style={{ margin: "6px 0" }}>Totals (excluding voided)</h4>
+              <div style={{ display: "grid", gap: 4 }}>
+                <div>Revenue (items only): <strong>E£ {totals.revenueTotal.toFixed(2)}</strong></div>
+                <div>Delivery Fees: <strong>E£ {totals.deliveryFeesTotal.toFixed(2)}</strong></div>
+                <div>Expenses: <strong>E£ {totals.expensesTotal.toFixed(2)}</strong></div>
+                <div>Margin: <strong>E£ {totals.margin.toFixed(2)}</strong></div>
               </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
+                <div>
+                  <h5 style={{ margin: "6px 0" }}>By Payment</h5>
+                  {Object.keys(totals.byPay).map((k) => (
+                    <div key={k} style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>{k}</span><span>E£ {Number(totals.byPay[k] || 0).toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  <h5 style={{ margin: "6px 0" }}>By Order Type</h5>
+                  {Object.keys(totals.byType).map((k) => (
+                    <div key={k} style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>{k}</span><span>E£ {Number(totals.byType[k] || 0).toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
 
-              <div style={{ padding: 10, background: softBg, borderRadius: 6, marginBottom: 12 }}>
-                <strong>Add Transaction</strong>
-                <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                  <select value={bankForm.type} onChange={(e) => setBankForm((f) => ({ ...f, type: e.target.value }))}>
-                    <option value="deposit">Deposit</option>
-                    <option value="withdraw">Withdraw</option>
-                    <option value="init">Init Balance</option>
-                    <option value="adjustUp">Adjust Up</option>
-                    <option value="adjustDown">Adjust Down</option>
-                  </select>
-                  <input type="number" placeholder="Amount" value={bankForm.amount} onChange={(e) => setBankForm((f) => ({ ...f, amount: Number(e.target.value || 0) }))} style={{ width: 140 }} />
-                  <input placeholder="Worker (optional)" value={bankForm.worker} onChange={(e) => setBankForm((f) => ({ ...f, worker: e.target.value }))} />
-                  <input placeholder="Note" value={bankForm.note} onChange={(e) => setBankForm((f) => ({ ...f, note: e.target.value }))} style={{ minWidth: 200 }} />
+            <div style={{ border: "1px solid #eee", padding: 8, borderRadius: 6 }}>
+              <h4 style={{ margin: "6px 0" }}>Top Items</h4>
+              <div style={{ maxHeight: 220, overflow: "auto" }}>
+                {salesStats.items.map((r) => (
+                  <div key={r.id} style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span>{r.name} — {r.count}x</span>
+                    <span>E£ {r.revenue.toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+              <h4 style={{ margin: "10px 0 6px" }}>Top Extras</h4>
+              <div style={{ maxHeight: 220, overflow: "auto" }}>
+                {salesStats.extras.map((r) => (
+                  <div key={r.id} style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span>{r.name} — {r.count}x</span>
+                    <span>E£ {r.revenue.toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            <h4 style={{ margin: "6px 0" }}>Orders</h4>
+            <div style={{ border: "1px solid #eee", borderRadius: 6, maxHeight: 280, overflow: "auto" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "70px 160px 1fr 1fr 1fr 120px 90px 70px 70px", gap: 6, padding: 6, fontWeight: 700 }}>
+                <div>#</div><div>Date</div><div>Worker</div><div>Payment</div><div>Type</div><div>Delivery (E£)</div><div>Total (E£)</div><div>Done</div><div>Voided</div>
+              </div>
+              {getSortedOrders().map((o) => (
+                <div key={o.orderNo} style={{ display: "grid", gridTemplateColumns: "70px 160px 1fr 1fr 1fr 120px 90px 70px 70px", gap: 6, padding: 6, borderTop: "1px solid #f5f5f5", fontSize: 13 }}>
+                  <div>{o.orderNo}</div>
+                  <div>{o.date?.toLocaleString?.() || ""}</div>
+                  <div>{o.worker}</div>
+                  <div>{o.payment}</div>
+                  <div>{o.orderType}</div>
+                  <div>{Number(o.deliveryFee || 0).toFixed(2)}</div>
+                  <div>{Number(o.total || 0).toFixed(2)}</div>
+                  <div>{o.done ? "Yes" : "No"}</div>
+                  <div>{o.voided ? "Yes" : "No"}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {activeTab === "settings" && (
+        <section style={{ border: "1px solid #ddd", borderRadius: 8, padding: 10 }}>
+          <h3 style={{ marginTop: 0 }}>Settings</h3>
+
+          <div style={{ marginBottom: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button onClick={loadFromCloud} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #aaa" }}>
+              Pull From Cloud
+            </button>
+            <div style={{ fontSize: 12, color: "#666", display: "flex", alignItems: "center", gap: 8 }}>
+              <span>Last Load: {cloudStatus.lastLoadAt ? new Date(cloudStatus.lastLoadAt).toLocaleString() : "—"}</span>
+              <span>Last Save: {cloudStatus.lastSaveAt ? new Date(cloudStatus.lastSaveAt).toLocaleString() : "—"}</span>
+              {cloudStatus.error && <span style={{ color: "crimson" }}>Error: {cloudStatus.error}</span>}
+            </div>
+          </div>
+
+          <div style={{ border: "1px solid #eee", borderRadius: 6, padding: 8, marginBottom: 12 }}>
+            <h4 style={{ margin: "6px 0" }}>Workers & Payments</h4>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>Workers</div>
+                <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                  <input placeholder="New worker" value={newWorker} onChange={(e) => setNewWorker(e.target.value)} />
                   <button
                     onClick={() => {
-                      const a = Number(bankForm.amount || 0);
-                      if (a <= 0) return alert("Enter amount");
-                      const tx = { id: `tx_${Date.now()}`, ...bankForm, date: new Date() };
-                      setBankTx((arr) => [tx, ...arr]);
-                      setBankForm({ type: "deposit", amount: 0, worker: "", note: "" });
+                      const v = (newWorker || "").trim();
+                      if (!v) return;
+                      if (workers.includes(v)) return alert("Already exists.");
+                      setWorkers((w) => [...w, v]);
+                      setNewWorker("");
                     }}
-                    style={{ background: "#1976d2", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
+                    style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #aaa" }}
                   >
                     Add
                   </button>
                 </div>
-              </div>
-
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr>
-                    <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Type</th>
-                    <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Amount (E£)</th>
-                    <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Worker</th>
-                    <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Note</th>
-                    <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Date</th>
-                    <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {bankTx.map((t) => (
-                    <tr key={t.id}>
-                      <td style={{ padding: 6 }}>{t.type}</td>
-                      <td style={{ padding: 6, textAlign: "right" }}>{Number(t.amount || 0).toFixed(2)}</td>
-                      <td style={{ padding: 6 }}>{t.worker || ""}</td>
-                      <td style={{ padding: 6 }}>{t.note || ""}</td>
-                      <td style={{ padding: 6 }}>{t.date ? new Date(t.date).toLocaleString() : ""}</td>
-                      <td style={{ padding: 6 }}>
-                        <button
-                          onClick={() => setBankTx((arr) => arr.filter((x) => x.id !== t.id))}
-                          style={{ background: "#ef5350", color: "white", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}
-                        >
-                          Delete
-                        </button>
-                      </td>
-                    </tr>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {workers.map((w) => (
+                    <span key={w} style={{ border: "1px solid #ccc", borderRadius: 999, padding: "2px 8px", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      {w}
+                      <button onClick={() => setWorkers((arr) => arr.filter((x) => x !== w))} style={{ border: "none", background: "transparent", cursor: "pointer" }}>✕</button>
+                    </span>
                   ))}
-                  {bankTx.length === 0 && (
-                    <tr>
-                      <td colSpan={6} style={{ padding: 6, color: dark ? "#bbb" : "#666" }}>
-                        No transactions yet.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </>
-          )}
-        </div>
-      )}
-
-      {/* REPORTS */}
-      {activeTab === "reports" && (
-        <div>
-          <h2>Reports — TUX</h2>
-
-          <div style={{ marginBottom: 8, padding: 10, background: softBg, borderRadius: 6 }}>
-            <div><strong>Shift:</strong> {dayMeta.startedAt ? `Started by ${dayMeta.startedBy} at ${new Date(dayMeta.startedAt).toLocaleString()}` : "Not started"}</div>
-            {dayMeta.endedAt && <div><strong>Ended At:</strong> {new Date(dayMeta.endedAt).toLocaleString()}</div>}
-            {dayMeta.shiftChanges?.length ? (
-              <div style={{ marginTop: 4 }}>
-                <strong>Shift Changes:</strong>{" "}
-                {dayMeta.shiftChanges.map((c, i) => (
-                  <span key={i} style={{ marginRight: 8 }}>
-                    #{i + 1}: {c.from} → {c.to} @ {c.at ? new Date(c.at).toLocaleString() : "—"}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-          </div>
-
-          <div style={{ marginBottom: 10, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
-              <option value="date-desc">Sort by Date (Newest)</option>
-              <option value="date-asc">Sort by Date (Oldest)</option>
-              <option value="worker">Sort by Worker</option>
-              <option value="payment">Sort by Payment</option>
-            </select>
-            <button
-              onClick={() => generatePDF()}
-              style={{
-                background: "#7e57c2",
-                color: "white",
-                border: "none",
-                borderRadius: 6,
-                padding: "6px 10px",
-                cursor: "pointer",
-              }}
-            >
-              Download PDF Report
-            </button>
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              gap: 16,
-              flexWrap: "wrap",
-              padding: 10,
-              background: softBg,
-              borderRadius: 6,
-              marginBottom: 12,
-            }}
-          >
-            <div><strong>Revenue (Shift):</strong> E£{totals.revenueTotal.toFixed(2)}</div>
-            <div><strong>Delivery Fees:</strong> E£{totals.deliveryFeesTotal.toFixed(2)}</div>
-            <div><strong>Expenses (Shift):</strong> E£{totals.expensesTotal.toFixed(2)}</div>
-            <div><strong>Margin:</strong> E£{totals.margin.toFixed(2)}</div>
-            {Object.keys(totals.byPay).map((k) => (
-              <div key={k}><strong>{k}:</strong> E£{(totals.byPay[k] || 0).toFixed(2)}</div>
-            ))}
-            {Object.keys(totals.byType).map((k) => (
-              <div key={k}><strong>{k}:</strong> E£{(totals.byType[k] || 0).toFixed(2)}</div>
-            ))}
-          </div>
-
-          <div style={{ marginTop: 12, padding: 10, background: softBg , borderRadius: 6 }}>
-            {/* Top Items & Extras */}
-            <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-              <div style={{ flex: 1, minWidth: 280 }}>
-                <h3 style={{ marginTop: 0 }}>Items — Times Ordered</h3>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr>
-                      <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Item</th>
-                      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Times</th>
-                      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Revenue (E£)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {salesStats.items.map((r) => (
-                      <tr key={r.id}>
-                        <td style={{ padding: 6 }}>{r.name}</td>
-                        <td style={{ padding: 6, textAlign: "right" }}>{r.count}</td>
-                        <td style={{ padding: 6, textAlign: "right" }}>{r.revenue.toFixed(2)}</td>
-                      </tr>
-                    ))}
-                    {salesStats.items.length === 0 && (
-                      <tr>
-                        <td colSpan={3} style={{ padding: 6, color: dark ? "#bbb" : "#666" }}>
-                          No item sales yet.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                </div>
               </div>
 
-              <div style={{ flex: 1, minWidth: 280 }}>
-                <h3 style={{ marginTop: 0 }}>Extras — Times Ordered</h3>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr>
-                      <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Extra</th>
-                      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Times</th>
-                      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Revenue (E£)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {salesStats.extras.map((r) => (
-                      <tr key={r.id}>
-                        <td style={{ padding: 6 }}>{r.name}</td>
-                        <td style={{ padding: 6, textAlign: "right" }}>{r.count}</td>
-                        <td style={{ padding: 6, textAlign: "right" }}>{r.revenue.toFixed(2)}</td>
-                      </tr>
-                    ))}
-                    {salesStats.extras.length === 0 && (
-                      <tr>
-                        <td colSpan={3} style={{ padding: 6, color: dark ? "#bbb" : "#666" }}>
-                          No extra sales yet.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+              <div>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>Payment Methods</div>
+                <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                  <input placeholder="New payment (e.g., Cash)" value={newPayment} onChange={(e) => setNewPayment(e.target.value)} />
+                  <button
+                    onClick={() => {
+                      const v = (newPayment || "").trim();
+                      if (!v) return;
+                      if (paymentMethods.includes(v)) return alert("Already exists.");
+                      setPaymentMethods((p) => [...p, v]);
+                      setNewPayment("");
+                    }}
+                    style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #aaa" }}
+                  >
+                    Add
+                  </button>
+                </div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {paymentMethods.map((p) => (
+                    <span key={p} style={{ border: "1px solid #ccc", borderRadius: 999, padding: "2px 8px", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      {p}
+                      <button onClick={() => setPaymentMethods((arr) => arr.filter((x) => x !== p))} style={{ border: "none", background: "transparent", cursor: "pointer" }}>✕</button>
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
 
-      {/* PRICES (PIN gated by Editor PIN) */}
-      {activeTab === "prices" && (
-        <div>
-          <h2>Prices & Settings</h2>
+          <div style={{ border: "1px solid #eee", borderRadius: 6, padding: 8, marginBottom: 12 }}>
+            <h4 style={{ margin: "6px 0" }}>Order Types</h4>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
+              {orderTypes.map((t) => (
+                <span key={t} style={{ border: "1px solid #ccc", borderRadius: 999, padding: "2px 8px", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  {t}
+                  <button onClick={() => setOrderTypes((arr) => arr.filter((x) => x !== t))} style={{ border: "none", background: "transparent", cursor: "pointer" }}>✕</button>
+                </span>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <input placeholder="Add order type (e.g., Delivery)" onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  const v = e.currentTarget.value.trim();
+                  if (!v) return;
+                  if (orderTypes.includes(v)) return alert("Already exists.");
+                  setOrderTypes((o) => [...o, v]);
+                  e.currentTarget.value = "";
+                }
+              }} />
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <label>Default Delivery Fee</label>
+                <input type="number" value={defaultDeliveryFee} onChange={(e) => setDefaultDeliveryFee(Number(e.target.value || 0))} style={{ width: 120 }} />
+              </div>
+            </div>
+          </div>
 
-          {/* Menu editor */}
-          <div style={{ marginBottom: 16, padding: 10, background: softBg, borderRadius: 6 }}>
-            <h3 style={{ marginTop: 0 }}>Menu Items</h3>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr>
-                  <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Name</th>
-                  <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Price (E£)</th>
-                  <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Uses</th>
-                  <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {menu.map((m) => (
-                  <tr key={m.id}>
-                    <td style={{ padding: 6 }}>
-                      <input
-                        value={m.name}
-                        onChange={(e) =>
-                          setMenu((arr) =>
-                            arr.map((x) => (x.id === m.id ? { ...x, name: e.target.value } : x))
-                          )
-                        }
-                        style={{ width: "100%" }}
-                      />
-                    </td>
-                    <td style={{ padding: 6, textAlign: "right" }}>
+          {/* Prices (protected by EDITOR_PIN) */}
+          <div style={{ border: "1px solid #eee", borderRadius: 6, padding: 8, marginBottom: 12 }}>
+            <h4 style={{ margin: "6px 0" }}>Prices (PIN protected)</h4>
+            {!pricesUnlocked ? (
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input type="password" placeholder="Enter Editor PIN" onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    const val = e.currentTarget.value.trim();
+                    if (val === EDITOR_PIN) {
+                      setPricesUnlocked(true);
+                      e.currentTarget.value = "";
+                    } else {
+                      alert("Wrong PIN.");
+                    }
+                  }
+                }} />
+                <button onClick={(e) => {
+                  const input = e.currentTarget.previousSibling;
+                  if (!input?.value) return;
+                  if (input.value.trim() === EDITOR_PIN) {
+                    setPricesUnlocked(true);
+                    input.value = "";
+                  } else {
+                    alert("Wrong PIN.");
+                  }
+                }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #aaa" }}>
+                  Unlock
+                </button>
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>Unlocked. You can change prices. (Name editing disabled here.)</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 120px auto", gap: 8, fontWeight: 700 }}>
+                  <div>Item</div><div>Price (E£)</div><div>Actions</div>
+                </div>
+                <div style={{ display: "grid", gap: 6, marginTop: 4 }}>
+                  {menu.map((m, idx) => (
+                    <div key={m.id} style={{ display: "grid", gridTemplateColumns: "1fr 120px auto", gap: 8, alignItems: "center" }}>
+                      <input value={m.name} readOnly disabled />
                       <input
                         type="number"
                         value={m.price}
-                        onChange={(e) =>
-                          setMenu((arr) =>
-                            arr.map((x) => (x.id === m.id ? { ...x, price: Number(e.target.value || 0) } : x))
-                          )
-                        }
-                        style={{ width: 120, textAlign: "right" }}
+                        onChange={(e) => {
+                          const v = Number(e.target.value || 0);
+                          setMenu((arr) => arr.map((x, i) => (i === idx ? { ...x, price: v } : x)));
+                        }}
                       />
-                    </td>
-                    <td style={{ padding: 6 }}>
-                      <button
-                        onClick={() =>
-                          setUsesEditOpenMenu((s) => ({ ...s, [m.id]: !s[m.id] }))
-                        }
-                        style={{ background: "#1976d2", color: "white", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}
-                      >
-                        {usesEditOpenMenu[m.id] ? "Hide Uses" : "Edit Uses"}
-                      </button>
-                      {usesEditOpenMenu[m.id] && (
-                        <div style={{ marginTop: 8, display: "grid", gap: 6, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
-                          {inventory.map((inv) => {
-                            const v = (m.uses && m.uses[inv.id]) || 0;
-                            return (
-                              <label key={inv.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                <span style={{ minWidth: 90 }}>{inv.name} ({inv.unit}):</span>
-                                <input
-                                  type="number"
-                                  value={v}
-                                  onChange={(e) => {
-                                    const num = Math.max(0, Number(e.target.value || 0));
-                                    setMenu((arr) =>
-                                      arr.map((x) =>
-                                        x.id === m.id ? { ...x, uses: { ...(x.uses || {}), [inv.id]: num } } : x
-                                      )
-                                    );
-                                  }}
-                                  style={{ width: 100 }}
-                                />
-                              </label>
-                            );
-                          })}
+                      <div>
+                        <button onClick={() => setMenu((arr) => arr.filter((_, i) => i !== idx))} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #aaa" }}>
+                          remove
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ marginTop: 10, borderTop: "1px dashed #ccc", paddingTop: 8 }}>
+                  <h5 style={{ margin: "6px 0" }}>Add Menu Item</h5>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 120px auto", gap: 8 }}>
+                    <input placeholder="Name" value={newMenuName} onChange={(e) => setNewMenuName(e.target.value)} />
+                    <input type="number" placeholder="Price" value={newMenuPrice} onChange={(e) => setNewMenuPrice(Number(e.target.value || 0))} />
+                    <button
+                      onClick={() => {
+                        const nm = (newMenuName || "").trim();
+                        if (!nm) return;
+                        const id = Math.max(1, ...menu.map((x) => Number(x.id) || 0)) + 1;
+                        setMenu((arr) => [...arr, { id, name: nm, price: Number(newMenuPrice || 0), uses: {} }]);
+                        setNewMenuName("");
+                        setNewMenuPrice(0);
+                      }}
+                      style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #aaa" }}
+                    >
+                      Add
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 12 }}>
+                  <h5 style={{ margin: "6px 0" }}>Extras</h5>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 120px auto", gap: 8, fontWeight: 700 }}>
+                    <div>Extra</div><div>Price (E£)</div><div>Actions</div>
+                  </div>
+                  <div style={{ display: "grid", gap: 6, marginTop: 4 }}>
+                    {extraList.map((ex, idx) => (
+                      <div key={ex.id} style={{ display: "grid", gridTemplateColumns: "1fr 120px auto", gap: 8, alignItems: "center" }}>
+                        <input value={ex.name} readOnly disabled />
+                        <input
+                          type="number"
+                          value={ex.price}
+                          onChange={(e) => {
+                            const v = Number(e.target.value || 0);
+                            setExtraList((arr) => arr.map((x, i) => (i === idx ? { ...x, price: v } : x)));
+                          }}
+                        />
+                        <div>
+                          <button onClick={() => setExtraList((arr) => arr.filter((_, i) => i !== idx))} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #aaa" }}>
+                            remove
+                          </button>
                         </div>
-                      )}
-                    </td>
-                    <td style={{ padding: 6 }}>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ marginTop: 10, borderTop: "1px dashed #ccc", paddingTop: 8 }}>
+                    <h5 style={{ margin: "6px 0" }}>Add Extra</h5>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 120px auto", gap: 8 }}>
+                      <input placeholder="Name" value={newExtraName} onChange={(e) => setNewExtraName(e.target.value)} />
+                      <input type="number" placeholder="Price" value={newExtraPrice} onChange={(e) => setNewExtraPrice(Number(e.target.value || 0))} />
                       <button
-                        onClick={() => setMenu((arr) => arr.filter((x) => x.id !== m.id))}
-                        style={{ background: "#ef5350", color: "white", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}
+                        onClick={() => {
+                          const nm = (newExtraName || "").trim();
+                          if (!nm) return;
+                          const id = Math.max(100, ...extraList.map((x) => Number(x.id) || 100)) + 1;
+                          setExtraList((arr) => [...arr, { id, name: nm, price: Number(newExtraPrice || 0), uses: {} }]);
+                          setNewExtraName("");
+                          setNewExtraPrice(0);
+                        }}
+                        style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #aaa" }}
                       >
-                        Delete
+                        Add
                       </button>
-                    </td>
-                  </tr>
-                ))}
-                {menu.length === 0 && (
-                  <tr>
-                    <td colSpan={4} style={{ padding: 6, color: dark ? "#bbb" : "#666" }}>
-                      No menu items yet.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                    </div>
+                  </div>
+                </div>
 
-            <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <input
-                placeholder="New item name"
-                value={newMenuName}
-                onChange={(e) => setNewMenuName(e.target.value)}
-                style={{ minWidth: 220 }}
-              />
-              <input
-                type="number"
-                placeholder="Price (E£)"
-                value={newMenuPrice}
-                onChange={(e) => setNewMenuPrice(Number(e.target.value || 0))}
-                style={{ width: 140 }}
-              />
-              <button
-                onClick={() => {
-                  const nm = newMenuName.trim();
-                  if (!nm) return alert("Enter item name");
-                  const nextId = Math.max(0, ...menu.map((x) => Number(x.id) || 0), ...extraList.map((x) => Number(x.id) || 0)) + 1;
-                  setMenu((arr) => [...arr, { id: nextId, name: nm, price: Math.max(0, newMenuPrice), uses: {} }]);
-                  setNewMenuName("");
-                  setNewMenuPrice(0);
-                }}
-                style={{ background: "#1976d2", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
-              >
-                Add Menu Item
-              </button>
-            </div>
-          </div>
-
-          {/* Extras editor */}
-          <div style={{ marginBottom: 16, padding: 10, background: softBg, borderRadius: 6 }}>
-            <h3 style={{ marginTop: 0 }}>Extras</h3>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr>
-                  <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Name</th>
-                  <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Price (E£)</th>
-                  <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Uses</th>
-                  <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {extraList.map((ex) => (
-                  <tr key={ex.id}>
-                    <td style={{ padding: 6 }}>
-                      <input
-                        value={ex.name}
-                        onChange={(e) =>
-                          setExtraList((arr) =>
-                            arr.map((x) => (x.id === ex.id ? { ...x, name: e.target.value } : x))
-                          )
-                        }
-                        style={{ width: "100%" }}
-                      />
-                    </td>
-                    <td style={{ padding: 6, textAlign: "right" }}>
-                      <input
-                        type="number"
-                        value={ex.price}
-                        onChange={(e) =>
-                          setExtraList((arr) =>
-                            arr.map((x) => (x.id === ex.id ? { ...x, price: Number(e.target.value || 0) } : x))
-                          )
-                        }
-                        style={{ width: 120, textAlign: "right" }}
-                      />
-                    </td>
-                    <td style={{ padding: 6 }}>
-                      <button
-                        onClick={() =>
-                          setUsesEditOpenExtra((s) => ({ ...s, [ex.id]: !s[ex.id] }))
-                        }
-                        style={{ background: "#1976d2", color: "white", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}
-                      >
-                        {usesEditOpenExtra[ex.id] ? "Hide Uses" : "Edit Uses"}
-                      </button>
-                      {usesEditOpenExtra[ex.id] && (
-                        <div style={{ marginTop: 8, display: "grid", gap: 6, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
-                          {inventory.map((inv) => {
-                            const v = (ex.uses && ex.uses[inv.id]) || 0;
-                            return (
-                              <label key={inv.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                <span style={{ minWidth: 90 }}>{inv.name} ({inv.unit}):</span>
-                                <input
-                                  type="number"
-                                  value={v}
-                                  onChange={(e) => {
-                                    const num = Math.max(0, Number(e.target.value || 0));
-                                    setExtraList((arr) =>
-                                      arr.map((x) =>
-                                        x.id === ex.id ? { ...x, uses: { ...(x.uses || {}), [inv.id]: num } } : x
-                                      )
-                                    );
-                                  }}
-                                  style={{ width: 100 }}
-                                />
-                              </label>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ padding: 6 }}>
-                      <button
-                        onClick={() => setExtraList((arr) => arr.filter((x) => x.id !== ex.id))}
-                        style={{ background: "#ef5350", color: "white", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {extraList.length === 0 && (
-                  <tr>
-                    <td colSpan={4} style={{ padding: 6, color: dark ? "#bbb" : "#666" }}>
-                      No extras yet.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-
-            <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <input
-                placeholder="New extra name"
-                value={newExtraName}
-                onChange={(e) => setNewExtraName(e.target.value)}
-                style={{ minWidth: 220 }}
-              />
-              <input
-                type="number"
-                placeholder="Price (E£)"
-                value={newExtraPrice}
-                onChange={(e) => setNewExtraPrice(Number(e.target.value || 0))}
-                style={{ width: 140 }}
-              />
-              <button
-                onClick={() => {
-                  const nm = newExtraName.trim();
-                  if (!nm) return alert("Enter extra name");
-                  const nextId = Math.max(0, ...menu.map((x) => Number(x.id) || 0), ...extraList.map((x) => Number(x.id) || 0)) + 1;
-                  setExtraList((arr) => [...arr, { id: nextId, name: nm, price: Math.max(0, newExtraPrice), uses: {} }]);
-                  setNewExtraName("");
-                  setNewExtraPrice(0);
-                }}
-                style={{ background: "#1976d2", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
-              >
-                Add Extra
-              </button>
-            </div>
-          </div>
-
-          {/* Order types & delivery fee */}
-          <div style={{ marginBottom: 16, padding: 10, background: softBg, borderRadius: 6 }}>
-            <h3 style={{ marginTop: 0 }}>Order Options</h3>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
-              {orderTypes.map((t) => (
-                <span key={t} style={{ display: "inline-flex", alignItems: "center", gap: 6, border: `1px solid ${btnBorder}`, borderRadius: 6, padding: "4px 8px" }}>
-                  {t}
-                  <button
-                    onClick={() => setOrderTypes((arr) => arr.filter((x) => x !== t))}
-                    style={{ background: "#ef5350", color: "white", border: "none", borderRadius: 4, padding: "2px 6px", cursor: "pointer" }}
-                  >
-                    ×
+                <div style={{ marginTop: 10 }}>
+                  <button onClick={() => setPricesUnlocked(false)} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #aaa" }}>
+                    Lock Prices
                   </button>
-                </span>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div style={{ border: "1px solid #eee", borderRadius: 6, padding: 8 }}>
+            <h4 style={{ margin: "6px 0" }}>Admin PINs</h4>
+            <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>You can set per-admin PINs (used for unlocking inventory, etc.).</div>
+            <div style={{ display: "grid", gridTemplateColumns: "120px 160px auto", gap: 8, fontWeight: 700 }}>
+              <div>Admin #</div><div>PIN</div><div>Actions</div>
+            </div>
+            <div style={{ display: "grid", gap: 6, marginTop: 4 }}>
+              {[1,2,3,4,5,6].map((n) => (
+                <div key={n} style={{ display: "grid", gridTemplateColumns: "120px 160px auto", gap: 8, alignItems: "center" }}>
+                  <div>Admin {n}</div>
+                  <input
+                    type="password"
+                    value={adminPins[n] || ""}
+                    onChange={(e) => setAdminPins((p) => ({ ...p, [n]: e.target.value }))}
+                    placeholder="4 digits"
+                  />
+                  <div>
+                    <button onClick={() => setAdminPins((p) => ({ ...p, [n]: "" }))} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #aaa" }}>
+                      clear
+                    </button>
+                  </div>
+                </div>
               ))}
-              <input
-                placeholder="Add order type"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    const v = String(e.currentTarget.value || "").trim();
-                    if (!v) return;
-                    if (orderTypes.includes(v)) return alert("Type already exists.");
-                    setOrderTypes((arr) => [...arr, v]);
-                    e.currentTarget.value = "";
-                  }
-                }}
-                style={{ minWidth: 180 }}
-              />
-            </div>
-            <div>
-              <label>
-                Default Delivery Fee (E£):&nbsp;
-                <input
-                  type="number"
-                  value={defaultDeliveryFee}
-                  onChange={(e) => setDefaultDeliveryFee(Number(e.target.value || 0))}
-                  style={{ width: 140 }}
-                />
-              </label>
             </div>
           </div>
-
-          {/* Workers & payments */}
-          <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
-            <div style={{ padding: 10, background: softBg, borderRadius: 6 }}>
-              <h3 style={{ marginTop: 0 }}>Workers</h3>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-                {workers.map((w) => (
-                  <span key={w} style={{ display: "inline-flex", alignItems: "center", gap: 6, border: `1px solid ${btnBorder}`, borderRadius: 6, padding: "4px 8px" }}>
-                    {w}
-                    <button
-                      onClick={() => setWorkers((arr) => arr.filter((x) => x !== w))}
-                      style={{ background: "#ef5350", color: "white", border: "none", borderRadius: 4, padding: "2px 6px", cursor: "pointer" }}
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <input
-                  placeholder="Add worker"
-                  value={newWorker}
-                  onChange={(e) => setNewWorker(e.target.value)}
-                  style={{ flex: 1 }}
-                />
-                <button
-                  onClick={() => {
-                    const v = newWorker.trim();
-                    if (!v) return;
-                    if (workers.includes(v)) return alert("Worker already exists.");
-                    setWorkers((arr) => [...arr, v]);
-                    setNewWorker("");
-                  }}
-                  style={{ background: "#1976d2", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
-                >
-                  Add
-                </button>
-              </div>
-            </div>
-
-            <div style={{ padding: 10, background: softBg, borderRadius: 6 }}>
-              <h3 style={{ marginTop: 0 }}>Payment Methods</h3>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-                {paymentMethods.map((p) => (
-                  <span key={p} style={{ display: "inline-flex", alignItems: "center", gap: 6, border: `1px solid ${btnBorder}`, borderRadius: 6, padding: "4px 8px" }}>
-                    {p}
-                    <button
-                      onClick={() => setPaymentMethods((arr) => arr.filter((x) => x !== p))}
-                      style={{ background: "#ef5350", color: "white", border: "none", borderRadius: 4, padding: "2px 6px", cursor: "pointer" }}
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <input
-                  placeholder="Add payment method"
-                  value={newPayment}
-                  onChange={(e) => setNewPayment(e.target.value)}
-                  style={{ flex: 1 }}
-                />
-                <button
-                  onClick={() => {
-                    const v = newPayment.trim();
-                    if (!v) return;
-                    if (paymentMethods.includes(v)) return alert("Payment method already exists.");
-                    setPaymentMethods((arr) => [...arr, v]);
-                    setNewPayment("");
-                  }}
-                  style={{ background: "#1976d2", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
-                >
-                  Add
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Admin PINs */}
-          <div style={{ marginTop: 16, padding: 10, background: softBg, borderRadius: 6 }}>
-            <h3 style={{ marginTop: 0 }}>Admin PINs (1–6)</h3>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr>
-                  <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Admin #</th>
-                  <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>PIN</th>
-                  <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[1,2,3,4,5,6].map((n) => (
-                  <tr key={n}>
-                    <td style={{ padding: 6 }}>Admin {n}</td>
-                    <td style={{ padding: 6 }}>
-                      <input
-                        type="password"
-                        value={adminPins[n] || ""}
-                        disabled={!adminPinsEditUnlocked[n]}
-                        onChange={(e) =>
-                          setAdminPins((p) => ({ ...p, [n]: e.target.value }))
-                        }
-                        style={{ width: 180 }}
-                      />
-                    </td>
-                    <td style={{ padding: 6 }}>
-                      {!adminPinsEditUnlocked[n] ? (
-                        <button
-                          onClick={() => {
-                            const ok = promptAdminAndPin();
-                            if (ok === n) {
-                              setAdminPinsEditUnlocked((s) => ({ ...s, [n]: true }));
-                            } else if (ok) {
-                              alert("You unlocked a different admin. Try again.");
-                            }
-                          }}
-                          style={{ background: "#1976d2", color: "white", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}
-                        >
-                          Unlock row
-                        </button>
-                      ) : (
-                                               <button
-                          onClick={() =>
-                            setAdminPinsEditUnlocked((s) => ({ ...s, [n]: false }))
-                          }
-                          style={{
-                            background: "#43a047",
-                            color: "white",
-                            border: "none",
-                            borderRadius: 6,
-                            padding: "4px 8px",
-                            cursor: "pointer",
-                          }}
-                        >
-                          Save & Lock
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div style={{ marginTop: 8, fontSize: 12, color: dark ? "#bbb" : "#666" }}>
-              Prices tab is protected by an Editor PIN. Admin rows can be edited after unlocking with a valid Admin PIN (1–6).
-            </div>
-          </div>
-        </div>
+        </section>
       )}
-      {/* END PRICES TAB */}
 
+      <footer style={{ marginTop: 16, fontSize: 12, color: "#666" }}>
+        <div>© {new Date().getFullYear()} TUX — POS</div>
+      </footer>
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
