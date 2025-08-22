@@ -42,6 +42,7 @@ function ensureFirebase() {
 }
 
 /* --------------------------- APP SETTINGS --------------------------- */
+// 2) Name your shop (used for collection/doc paths)
 const SHOP_ID = "tux"; // change if you manage multiple shops (e.g. "tux-truck-1")
 
 // Pack current state (dates -> ISO) for Firestore
@@ -71,7 +72,6 @@ function packStateForCloud(state) {
     updatedAt: serverTimestamp(),
     menu,
     extras: extraList,
-    // IMPORTANT: orders saved only if provided (we now pass [] when realtime is ON)
     orders: (orders || []).map((o) => ({
       ...o,
       date: o.date ? o.date.toISOString() : null,
@@ -220,11 +220,11 @@ function dedupeOrders(list) {
   const byKey = new Map();
   for (const o of list || []) {
     const key = o.cloudId ? `id:${o.cloudId}` : `no:${o.orderNo}`;
-    if (!byKey.has(key)) {
+    const prev = byKey.get(key);
+    if (!prev) {
       byKey.set(key, o);
     } else {
       // keep the newer one by date
-      const prev = byKey.get(key);
       if (+new Date(o.date) > +new Date(prev.date)) byKey.set(key, o);
     }
   }
@@ -278,16 +278,21 @@ const BASE_EXTRAS = [
   { id: 112, name: "Mozzarella Cheese", price: 20, uses: {} },
   { id: 113, name: "Tux Hawawshi Sauce", price: 10, uses: {} },
 ];
+// Default inventory items
 const DEFAULT_INVENTORY = [
   { id: "meat", name: "Meat", unit: "g", qty: 0 },
   { id: "cheese", name: "Cheese", unit: "slices", qty: 0 },
 ];
+// Initial workers & payments (editable in UI)
 const BASE_WORKERS = ["Hassan", "Warda", "Ahmed"];
 const DEFAULT_PAYMENT_METHODS = ["Cash", "Card", "Instapay"];
+// Dine options (editable in Prices)
 const DEFAULT_ORDER_TYPES = ["Take-Away", "Dine-in", "Delivery"];
 const DEFAULT_DELIVERY_FEE = 20;
+// ---- Editor PIN to protect PRICES tab
 const EDITOR_PIN = "0512";
 
+// ---------- PIN defaults + helpers ----------
 const DEFAULT_ADMIN_PINS = { 1: "1111", 2: "2222", 3: "3333", 4: "4444", 5: "5555", 6: "6666" };
 const norm = (v) => String(v ?? "").trim();
 
@@ -296,6 +301,7 @@ async function purgeOrdersInCloud(db, ordersColRef, startDate, endDate) {
   try {
     const startTs = Timestamp.fromDate(startDate);
     const endTs   = Timestamp.fromDate(endDate);
+    // Fetch this shift's orders by createdAt window
     const qy = query(
       ordersColRef,
       where("createdAt", ">=", startTs),
@@ -306,6 +312,7 @@ async function purgeOrdersInCloud(db, ordersColRef, startDate, endDate) {
 
     const docs = ss.docs;
     let removed = 0;
+    // Firestore allows 500 ops per batch; use 400 for headroom
     for (let i = 0; i < docs.length; i += 400) {
       const chunk = docs.slice(i, i + 400);
       const batch = writeBatch(db);
@@ -320,6 +327,7 @@ async function purgeOrdersInCloud(db, ordersColRef, startDate, endDate) {
   }
 }
 
+
 export default function App() {
   const [activeTab, setActiveTab] = useState("orders");
   const [dark, setDark] = useState(false);
@@ -332,6 +340,7 @@ export default function App() {
   const [paymentMethods, setPaymentMethods] = useState(DEFAULT_PAYMENT_METHODS);
   const [newPayment, setNewPayment] = useState("");
 
+  // Order Type options & default delivery fee (Editable in Prices)
   const [orderTypes, setOrderTypes] = useState(DEFAULT_ORDER_TYPES);
   const [defaultDeliveryFee, setDefaultDeliveryFee] = useState(DEFAULT_DELIVERY_FEE);
 
@@ -465,8 +474,6 @@ export default function App() {
         if (snap.exists()) {
           const data = snap.data() || {};
           const unpacked = unpackStateFromCloud(data, dayMeta);
-
-          // ----- DO NOT hydrate orders from state doc if realtime is ON -----
           if (!realtimeOrders && unpacked.orders) setOrders(unpacked.orders);
           if (unpacked.menu) setMenu(unpacked.menu);
           if (unpacked.extraList) setExtraList(unpacked.extraList);
@@ -494,7 +501,7 @@ export default function App() {
         setHydrated(true); // allow autosave to begin
       }
     })();
-  }, [stateDocRef, fbUser, hydrated, dayMeta, realtimeOrders]);
+  }, [stateDocRef, fbUser, hydrated, dayMeta, realtimeOrders]); // include realtimeOrders
 
   // Manual cloud load (pull)
   const loadFromCloud = async () => {
@@ -504,10 +511,7 @@ export default function App() {
       if (!snap.exists()) return alert("No cloud state yet to load.");
       const data = snap.data() || {};
       const unpacked = unpackStateFromCloud(data, dayMeta);
-
-      // ----- DO NOT hydrate orders from state doc if realtime is ON -----
       if (!realtimeOrders && unpacked.orders) setOrders(unpacked.orders);
-
       if (unpacked.menu) setMenu(unpacked.menu);
       if (unpacked.extraList) setExtraList(unpacked.extraList);
       if (unpacked.inventory) setInventory(unpacked.inventory);
@@ -542,7 +546,7 @@ export default function App() {
         const body = packStateForCloud({
           menu,
           extraList,
-          // ----- DO NOT save orders into state doc when realtime is ON -----
+          // save orders only when realtime is OFF
           orders: realtimeOrders ? [] : orders,
           inventory,
           nextOrderNo,
@@ -567,12 +571,12 @@ export default function App() {
     }, 1600);
 
     return () => clearTimeout(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     cloudEnabled,
     stateDocRef,
     fbUser,
-    hydrated,
+    hydrated,            // <-- added
     menu,
     extraList,
     orders,
@@ -590,51 +594,47 @@ export default function App() {
     expenses,
     dayMeta,
     bankTx,
-    realtimeOrders,            // <--- added
+    realtimeOrders,      // ensure rebuild when toggled
   ]);
 
-  // --- Derive simple numbers for effect deps (shift window) ---
-  const startedAtMs = dayMeta?.startedAt
-    ? new Date(dayMeta.startedAt).getTime()
-    : null;
+// --- Derive simple numbers for effect deps (shift window) ---
+const startedAtMs = dayMeta?.startedAt
+  ? new Date(dayMeta.startedAt).getTime()
+  : null;
 
-  const endedAtMs = dayMeta?.endedAt
-    ? new Date(dayMeta.endedAt).getTime()
-    : null;
+const endedAtMs = dayMeta?.endedAt
+  ? new Date(dayMeta.endedAt).getTime()
+  : null;
 
-  // --- Realtime orders stream limited to current shift window ---
-  useEffect(() => {
-    if (!realtimeOrders || !ordersColRef || !fbUser) return;
+// --- Realtime orders stream limited to current shift window ---
+useEffect(() => {
+  if (!realtimeOrders || !ordersColRef || !fbUser) return;
 
-    // If shift hasn't started, show no orders and don't listen
-    if (!startedAtMs) {
-      setOrders([]);
-      return;
-    }
+  // If shift hasn't started, show no orders and don't listen
+  if (!startedAtMs) {
+    setOrders([]);
+    return;
+  }
 
-    const startTs = Timestamp.fromMillis(startedAtMs);
-    const constraints = [where("createdAt", ">=", startTs), orderBy("createdAt", "desc")];
+  const startTs = Timestamp.fromMillis(startedAtMs);
+  const constraints = [where("createdAt", ">=", startTs), orderBy("createdAt", "desc")];
 
-    if (endedAtMs) {
-      const endTs = Timestamp.fromMillis(endedAtMs);
-      constraints.unshift(where("createdAt", "<=", endTs));
-    }
+  if (endedAtMs) {
+    const endTs = Timestamp.fromMillis(endedAtMs);
+    constraints.unshift(where("createdAt", "<=", endTs));
+  }
 
-    const qy = query(ordersColRef, ...constraints);
-    const unsub = onSnapshot(
-      qy,
-      (snap) => {
-        const arr = [];
-        snap.forEach((d) => arr.push(orderFromCloudDoc(d.id, d.data())));
-        setOrders(dedupeOrders(arr)); // extra safety
-      },
-      (err) => {
-        console.warn("Realtime orders error:", err);
-      }
-    );
+  const qy = query(ordersColRef, ...constraints);
+  const unsub = onSnapshot(qy, (snap) => {
+    const arr = [];
+    snap.forEach((d) => arr.push(orderFromCloudDoc(d.id, d.data())));
+    setOrders(dedupeOrders(arr)); // extra safety
+  });
 
-    return () => unsub();
-  }, [realtimeOrders, ordersColRef, fbUser, startedAtMs, endedAtMs]);
+  return () => unsub();
+}, [realtimeOrders, ordersColRef, fbUser, startedAtMs, endedAtMs]);
+
+
 
   /* --------------------------- EXISTING APP LOGIC --------------------------- */
   const toggleExtra = (extra) => {
@@ -652,57 +652,58 @@ export default function App() {
   }, [inventory]);
 
   // ---- Admin PIN helper & inventory lock/unlock ----
-  const promptAdminAndPin = () => {
-    const adminStr = window.prompt("Enter Admin number (1 to 6):", "1");
-    if (!adminStr) return null;
-    const n = Number(adminStr);
-    if (![1, 2, 3, 4, 5, 6].includes(n)) {
-      alert("Please enter a number from 1 to 6.");
-      return null;
-    }
-    const entered = window.prompt(`Enter PIN for Admin ${n}:`, "");
-    if (entered == null) return null;
+const promptAdminAndPin = () => {
+  const adminStr = window.prompt("Enter Admin number (1 to 6):", "1");
+  if (!adminStr) return null;
+  const n = Number(adminStr);
+  if (![1, 2, 3, 4, 5, 6].includes(n)) {
+    alert("Please enter a number from 1 to 6.");
+    return null;
+  }
+  const entered = window.prompt(`Enter PIN for Admin ${n}:`, "");
+  if (entered == null) return null;
 
-    const expected = norm(adminPins[n]);
-    const attempt = norm(entered);
+  const expected = norm(adminPins[n]);
+  const attempt = norm(entered);
 
-    if (!expected) {
-      alert(`Admin ${n} has no PIN set; set a PIN in Prices → Admin PINs.`);
-      return null;
-    }
-    if (attempt !== expected) {
-      alert("Invalid PIN.");
-      return null;
-    }
-    return n;
-  };
+  if (!expected) {
+    alert(`Admin ${n} has no PIN set; set a PIN in Prices → Admin PINs.`);
+    return null;
+  }
+  if (attempt !== expected) {
+    alert("Invalid PIN.");
+    return null;
+  }
+  return n;
+};
 
-  const lockInventoryForDay = () => {
-    if (inventoryLocked) return;
-    if (inventory.length === 0) return alert("Add at least one inventory item first.");
-    if (!window.confirm(
-      "Lock current inventory as Start-of-Day? You won't be able to edit until End the Day or admin unlock."
-    )) return;
+const lockInventoryForDay = () => {
+  if (inventoryLocked) return;
+  if (inventory.length === 0) return alert("Add at least one inventory item first.");
+  if (!window.confirm(
+    "Lock current inventory as Start-of-Day? You won't be able to edit until End the Day or admin unlock."
+  )) return;
 
-    const snap = inventory.map((it) => ({
-      id: it.id,
-      name: it.name,
-      unit: it.unit,
-      qtyAtLock: it.qty,
-    }));
-    setInventorySnapshot(snap);
-    setInventoryLocked(true);
-    setInventoryLockedAt(new Date());
-  };
+  const snap = inventory.map((it) => ({
+    id: it.id,
+    name: it.name,
+    unit: it.unit,
+    qtyAtLock: it.qty,
+  }));
+  setInventorySnapshot(snap);
+  setInventoryLocked(true);
+  setInventoryLockedAt(new Date());
+};
 
-  const unlockInventoryWithPin = () => {
-    if (!inventoryLocked) return alert("Inventory is already unlocked.");
-    const adminNum = promptAdminAndPin();
-    if (!adminNum) return;
-    if (!window.confirm(`Admin ${adminNum}: Unlock inventory for editing? Snapshot will be kept.`)) return;
-    setInventoryLocked(false);
-    alert("Inventory unlocked for editing.");
-  };
+const unlockInventoryWithPin = () => {
+  if (!inventoryLocked) return alert("Inventory is already unlocked.");
+  const adminNum = promptAdminAndPin();
+  if (!adminNum) return;
+  if (!window.confirm(`Admin ${adminNum}: Unlock inventory for editing? Snapshot will be kept.`)) return;
+  setInventoryLocked(false);
+  alert("Inventory unlocked for editing.");
+};
+
 
   // --------- Shift Controls ----------
   const startShift = () => {
@@ -725,6 +726,7 @@ export default function App() {
     }
   };
 
+  // RENAMED: End Shift -> Change Shift
   const changeShift = () => {
     if (!dayMeta.startedAt || dayMeta.endedAt) return alert("Start a shift first.");
     const current = window.prompt(`Enter the CURRENT worker name to confirm:`, "");
@@ -743,86 +745,90 @@ export default function App() {
     alert(`Shift changed: ${dayMeta.startedBy} → ${newName}`);
   };
 
-  const endDay = async () => {
-    if (!dayMeta.startedAt) return alert("Start a shift first.");
-    const who = window.prompt("Enter your name to END THE DAY:", "");
-    const endBy = norm(who);
-    if (!endBy) return alert("Name is required.");
+// NEW: End the Day (replaces Reset Day)
+const endDay = async () => {
+  if (!dayMeta.startedAt) return alert("Start a shift first.");
+  const who = window.prompt("Enter your name to END THE DAY:", "");
+  const endBy = norm(who);
+  if (!endBy) return alert("Name is required.");
 
-    const endTime = new Date();
-    const metaForReport = { ...dayMeta, endedAt: endTime, endedBy: endBy };
+  // Mark end time now for the final PDF
+  const endTime = new Date();
+  const metaForReport = { ...dayMeta, endedAt: endTime, endedBy: endBy };
 
-    // Download PDF first
-    generatePDF(false, metaForReport);
+  // Download PDF first
+  generatePDF(false, metaForReport);
 
-    // Purge this shift's orders from Firestore so the board is clean next time
-    if (cloudEnabled && ordersColRef && fbUser && db) {
-      try {
-        const start = dayMeta.startedAt
-          ? new Date(dayMeta.startedAt)
-          : (orders.length ? new Date(Math.min(...orders.map(o => +o.date))) : endTime);
+  // Purge this shift's orders from Firestore so the board is clean next time
+  if (cloudEnabled && ordersColRef && fbUser && db) {
+    try {
+      // Prefer the recorded shift start; if missing, derive from earliest order
+      const start = dayMeta.startedAt
+        ? new Date(dayMeta.startedAt)
+        : (orders.length ? new Date(Math.min(...orders.map(o => +o.date))) : endTime);
 
-        const removed = await purgeOrdersInCloud(db, ordersColRef, start, endTime);
-        console.log(`Purged ${removed} cloud orders for the shift.`);
-      } catch (e) {
-        console.warn("Cloud purge on endDay failed:", e);
-      }
+      const removed = await purgeOrdersInCloud(db, ordersColRef, start, endTime);
+      console.log(`Purged ${removed} cloud orders for the shift.`);
+    } catch (e) {
+      console.warn("Cloud purge on endDay failed:", e);
     }
+  }
 
-    // Calculate margin (revenue excl. delivery - expenses)
-    const validOrders = orders.filter((o) => !o.voided);
-    const revenueExclDelivery = validOrders.reduce(
-      (s, o) =>
-        s +
-        Number(o.itemsTotal != null ? o.itemsTotal : (o.total - (o.deliveryFee || 0))),
-      0
-    );
-    const expensesTotal = expenses.reduce(
-      (s, e) => s + Number((e.qty || 0) * (e.unitPrice || 0)),
-      0
-    );
-    const margin = revenueExclDelivery - expensesTotal;
+  // Calculate margin (revenue excl. delivery - expenses)
+  const validOrders = orders.filter((o) => !o.voided);
+  const revenueExclDelivery = validOrders.reduce(
+    (s, o) =>
+      s +
+      Number(o.itemsTotal != null ? o.itemsTotal : (o.total - (o.deliveryFee || 0))),
+    0
+  );
+  const expensesTotal = expenses.reduce(
+    (s, e) => s + Number((e.qty || 0) * (e.unitPrice || 0)),
+    0
+  );
+  const margin = revenueExclDelivery - expensesTotal;
 
-    const txs = [];
-    if (margin > 0) {
-      txs.push({
-        id: `tx_${Date.now()}`,
-        type: "init",
-        amount: margin,
-        worker: endBy,
-        note: "Auto Init from day margin",
-        date: new Date(),
-      });
-    } else if (margin < 0) {
-      txs.push({
-        id: `tx_${Date.now() + 1}`,
-        type: "adjustDown",
-        amount: Math.abs(margin),
-        worker: endBy,
-        note: "Auto Adjust Down (negative margin)",
-        date: new Date(),
-      });
-    }
-    if (txs.length) setBankTx((arr) => [...txs, ...arr]);
-
-    // Reset day locally
-    setOrders([]);
-    setNextOrderNo(1);
-    setInventoryLocked(false);
-    setInventoryLockedAt(null);
-    setDayMeta({
-      startedBy: "",
-      startedAt: null,
-      endedAt: null,
-      endedBy: "",
-      lastReportAt: null,
-      resetBy: "",
-      resetAt: null,
-      shiftChanges: [],
+  // Auto add to Bank as next day's initial balance (or adjust down)
+  const txs = [];
+  if (margin > 0) {
+    txs.push({
+      id: `tx_${Date.now()}`,
+      type: "init",
+      amount: margin,
+      worker: endBy,
+      note: "Auto Init from day margin",
+      date: new Date(),
     });
+  } else if (margin < 0) {
+    txs.push({
+      id: `tx_${Date.now() + 1}`,
+      type: "adjustDown",
+      amount: Math.abs(margin),
+      worker: endBy,
+      note: "Auto Adjust Down (negative margin)",
+      date: new Date(),
+    });
+  }
+  if (txs.length) setBankTx((arr) => [...txs, ...arr]);
 
-    alert(`Day ended by ${endBy}. Report downloaded and day reset ✅`);
-  };
+  // Reset day locally
+  setOrders([]);
+  setNextOrderNo(1);
+  setInventoryLocked(false);
+  setInventoryLockedAt(null);
+  setDayMeta({
+    startedBy: "",
+    startedAt: null,
+    endedAt: null,
+    endedBy: "",
+    lastReportAt: null,
+    resetBy: "",
+    resetAt: null,
+    shiftChanges: [],
+  });
+
+  alert(`Day ended by ${endBy}. Report downloaded and day reset ✅`);
+};
 
   // --------- Cart / Checkout ----------
   const addToCart = () => {
@@ -909,8 +915,7 @@ export default function App() {
       note: orderNote.trim(),
     };
 
-    // IMPORTANT:
-    // If realtime is ON, do NOT push locally — let onSnapshot add it once.
+    // IMPORTANT: if realtime is ON, don't add locally; wait for onSnapshot
     if (!realtimeOrders) {
       setOrders((o) => [order, ...o]);
     }
@@ -958,6 +963,7 @@ export default function App() {
       if (!cloudEnabled || !ordersColRef || !fbUser) return;
       let targetId = orders.find((o) => o.orderNo === orderNo)?.cloudId;
       if (!targetId) {
+        // best-effort find by orderNo
         const qy = query(ordersColRef, where("orderNo", "==", orderNo));
         const ss = await getDocs(qy);
         if (!ss.empty) targetId = ss.docs[0].id;
@@ -1102,7 +1108,7 @@ export default function App() {
       const endedStr = m.endedAt ? new Date(m.endedAt).toLocaleString() : "—";
 
       autoTable(doc, {
-        head: [["Start By", "Start At", "End At"]]},
+        head: [["Start By", "Start At", "End At"]],
         body: [[m.startedBy || "—", startedStr, endedStr]],
         startY: 18,
         theme: "grid",
@@ -1128,7 +1134,7 @@ export default function App() {
       y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : 28;
       doc.text("Orders", 14, y);
       autoTable(doc, {
-        head: [["#", "Date", "Worker", "Payment", "Type", "Delivery (E£)", "Total (E£)", "Done", "Voided"]]},
+        head: [["#", "Date", "Worker", "Payment", "Type", "Delivery (E£)", "Total (E£)", "Done", "Voided"]],
         body: getSortedOrders().map((o) => [
           o.orderNo,
           o.date.toLocaleString(),
@@ -1415,8 +1421,7 @@ export default function App() {
                       const body = packStateForCloud({
                         menu,
                         extraList,
-                        // ----- DO NOT save orders when realtime is ON
-                        orders: realtimeOrders ? [] : orders,
+                        orders: realtimeOrders ? [] : orders, // save empty when realtime
                         inventory,
                         nextOrderNo,
                         dark,
@@ -1539,17 +1544,235 @@ export default function App() {
         ))}
       </div>
 
-      {/* ORDERS (unchanged UI) */}
-      {/* ... SNIP ... keep your existing Orders, Inventory, Expenses, Bank, Reports, Prices UIs exactly as before ... */}
-      {/* To keep this message readable, I did not reflow the rest of the huge UI section. 
-          You can keep everything below this comment EXACTLY as in your file. 
-          The important fixes are above:
-          - initial cloud load (skip orders if realtime),
-          - manual loadFromCloud (skip orders if realtime),
-          - autosave/sync (save [] for orders if realtime),
-          - onSnapshot uses dedupeOrders,
-          - checkout avoids local push if realtime is on.
-      */}
+      {/* ORDERS */}
+      {activeTab === "orders" && (
+        <div>
+          <h2>Select item</h2>
+
+          <div style={{ display: "flex", gap: 24, alignItems: "flex-start", flexWrap: "wrap" }}>
+            {/* Vertical menu list */}
+            <div style={{ flex: 1, minWidth: 300 }}>
+              <h3>Burgers & Items</h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {menu.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => setSelectedBurger(item)}
+                    style={{
+                      textAlign: "left",
+                      padding: 10,
+                      border: `1px solid ${btnBorder}`,
+                      borderRadius: 6,
+                      background: selectedBurger?.id === item.id ? "#c8e6c9" : (dark ? "#1e1e1e" : "#fafafa"),
+                      color: dark ? "#eee" : "#000",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {item.name} — E£{item.price}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Vertical extras list */}
+            <div style={{ flex: 1, minWidth: 300 }}>
+              <h3>Extras (for selected item)</h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {extraList.map((ex) => {
+                  const checked = !!selectedExtras.find((e) => e.id === ex.id);
+                  return (
+                    <label
+                      key={ex.id}
+                      style={{
+                        padding: 10,
+                        border: `1px solid ${btnBorder}`,
+                        borderRadius: 6,
+                        background: checked ? "#e1f5fe" : (dark ? "#1e1e1e" : "#fafafa"),
+                        color: dark ? "#eee" : "#000",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleExtra(ex)}
+                        style={{ marginRight: 8 }}
+                      />
+                      {ex.name} — E£{ex.price}
+                    </label>
+                  );
+                })}
+              </div>
+
+              <button
+                onClick={addToCart}
+                style={{
+                  marginTop: 12,
+                  padding: "10px 14px",
+                  borderRadius: 6,
+                  border: "none",
+                  background: "#42a5f5",
+                  color: "white",
+                  cursor: "pointer",
+                }}
+              >
+                Add to cart
+              </button>
+            </div>
+          </div>
+
+          {/* Cart */}
+          <h3 style={{ marginTop: 16 }}>Cart</h3>
+          {cart.length === 0 && <p>No items yet.</p>}
+          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+            {cart.map((it, idx) => (
+              <li
+                key={idx}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  border: `1px solid ${cardBorder}`,
+                  borderRadius: 6,
+                  padding: 8,
+                  marginBottom: 6,
+                  background: dark ? "#1a1a1a" : "transparent",
+                }}
+              >
+                <div>
+                  <strong>{it.name}</strong> — E£{it.price}
+                  {it.extras?.length > 0 && (
+                    <ul style={{ margin: "4px 0 0 16px", color: dark ? "#bbb" : "#555" }}>
+                      {it.extras.map((e) => (
+                        <li key={e.id}>+ {e.name}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <button
+                  onClick={() => removeFromCart(idx)}
+                  style={{
+                    background: "#ef5350",
+                    color: "white",
+                    border: "none",
+                    borderRadius: 6,
+                    padding: "6px 10px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+
+          <p>
+            <strong>Items Total:</strong> E£{
+              cart.reduce(
+                (s, b) => s + Number(b.price || 0) + (b.extras || []).reduce((t, e) => t + Number(e.price || 0), 0),
+                0
+              ).toFixed(2)
+            }
+          </p>
+
+          {/* Order notes */}
+          <div style={{ margin: "8px 0 12px" }}>
+            <label>
+              <strong>Order notes:</strong>{" "}
+              <input
+                type="text"
+                value={orderNote}
+                placeholder="e.g., no pickles, extra spicy"
+                onChange={(e) => setOrderNote(e.target.value)}
+                style={{
+                  width: 420,
+                  maxWidth: "90%",
+                  padding: "6px 8px",
+                  borderRadius: 6,
+                  border: `1px solid ${btnBorder}`,
+                  background: dark ? "#1e1e1e" : "white",
+                  color: dark ? "#eee" : "#000",
+                }}
+              />
+            </label>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <select value={worker} onChange={(e) => setWorker(e.target.value)}>
+              <option value="">Select worker</option>
+              {workers.map((w) => (
+                <option key={w} value={w}>
+                  {w}
+                </option>
+              ))}
+            </select>
+
+            <select value={payment} onChange={(e) => setPayment(e.target.value)}>
+              <option value="">Select payment</option>
+              {paymentMethods.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={orderType}
+              onChange={(e) => {
+                const v = e.target.value;
+                setOrderType(v);
+                setDeliveryFee(v === "Delivery" ? (deliveryFee || defaultDeliveryFee) : 0);
+              }}
+            >
+              {orderTypes.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+
+            {orderType === "Delivery" && (
+              <>
+                <label>
+                  Delivery fee:&nbsp;
+                  <input
+                    type="number"
+                    value={deliveryFee}
+                    onChange={(e) => setDeliveryFee(Number(e.target.value || 0))}
+                    style={{ width: 120 }}
+                  />
+                </label>
+                <small style={{ opacity: 0.75 }}>
+                  (Default: E£{Number(defaultDeliveryFee || 0).toFixed(2)})
+                </small>
+              </>
+            )}
+
+            <button
+              onClick={checkout}
+              style={{
+                background: "#43a047",
+                color: "white",
+                border: "none",
+                borderRadius: 6,
+                padding: "8px 12px",
+                cursor: "pointer",
+              }}
+            >
+              Checkout
+            </button>
+          </div>
+
+          <p style={{ marginTop: 8 }}>
+            <strong>Order Total (incl. delivery if any):</strong>{" "}
+            E£{
+              (
+                cart.reduce(
+                  (s, b) => s + Number(b.price || 0) + (b.extras || []).reduce((t, e) => t + Number(e.price || 0), 0),
+                  0
+                ) + (orderType === "Delivery" ? Number(deliveryFee || 0) : 0)
+              ).toFixed(2)
+            }
+          </p>
+        </div>
+      )}
 
       {/* ORDERS BOARD */}
       {activeTab === "board" && (
@@ -1719,7 +1942,873 @@ export default function App() {
         </div>
       )}
 
-      {/* The rest of your tabs (orders builder, inventory, expenses, bank, reports, prices) remain unchanged */}
+      {/* INVENTORY */}
+      {activeTab === "inventory" && (
+        <div>
+          <h2>Inventory</h2>
+
+          <div style={{ padding: 10, borderRadius: 6, background: inventoryLocked ? (dark ? "#2b3a2b" : "#e8f5e9") : (dark ? "#332d1e" : "#fffde7"), marginBottom: 10 }}>
+            {inventoryLocked ? (
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <strong>Locked:</strong>
+                <span>
+                  Start-of-day captured {inventoryLockedAt ? `at ${new Date(inventoryLockedAt).toLocaleString()}` : ""}.
+                  Editing disabled until <b>End the Day</b> or admin unlock.
+                </span>
+                <button
+                  onClick={unlockInventoryWithPin}
+                  style={{ background: "#8e24aa", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
+                >
+                  Unlock Inventory (Admin PIN)
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <span>Set your quantities, then:</span>
+                <button
+                  onClick={lockInventoryForDay}
+                  style={{ background: "#2e7d32", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
+                >
+                  Lock Inventory (start of day)
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div style={{ marginTop: 8 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ textAlign: "left" }}>
+                  <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Item</th>
+                  <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit</th>
+                  <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Qty</th>
+                  <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {inventory.map((it) => (
+                  <tr key={it.id}>
+                    <td style={{ padding: 6 }}>{it.name}</td>
+                    <td style={{ padding: 6 }}>{it.unit}</td>
+                    <td style={{ padding: 6 }}>
+                      <input
+                        type="number"
+                        value={it.qty}
+                        disabled={inventoryLocked}
+                        onChange={(e) => {
+                          const v = Math.max(0, Number(e.target.value || 0));
+                          setInventory((inv) => inv.map((x) => (x.id === it.id ? { ...x, qty: v } : x)));
+                        }}
+                        style={{ width: 120 }}
+                      />
+                    </td>
+                    <td style={{ padding: 6 }}>
+                      <button
+                        onClick={() => setInventory((inv) => inv.filter((x) => x.id !== it.id))}
+                        disabled={inventoryLocked}
+                        style={{ background: inventoryLocked ? "#ef9a9a" : "#ef5350", color: "white", border: "none", borderRadius: 6, padding: "4px 8px", cursor: inventoryLocked ? "not-allowed" : "pointer" }}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {inventory.length === 0 && (
+                  <tr>
+                    <td colSpan={4} style={{ padding: 6, color: dark ? "#bbb" : "#666" }}>
+                      No inventory items yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ marginTop: 12, padding: 10, background: softBg, borderRadius: 6 }}>
+            <strong>Add Inventory Item</strong>
+            <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+              <input placeholder="Name (e.g., Buns)" value={newInvName} onChange={(e) => setNewInvName(e.target.value)} disabled={inventoryLocked} />
+              <input placeholder="Unit (e.g., pcs/ml/g)" value={newInvUnit} onChange={(e) => setNewInvUnit(e.target.value)} disabled={inventoryLocked} />
+              <input type="number" placeholder="Qty" value={newInvQty} onChange={(e) => setNewInvQty(Number(e.target.value || 0))} disabled={inventoryLocked} />
+              <button
+                onClick={() => {
+                  const nm = newInvName.trim();
+                  const un = newInvUnit.trim() || "pcs";
+                  const id = nm.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "").slice(0, 24) || `inv_${Date.now()}`;
+                  if (!nm) return alert("Enter a name");
+                  if (inventory.find((x) => x.id === id)) return alert("An inventory item with similar name/id exists. Try a different name.");
+                  setInventory((inv) => [...inv, { id, name: nm, unit: un, qty: Math.max(0, newInvQty) }]);
+                  setNewInvName(""); setNewInvUnit(""); setNewInvQty(0);
+                }}
+                disabled={inventoryLocked}
+                style={{ background: inventoryLocked ? "#90caf9" : "#1976d2", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: inventoryLocked ? "not-allowed" : "pointer" }}
+              >
+                Add
+              </button>
+            </div>
+            {inventoryLocked && <div style={{ marginTop: 6, fontSize: 12, color: dark ? "#bbb" : "#666" }}>Locked — add/edit is disabled until End the Day or admin unlock.</div>}
+          </div>
+
+          {inventorySnapshot.length > 0 && (
+            <div style={{ marginTop: 12, padding: 10, background: softBg, borderRadius: 6 }}>
+              <strong>Start-of-Day Snapshot</strong>
+              <ul style={{ marginTop: 6 }}>
+                {inventorySnapshot.map((s) => (
+                  <li key={s.id}>
+                    {s.name}: {s.qtyAtLock} {s.unit}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* EXPENSES */}
+      {activeTab === "expenses" && (
+        <div>
+          <h2>Expenses</h2>
+
+          <div style={{ padding: 10, background: softBg, borderRadius: 6, marginBottom: 10 }}>
+            <strong>Add Expense</strong>
+            <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+              <input placeholder="Name" value={newExpName} onChange={(e) => setNewExpName(e.target.value)} style={{ minWidth: 200 }} />
+              <input placeholder="Unit (e.g., pcs/kg)" value={newExpUnit} onChange={(e) => setNewExpUnit(e.target.value)} style={{ width: 120 }} />
+              <input type="number" placeholder="Qty" value={newExpQty} onChange={(e) => setNewExpQty(Number(e.target.value || 0))} style={{ width: 110 }} />
+              <input type="number" placeholder="Unit Price (E£)" value={newExpUnitPrice} onChange={(e) => setNewExpUnitPrice(Number(e.target.value || 0))} style={{ width: 160 }} />
+              <input placeholder="Note" value={newExpNote} onChange={(e) => setNewExpNote(e.target.value)} style={{ minWidth: 200 }} />
+              <button
+                onClick={() => {
+                  const nm = newExpName.trim();
+                  if (!nm) return alert("Enter expense name");
+                  const exp = {
+                    id: `exp_${Date.now()}`,
+                    name: nm,
+                    unit: newExpUnit.trim() || "pcs",
+                    qty: Math.max(0, Number(newExpQty || 0)),
+                    unitPrice: Math.max(0, Number(newExpUnitPrice || 0)),
+                    date: new Date(),
+                    note: newExpNote.trim(),
+                  };
+                  setExpenses((e) => [exp, ...e]);
+                  setNewExpName(""); setNewExpUnit("pcs"); setNewExpQty(1); setNewExpUnitPrice(0); setNewExpNote("");
+                }}
+                style={{ background: "#1976d2", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
+              >
+                Add
+              </button>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 8 }}>
+            <strong>
+              Total Expenses: E£
+              {expenses.reduce((s, e) => s + (Number(e.qty || 0) * Number(e.unitPrice || 0)), 0).toFixed(2)}
+            </strong>
+          </div>
+
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Name</th>
+                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit</th>
+                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Qty</th>
+                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit Price</th>
+                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Total</th>
+                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Date</th>
+                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Note</th>
+                <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {expenses.map((e) => (
+                <tr key={e.id}>
+                  <td style={{ padding: 6 }}>{e.name}</td>
+                  <td style={{ padding: 6 }}>{e.unit}</td>
+                  <td style={{ padding: 6, textAlign: "right" }}>{e.qty}</td>
+                  <td style={{ padding: 6, textAlign: "right" }}>{Number(e.unitPrice || 0).toFixed(2)}</td>
+                  <td style={{ padding: 6, textAlign: "right" }}>{(Number(e.qty || 0) * Number(e.unitPrice || 0)).toFixed(2)}</td>
+                  <td style={{ padding: 6 }}>{e.date ? new Date(e.date).toLocaleString() : ""}</td>
+                  <td style={{ padding: 6 }}>{e.note || ""}</td>
+                  <td style={{ padding: 6 }}>
+                    <button
+                      onClick={() => setExpenses((arr) => arr.filter((x) => x.id !== e.id))}
+                      style={{ background: "#ef5350", color: "white", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {expenses.length === 0 && (
+                <tr>
+                  <td colSpan={8} style={{ padding: 6, color: dark ? "#bbb" : "#666" }}>
+                    No expenses yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* BANK (PIN protected) */}
+      {activeTab === "bank" && (
+        <div>
+          <h2>Bank / Cash on Hand</h2>
+
+          {!bankUnlocked ? (
+            <div style={{ padding: 10, background: softBg, borderRadius: 6 }}>
+              <p>This tab is protected. Please reopen it and pass Admin PIN.</p>
+            </div>
+          ) : (
+            <>
+              <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+                <div><strong>Balance:</strong> E£{Number(bankBalance || 0).toFixed(2)}</div>
+              </div>
+
+              <div style={{ padding: 10, background: softBg, borderRadius: 6, marginBottom: 12 }}>
+                <strong>Add Transaction</strong>
+                <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                  <select value={bankForm.type} onChange={(e) => setBankForm((f) => ({ ...f, type: e.target.value }))}>
+                    <option value="deposit">Deposit</option>
+                    <option value="withdraw">Withdraw</option>
+                    <option value="init">Init Balance</option>
+                    <option value="adjustUp">Adjust Up</option>
+                    <option value="adjustDown">Adjust Down</option>
+                  </select>
+                  <input type="number" placeholder="Amount" value={bankForm.amount} onChange={(e) => setBankForm((f) => ({ ...f, amount: Number(e.target.value || 0) }))} style={{ width: 140 }} />
+                  <input placeholder="Worker (optional)" value={bankForm.worker} onChange={(e) => setBankForm((f) => ({ ...f, worker: e.target.value }))} />
+                  <input placeholder="Note" value={bankForm.note} onChange={(e) => setBankForm((f) => ({ ...f, note: e.target.value }))} style={{ minWidth: 200 }} />
+                  <button
+                    onClick={() => {
+                      const a = Number(bankForm.amount || 0);
+                      if (a <= 0) return alert("Enter amount");
+                      const tx = { id: `tx_${Date.now()}`, ...bankForm, date: new Date() };
+                      setBankTx((arr) => [tx, ...arr]);
+                      setBankForm({ type: "deposit", amount: 0, worker: "", note: "" });
+                    }}
+                    style={{ background: "#1976d2", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Type</th>
+                    <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Amount (E£)</th>
+                    <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Worker</th>
+                    <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Note</th>
+                    <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Date</th>
+                    <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bankTx.map((t) => (
+                    <tr key={t.id}>
+                      <td style={{ padding: 6 }}>{t.type}</td>
+                      <td style={{ padding: 6, textAlign: "right" }}>{Number(t.amount || 0).toFixed(2)}</td>
+                      <td style={{ padding: 6 }}>{t.worker || ""}</td>
+                      <td style={{ padding: 6 }}>{t.note || ""}</td>
+                      <td style={{ padding: 6 }}>{t.date ? new Date(t.date).toLocaleString() : ""}</td>
+                      <td style={{ padding: 6 }}>
+                        <button
+                          onClick={() => setBankTx((arr) => arr.filter((x) => x.id !== t.id))}
+                          style={{ background: "#ef5350", color: "white", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {bankTx.length === 0 && (
+                    <tr>
+                      <td colSpan={6} style={{ padding: 6, color: dark ? "#bbb" : "#666" }}>
+                        No transactions yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* REPORTS */}
+      {activeTab === "reports" && (
+        <div>
+          <h2>Reports — TUX</h2>
+
+          <div style={{ marginBottom: 8, padding: 10, background: softBg, borderRadius: 6 }}>
+            <div><strong>Shift:</strong> {dayMeta.startedAt ? `Started by ${dayMeta.startedBy} at ${new Date(dayMeta.startedAt).toLocaleString()}` : "Not started"}</div>
+            {dayMeta.endedAt && <div><strong>Ended At:</strong> {new Date(dayMeta.endedAt).toLocaleString()}</div>}
+            {dayMeta.shiftChanges?.length ? (
+              <div style={{ marginTop: 4 }}>
+                <strong>Shift Changes:</strong>{" "}
+                {dayMeta.shiftChanges.map((c, i) => (
+                  <span key={i} style={{ marginRight: 8 }}>
+                    #{i + 1}: {c.from} → {c.to} @ {c.at ? new Date(c.at).toLocaleString() : "—"}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
+          <div style={{ marginBottom: 10, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+              <option value="date-desc">Sort by Date (Newest)</option>
+              <option value="date-asc">Sort by Date (Oldest)</option>
+              <option value="worker">Sort by Worker</option>
+              <option value="payment">Sort by Payment</option>
+            </select>
+            <button
+              onClick={() => generatePDF()}
+              style={{
+                background: "#7e57c2",
+                color: "white",
+                border: "none",
+                borderRadius: 6,
+                padding: "6px 10px",
+                cursor: "pointer",
+              }}
+            >
+              Download PDF Report
+            </button>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              gap: 16,
+              flexWrap: "wrap",
+              padding: 10,
+              background: softBg,
+              borderRadius: 6,
+              marginBottom: 12,
+            }}
+          >
+            <div><strong>Revenue (Shift):</strong> E£{totals.revenueTotal.toFixed(2)}</div>
+            <div><strong>Delivery Fees:</strong> E£{totals.deliveryFeesTotal.toFixed(2)}</div>
+            <div><strong>Expenses (Shift):</strong> E£{totals.expensesTotal.toFixed(2)}</div>
+            <div><strong>Margin:</strong> E£{totals.margin.toFixed(2)}</div>
+            {Object.keys(totals.byPay).map((k) => (
+              <div key={k}><strong>{k}:</strong> E£{(totals.byPay[k] || 0).toFixed(2)}</div>
+            ))}
+            {Object.keys(totals.byType).map((k) => (
+              <div key={k}><strong>{k}:</strong> E£{(totals.byType[k] || 0).toFixed(2)}</div>
+            ))}
+          </div>
+
+          <div style={{ marginTop: 12, padding: 10, background: softBg , borderRadius: 6 }}>
+            {/* Top Items & Extras */}
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+              <div style={{ flex: 1, minWidth: 280 }}>
+                <h3 style={{ marginTop: 0 }}>Items — Times Ordered</h3>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Item</th>
+                      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Times</th>
+                      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Revenue (E£)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {salesStats.items.map((r) => (
+                      <tr key={r.id}>
+                        <td style={{ padding: 6 }}>{r.name}</td>
+                        <td style={{ padding: 6, textAlign: "right" }}>{r.count}</td>
+                        <td style={{ padding: 6, textAlign: "right" }}>{r.revenue.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                    {salesStats.items.length === 0 && (
+                      <tr>
+                        <td colSpan={3} style={{ padding: 6, color: dark ? "#bbb" : "#666" }}>
+                          No item sales yet.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div style={{ flex: 1, minWidth: 280 }}>
+                <h3 style={{ marginTop: 0 }}>Extras — Times Ordered</h3>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Extra</th>
+                      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Times</th>
+                      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Revenue (E£)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {salesStats.extras.map((r) => (
+                      <tr key={r.id}>
+                        <td style={{ padding: 6 }}>{r.name}</td>
+                        <td style={{ padding: 6, textAlign: "right" }}>{r.count}</td>
+                        <td style={{ padding: 6, textAlign: "right" }}>{r.revenue.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                    {salesStats.extras.length === 0 && (
+                      <tr>
+                        <td colSpan={3} style={{ padding: 6, color: dark ? "#bbb" : "#666" }}>
+                          No extra sales yet.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PRICES (PIN gated by Editor PIN) */}
+      {activeTab === "prices" && (
+        <div>
+          <h2>Prices & Settings</h2>
+
+          {/* Menu editor */}
+          <div style={{ marginBottom: 16, padding: 10, background: softBg, borderRadius: 6 }}>
+            <h3 style={{ marginTop: 0 }}>Menu Items</h3>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Name</th>
+                  <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Price (E£)</th>
+                  <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Uses</th>
+                  <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {menu.map((m) => (
+                  <tr key={m.id}>
+                    <td style={{ padding: 6 }}>
+                      <input
+                        value={m.name}
+                        onChange={(e) =>
+                          setMenu((arr) =>
+                            arr.map((x) => (x.id === m.id ? { ...x, name: e.target.value } : x))
+                          )
+                        }
+                        style={{ width: "100%" }}
+                      />
+                    </td>
+                    <td style={{ padding: 6, textAlign: "right" }}>
+                      <input
+                        type="number"
+                        value={m.price}
+                        onChange={(e) =>
+                          setMenu((arr) =>
+                            arr.map((x) => (x.id === m.id ? { ...x, price: Number(e.target.value || 0) } : x))
+                          )
+                        }
+                        style={{ width: 120, textAlign: "right" }}
+                      />
+                    </td>
+                    <td style={{ padding: 6 }}>
+                      <button
+                        onClick={() =>
+                          setUsesEditOpenMenu((s) => ({ ...s, [m.id]: !s[m.id] }))
+                        }
+                        style={{ background: "#1976d2", color: "white", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}
+                      >
+                        {usesEditOpenMenu[m.id] ? "Hide Uses" : "Edit Uses"}
+                      </button>
+                      {usesEditOpenMenu[m.id] && (
+                        <div style={{ marginTop: 8, display: "grid", gap: 6, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+                          {inventory.map((inv) => {
+                            const v = (m.uses && m.uses[inv.id]) || 0;
+                            return (
+                              <label key={inv.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <span style={{ minWidth: 90 }}>{inv.name} ({inv.unit}):</span>
+                                <input
+                                  type="number"
+                                  value={v}
+                                  onChange={(e) => {
+                                    const num = Math.max(0, Number(e.target.value || 0));
+                                    setMenu((arr) =>
+                                      arr.map((x) =>
+                                        x.id === m.id ? { ...x, uses: { ...(x.uses || {}), [inv.id]: num } } : x
+                                      )
+                                    );
+                                  }}
+                                  style={{ width: 100 }}
+                                />
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ padding: 6 }}>
+                      <button
+                        onClick={() => setMenu((arr) => arr.filter((x) => x.id !== m.id))}
+                        style={{ background: "#ef5350", color: "white", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {menu.length === 0 && (
+                  <tr>
+                    <td colSpan={4} style={{ padding: 6, color: dark ? "#bbb" : "#666" }}>
+                      No menu items yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+
+            <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <input
+                placeholder="New item name"
+                value={newMenuName}
+                onChange={(e) => setNewMenuName(e.target.value)}
+                style={{ minWidth: 220 }}
+              />
+              <input
+                type="number"
+                placeholder="Price (E£)"
+                value={newMenuPrice}
+                onChange={(e) => setNewMenuPrice(Number(e.target.value || 0))}
+                style={{ width: 140 }}
+              />
+              <button
+                onClick={() => {
+                  const nm = newMenuName.trim();
+                  if (!nm) return alert("Enter item name");
+                  const nextId = Math.max(0, ...menu.map((x) => Number(x.id) || 0), ...extraList.map((x) => Number(x.id) || 0)) + 1;
+                  setMenu((arr) => [...arr, { id: nextId, name: nm, price: Math.max(0, newMenuPrice), uses: {} }]);
+                  setNewMenuName("");
+                  setNewMenuPrice(0);
+                }}
+                style={{ background: "#1976d2", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
+              >
+                Add Menu Item
+              </button>
+            </div>
+          </div>
+
+          {/* Extras editor */}
+          <div style={{ marginBottom: 16, padding: 10, background: softBg, borderRadius: 6 }}>
+            <h3 style={{ marginTop: 0 }}>Extras</h3>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Name</th>
+                  <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Price (E£)</th>
+                  <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Uses</th>
+                  <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {extraList.map((ex) => (
+                  <tr key={ex.id}>
+                    <td style={{ padding: 6 }}>
+                      <input
+                        value={ex.name}
+                        onChange={(e) =>
+                          setExtraList((arr) =>
+                            arr.map((x) => (x.id === ex.id ? { ...x, name: e.target.value } : x))
+                          )
+                        }
+                        style={{ width: "100%" }}
+                      />
+                    </td>
+                    <td style={{ padding: 6, textAlign: "right" }}>
+                      <input
+                        type="number"
+                        value={ex.price}
+                        onChange={(e) =>
+                          setExtraList((arr) =>
+                            arr.map((x) => (x.id === ex.id ? { ...x, price: Number(e.target.value || 0) } : x))
+                          )
+                        }
+                        style={{ width: 120, textAlign: "right" }}
+                      />
+                    </td>
+                    <td style={{ padding: 6 }}>
+                      <button
+                        onClick={() =>
+                          setUsesEditOpenExtra((s) => ({ ...s, [ex.id]: !s[ex.id] }))
+                        }
+                        style={{ background: "#1976d2", color: "white", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}
+                      >
+                        {usesEditOpenExtra[ex.id] ? "Hide Uses" : "Edit Uses"}
+                      </button>
+                      {usesEditOpenExtra[ex.id] && (
+                        <div style={{ marginTop: 8, display: "grid", gap: 6, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+                          {inventory.map((inv) => {
+                            const v = (ex.uses && ex.uses[inv.id]) || 0;
+                            return (
+                              <label key={inv.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <span style={{ minWidth: 90 }}>{inv.name} ({inv.unit}):</span>
+                                <input
+                                  type="number"
+                                  value={v}
+                                  onChange={(e) => {
+                                    const num = Math.max(0, Number(e.target.value || 0));
+                                    setExtraList((arr) =>
+                                      arr.map((x) =>
+                                        x.id === ex.id ? { ...x, uses: { ...(x.uses || {}), [inv.id]: num } } : x
+                                      )
+                                    );
+                                  }}
+                                  style={{ width: 100 }}
+                                />
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ padding: 6 }}>
+                      <button
+                        onClick={() => setExtraList((arr) => arr.filter((x) => x.id !== ex.id))}
+                        style={{ background: "#ef5350", color: "white", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {extraList.length === 0 && (
+                  <tr>
+                    <td colSpan={4} style={{ padding: 6, color: dark ? "#bbb" : "#666" }}>
+                      No extras yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+
+            <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <input
+                placeholder="New extra name"
+                value={newExtraName}
+                onChange={(e) => setNewExtraName(e.target.value)}
+                style={{ minWidth: 220 }}
+              />
+              <input
+                type="number"
+                placeholder="Price (E£)"
+                value={newExtraPrice}
+                onChange={(e) => setNewExtraPrice(Number(e.target.value || 0))}
+                style={{ width: 140 }}
+              />
+              <button
+                onClick={() => {
+                  const nm = newExtraName.trim();
+                  if (!nm) return alert("Enter extra name");
+                  const nextId = Math.max(0, ...menu.map((x) => Number(x.id) || 0), ...extraList.map((x) => Number(x.id) || 0)) + 1;
+                  setExtraList((arr) => [...arr, { id: nextId, name: nm, price: Math.max(0, newExtraPrice), uses: {} }]);
+                  setNewExtraName("");
+                  setNewExtraPrice(0);
+                }}
+                style={{ background: "#1976d2", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
+              >
+                Add Extra
+              </button>
+            </div>
+          </div>
+
+          {/* Order types & delivery fee */}
+          <div style={{ marginBottom: 16, padding: 10, background: softBg, borderRadius: 6 }}>
+            <h3 style={{ marginTop: 0 }}>Order Options</h3>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
+              {orderTypes.map((t) => (
+                <span key={t} style={{ display: "inline-flex", alignItems: "center", gap: 6, border: `1px solid ${btnBorder}`, borderRadius: 6, padding: "4px 8px" }}>
+                  {t}
+                  <button
+                    onClick={() => setOrderTypes((arr) => arr.filter((x) => x !== t))}
+                    style={{ background: "#ef5350", color: "white", border: "none", borderRadius: 4, padding: "2px 6px", cursor: "pointer" }}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+              <input
+                placeholder="Add order type"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    const v = String(e.currentTarget.value || "").trim();
+                    if (!v) return;
+                    if (orderTypes.includes(v)) return alert("Type already exists.");
+                    setOrderTypes((arr) => [...arr, v]);
+                    e.currentTarget.value = "";
+                  }
+                }}
+                style={{ minWidth: 180 }}
+              />
+            </div>
+            <div>
+              <label>
+                Default Delivery Fee (E£):&nbsp;
+                <input
+                  type="number"
+                  value={defaultDeliveryFee}
+                  onChange={(e) => setDefaultDeliveryFee(Number(e.target.value || 0))}
+                  style={{ width: 140 }}
+                />
+              </label>
+            </div>
+          </div>
+
+          {/* Workers & payments */}
+          <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
+            <div style={{ padding: 10, background: softBg, borderRadius: 6 }}>
+              <h3 style={{ marginTop: 0 }}>Workers</h3>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                {workers.map((w) => (
+                  <span key={w} style={{ display: "inline-flex", alignItems: "center", gap: 6, border: `1px solid ${btnBorder}`, borderRadius: 6, padding: "4px 8px" }}>
+                    {w}
+                    <button
+                      onClick={() => setWorkers((arr) => arr.filter((x) => x !== w))}
+                      style={{ background: "#ef5350", color: "white", border: "none", borderRadius: 4, padding: "2px 6px", cursor: "pointer" }}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  placeholder="Add worker"
+                  value={newWorker}
+                  onChange={(e) => setNewWorker(e.target.value)}
+                  style={{ flex: 1 }}
+                />
+                <button
+                  onClick={() => {
+                    const v = newWorker.trim();
+                    if (!v) return;
+                    if (workers.includes(v)) return alert("Worker already exists.");
+                    setWorkers((arr) => [...arr, v]);
+                    setNewWorker("");
+                  }}
+                  style={{ background: "#1976d2", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+
+            <div style={{ padding: 10, background: softBg, borderRadius: 6 }}>
+              <h3 style={{ marginTop: 0 }}>Payment Methods</h3>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                {paymentMethods.map((p) => (
+                  <span key={p} style={{ display: "inline-flex", alignItems: "center", gap: 6, border: `1px solid ${btnBorder}`, borderRadius: 6, padding: "4px 8px" }}>
+                    {p}
+                    <button
+                      onClick={() => setPaymentMethods((arr) => arr.filter((x) => x !== p))}
+                      style={{ background: "#ef5350", color: "white", border: "none", borderRadius: 4, padding: "2px 6px", cursor: "pointer" }}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  placeholder="Add payment method"
+                  value={newPayment}
+                  onChange={(e) => setNewPayment(e.target.value)}
+                  style={{ flex: 1 }}
+                />
+                <button
+                  onClick={() => {
+                    const v = newPayment.trim();
+                    if (!v) return;
+                    if (paymentMethods.includes(v)) return alert("Payment method already exists.");
+                    setPaymentMethods((arr) => [...arr, v]);
+                    setNewPayment("");
+                  }}
+                  style={{ background: "#1976d2", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Admin PINs */}
+          <div style={{ marginTop: 16, padding: 10, background: softBg, borderRadius: 6 }}>
+            <h3 style={{ marginTop: 0 }}>Admin PINs (1–6)</h3>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Admin #</th>
+                  <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>PIN</th>
+                  <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[1,2,3,4,5,6].map((n) => (
+                  <tr key={n}>
+                    <td style={{ padding: 6 }}>Admin {n}</td>
+                    <td style={{ padding: 6 }}>
+                      <input
+                        type="password"
+                        value={adminPins[n] || ""}
+                        disabled={!adminPinsEditUnlocked[n]}
+                        onChange={(e) =>
+                          setAdminPins((p) => ({ ...p, [n]: e.target.value }))
+                        }
+                        style={{ width: 180 }}
+                      />
+                    </td>
+                    <td style={{ padding: 6 }}>
+                      {!adminPinsEditUnlocked[n] ? (
+                        <button
+                          onClick={() => {
+                            const ok = promptAdminAndPin();
+                            if (ok === n) {
+                              setAdminPinsEditUnlocked((s) => ({ ...s, [n]: true }));
+                            } else if (ok) {
+                              alert("You unlocked a different admin. Try again.");
+                            }
+                          }}
+                          style={{ background: "#1976d2", color: "white", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}
+                        >
+                          Unlock row
+                        </button>
+                      ) : (
+                                               <button
+                          onClick={() =>
+                            setAdminPinsEditUnlocked((s) => ({ ...s, [n]: false }))
+                          }
+                          style={{
+                            background: "#43a047",
+                            color: "white",
+                            border: "none",
+                            borderRadius: 6,
+                            padding: "4px 8px",
+                            cursor: "pointer",
+                          }}
+                        >
+                          Save & Lock
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div style={{ marginTop: 8, fontSize: 12, color: dark ? "#bbb" : "#666" }}>
+              Prices tab is protected by an Editor PIN. Admin rows can be edited after unlocking with a valid Admin PIN (1–6).
+            </div>
+          </div>
+        </div>
+      )}
+      {/* END PRICES TAB */}
+
     </div>
   );
 }
