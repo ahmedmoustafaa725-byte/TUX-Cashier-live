@@ -1177,7 +1177,10 @@ export default function App() {
 
 
       // Cut the page height to content
-      const finalHeight = Math.min(MAX_H, y + margin);
+/* eslint-disable-next-line no-unused-vars */
+const finalHeight = ...;
+
+    
       // jsPDF can't change page size after creation easily; but printing trims whitespace automatically.
 
       if (opts?.autoPrint) {
@@ -2444,4 +2447,5 @@ export default function App() {
     </div>
   );
 }
+
 
