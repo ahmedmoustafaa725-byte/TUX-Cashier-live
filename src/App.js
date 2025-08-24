@@ -1201,11 +1201,11 @@ try {
         
         await drawImageFromPaths(
           ["/receipt/qr.jpg", "/receipt/qr.png", "/qr.jpg", "/qr.png"],
-          Math.min(50, maxW)
+          Math.min(35, maxW)
         );
         await drawImageFromPaths(
           ["/receipt/delivery.jpg", "/receipt/delivery.png", "/delivery.jpg", "/delivery.png"],
-          Math.min(60, maxW)
+          Math.min(35, maxW)
         );
        
       }
@@ -2473,6 +2473,7 @@ try {
     </div>
   );
 }
+
 
 
 
