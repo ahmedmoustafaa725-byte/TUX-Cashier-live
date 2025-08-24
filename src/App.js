@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { printReceiptDirect, choosePrintersViaPrompt } from "./posPrint";
+import { printReceiptDirect} from "./posPrint";
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth, onAuthStateChanged, signInAnonymously } from "firebase/auth";
 import {
@@ -2474,4 +2474,5 @@ try {
     </div>
   );
 }
+
 
