@@ -214,50 +214,48 @@ async function loadAsDataURL(path) {
     r.readAsDataURL(blob);
   });
 }
-// ---- Helper: open jsPDF in hidden iframe and trigger browser print ----
-function printJsPdfToDefaultPrinter(doc, filename = "receipt.pdf") {
+
+// ---- Helper: open jsPDF in a (pre-opened) tab and trigger print ----
+// **** CHANGED: now accepts preOpenWin to preserve the user gesture on Netlify/Edge ****
+function printJsPdfToDefaultPrinter(doc, filename = "receipt.pdf", preOpenWin) {
   try {
-    // Ask the PDF viewer to open the print dialog when possible
     if (typeof doc.autoPrint === "function") doc.autoPrint();
 
     const blob = doc.output("blob");
     const blobUrl = URL.createObjectURL(blob);
 
-    const iframe = document.createElement("iframe");
-    iframe.style.position = "fixed";
-    iframe.style.right = "0";
-    iframe.style.bottom = "0";
-    iframe.style.width = "0";
-    iframe.style.height = "0";
-    iframe.style.border = "0";
-    iframe.src = blobUrl;
+    // Use the tab that was opened synchronously in the button click.
+    // If not provided (e.g., direct board print), open one now.
+    const win = preOpenWin || window.open("about:blank", "_blank", "noopener,noreferrer");
+    if (!win) {
+      // Popup blocked → fallback to download
+      doc.save(filename);
+      return;
+    }
 
-    iframe.onload = () => {
-      // Allow the PDF plugin to initialize
-      setTimeout(() => {
-        try {
-          if (iframe.contentWindow) {
-            iframe.contentWindow.focus();
-            iframe.contentWindow.print();
-          }
-        } finally {
-          // Cleanup
-          setTimeout(() => {
-            URL.revokeObjectURL(blobUrl);
-            if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-          }, 1000);
-        }
-      }, 250);
-    };
+    // Inject a hidden iframe that loads the PDF, then trigger print.
+    win.document.write(
+      `<iframe src="${blobUrl}" style="position:fixed;right:0;bottom:0;width:0;height:0;border:0;"></iframe>`
+    );
+    win.document.close();
 
-    document.body.appendChild(iframe);
+    setTimeout(() => {
+      try {
+        win.focus();
+        win.print();
+      } finally {
+        setTimeout(() => {
+          try { win.close(); } catch {}
+          URL.revokeObjectURL(blobUrl);
+        }, 500);
+      }
+    }, 250);
   } catch (err) {
     console.error("printJsPdfToDefaultPrinter failed:", err);
     // Fallback: download
     doc.save(filename);
   }
 }
-
 
 /* --------------------------- BASE DATA --------------------------- */
 const BASE_MENU = [
@@ -781,7 +779,8 @@ export default function App() {
 
   const removeFromCart = (i) => setCart((c) => c.filter((_, idx) => idx !== i));
 
-  const checkout = async () => {
+  // **** CHANGED: checkout now accepts preOpenWin (tab opened under the click) ****
+  const checkout = async (preOpenWin) => {
     if (isCheckingOut) return;
     setIsCheckingOut(true);
 
@@ -847,13 +846,11 @@ export default function App() {
         idemKey: `idk_${fbUser ? fbUser.uid : "anon"}_${Date.now()}_${Math.random().toString(36).slice(2)}`,
       };
 
-      // ✅ Always reflect the order immediately in UI (even when realtime is ON)
-      setOrders((o) => [order, ...o]);
+      if (!realtimeOrders) setOrders((o) => [order, ...o]);
 
       if (cloudEnabled && ordersColRef && fbUser) {
         try {
           const ref = await addDoc(ordersColRef, normalizeOrderForCloud(order));
-          // keep cloudId in non-realtime mode (realtime replaces state via snapshot)
           if (!realtimeOrders) {
             setOrders((prev) => prev.map((oo) => (oo.orderNo === order.orderNo ? { ...oo, cloudId: ref.id } : oo)));
           }
@@ -862,11 +859,11 @@ export default function App() {
         }
       }
 
-      // 🔸 Auto-print the receipt (uses preferred width; default 80mm)
+      // 🔸 Auto-print the receipt
       if (autoPrintOnCheckout) {
-        await printThermalTicket(order, Number(preferredPaperWidthMm) || 80, "Customer", { autoPrint: true });
+        await printThermalTicket(order, Number(preferredPaperWidthMm) || 80, "Customer", { autoPrint: true, preOpenWin });
       } else {
-        await printThermalTicket(order, Number(preferredPaperWidthMm) || 80, "Customer", { autoPrint: false });
+        await printThermalTicket(order, Number(preferredPaperWidthMm) || 80, "Customer", { autoPrint: false, preOpenWin });
       }
 
       setCart([]);
@@ -875,9 +872,6 @@ export default function App() {
       setOrderNote("");
       setOrderType(orderTypes[0] || "Take-Away");
       setDeliveryFee(orderType === "Delivery" ? defaultDeliveryFee : 0);
-
-      // ✅ Clear confirmation so it never feels like “nothing happened”
-      alert(`Order #${allocatedNo} placed ✔`);
     } finally {
       setIsCheckingOut(false);
     }
@@ -1120,117 +1114,110 @@ export default function App() {
     }
   };
 
-  // --------------------------- PDF: THERMAL (with auto-print) ---------------------------
-  /**
-   * Prints ticket as an 80mm/58mm PDF.
-   * opts.autoPrint = true will open a new tab with print dialog automatically.
-   * NOTE: Browsers control the final "Fit to printable area" toggle. We size the page to widthMm for best results.
-   */
-// --------------------------- PDF: THERMAL ---------------------------
-// --------------------------- PDF: THERMAL ---------------------------
-const printThermalTicket = async (order, widthMm = 80, copy = "Customer", opts = { autoPrint: false }) => {
-  try {
-    if (order.voided) return alert("This order is voided; no tickets can be printed.");
-    if (order.done && copy === "Kitchen") return alert("Order is done; kitchen ticket not available.");
+  // --------------------------- PDF: THERMAL ---------------------------
+  // **** CHANGED: forward opts.preOpenWin down to the low-level printer ****
+  const printThermalTicket = async (order, widthMm = 80, copy = "Customer", opts = { autoPrint: false, preOpenWin: null }) => {
+    try {
+      if (order.voided) return alert("This order is voided; no tickets can be printed.");
+      if (order.done && copy === "Kitchen") return alert("Order is done; kitchen ticket not available.");
 
-    const MAX_H = 1000;
-    const doc = new jsPDF({ unit: "mm", format: [widthMm, MAX_H], compress: true });
+      const MAX_H = 1000;
+      const doc = new jsPDF({ unit: "mm", format: [widthMm, MAX_H], compress: true });
 
-    const margin = 4;
-    const colRight = widthMm - margin;
-    let y = margin;
+      const margin = 4;
+      const colRight = widthMm - margin;
+      let y = margin;
 
-    const safe = (s) => String(s ?? "").replace(/[\u2013\u2014]/g, "-");
+      const safe = (s) => String(s ?? "").replace(/[\u2013\u2014]/g, "-");
 
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(12);
-    doc.text(safe("TUX - Burger Truck"), margin, y); y += 6;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(12);
+      doc.text(safe("TUX - Burger Truck"), margin, y); y += 6;
 
-    doc.setFontSize(9);
-    doc.text(`${safe(copy)} Copy`, margin, y); y += 5;
+      doc.setFontSize(9);
+      doc.text(`${safe(copy)} Copy`, margin, y); y += 5;
 
-    doc.text(`Order #${order.orderNo}`, margin, y); y += 4;
-    doc.text(new Date(order.date).toLocaleString(), margin, y); y += 5;
+      doc.text(`Order #${order.orderNo}`, margin, y); y += 4;
+      doc.text(new Date(order.date).toLocaleString(), margin, y); y += 5;
 
-    doc.text(`Worker: ${safe(order.worker)}`, margin, y); y += 4;
-    doc.text(`Payment: ${safe(order.payment)} | Type: ${safe(order.orderType)}`, margin, y); y += 5;
+      doc.text(`Worker: ${safe(order.worker)}`, margin, y); y += 4;
+      doc.text(`Payment: ${safe(order.payment)} | Type: ${safe(order.orderType)}`, margin, y); y += 5;
 
-    if (order.orderType === "Delivery") {
-      doc.text(`Delivery Fee: E£${(order.deliveryFee || 0).toFixed(2)}`, margin, y);
-      y += 5;
-    }
+      if (order.orderType === "Delivery") {
+        doc.text(`Delivery Fee: E£${(order.deliveryFee || 0).toFixed(2)}`, margin, y);
+        y += 5;
+      }
 
-    if (order.note) {
-      doc.text("NOTE:", margin, y); y += 5;
-      const wrapped = doc.splitTextToSize(safe(order.note), widthMm - margin * 2);
-      wrapped.forEach(line => { doc.text(line, margin, y); y += 4; });
-      y += 2;
-    }
+      if (order.note) {
+        doc.text("NOTE:", margin, y); y += 5;
+        const wrapped = doc.splitTextToSize(safe(order.note), widthMm - margin * 2);
+        wrapped.forEach(line => { doc.text(line, margin, y); y += 4; });
+        y += 2;
+      }
 
-    doc.text("Items", margin, y); y += 5;
+      doc.text("Items", margin, y); y += 5;
 
-    (order.cart || []).forEach((ci) => {
-      const nameWrapped = doc.splitTextToSize(safe(ci.name), widthMm - margin * 2);
-      nameWrapped.forEach((w, i) => {
-        doc.text(w, margin, y);
-        if (i === 0) doc.text(`E£${Number(ci.price || 0).toFixed(2)}`, colRight, y, { align: "right" });
-        y += 4;
-      });
-      (ci.extras || []).forEach((ex) => {
-        const exWrapped = doc.splitTextToSize(`+ ${safe(ex.name)}`, widthMm - margin * 2 - 2);
-        exWrapped.forEach((w, i) => {
-          doc.text(w, margin + 2, y);
-          if (i === 0) doc.text(`E£${Number(ex.price || 0).toFixed(2)}`, colRight, y, { align: "right" });
+      (order.cart || []).forEach((ci) => {
+        const nameWrapped = doc.splitTextToSize(safe(ci.name), widthMm - margin * 2);
+        nameWrapped.forEach((w, i) => {
+          doc.text(w, margin, y);
+          if (i === 0) doc.text(`E£${Number(ci.price || 0).toFixed(2)}`, colRight, y, { align: "right" });
           y += 4;
         });
-      });
-      y += 1;
-    });
-
-    doc.line(margin, y, widthMm - margin, y); y += 3;
-    doc.text("TOTAL", margin, y);
-    doc.text(`E£${Number(order.total || 0).toFixed(2)}`, widthMm - margin, y, { align: "right" });
-    y += 6;
-
-    doc.setFontSize(8);
-    if (order.voided) doc.text("VOIDED / RESTOCKED", margin, y);
-    else if (order.done) doc.text("DONE", margin, y);
-    else doc.text("Thank you! @TUX", margin, y);
-    y += 4;
-
-    // Optional footer image on CUSTOMER copy (place /public/tux-receipt.jpg)
-    if (copy === "Customer") {
-      try {
-        const imgData = await loadAsDataURL("/tux-receipt.jpg");
-        const im = await new Promise((resolve, reject) => {
-          const _im = new Image();
-          _im.onload = () => resolve(_im);
-          _im.onerror = reject;
-          _im.src = imgData;
+        (ci.extras || []).forEach((ex) => {
+          const exWrapped = doc.splitTextToSize(`+ ${safe(ex.name)}`, widthMm - margin * 2 - 2);
+          exWrapped.forEach((w, i) => {
+            doc.text(w, margin + 2, y);
+            if (i === 0) doc.text(`E£${Number(ex.price || 0).toFixed(2)}`, colRight, y, { align: "right" });
+            y += 4;
+          });
         });
+        y += 1;
+      });
 
-        const maxW = Math.max(10, widthMm - margin * 2);
-        const aspect = im.width > 0 ? im.height / im.width : 1;
-        const drawW = Math.min(60, maxW);
-        const drawH = drawW * aspect;
-        const x = (widthMm - drawW) / 2;
+      doc.line(margin, y, widthMm - margin, y); y += 3;
+      doc.text("TOTAL", margin, y);
+      doc.text(`E£${Number(order.total || 0).toFixed(2)}`, widthMm - margin, y, { align: "right" });
+      y += 6;
 
-        doc.addImage(imgData, "JPEG", x, y, drawW, drawH);
-      } catch { /* no image, continue */ }
+      doc.setFontSize(8);
+      if (order.voided) doc.text("VOIDED / RESTOCKED", margin, y);
+      else if (order.done) doc.text("DONE", margin, y);
+      else doc.text("Thank you! @TUX", margin, y);
+      y += 4;
+
+      // Optional footer image on CUSTOMER copy (place /public/tux-receipt.jpg)
+      if (copy === "Customer") {
+        try {
+          const imgData = await loadAsDataURL("/tux-receipt.jpg");
+          const im = await new Promise((resolve, reject) => {
+            const _im = new Image();
+            _im.onload = () => resolve(_im);
+            _im.onerror = reject;
+            _im.src = imgData;
+          });
+
+          const maxW = Math.max(10, widthMm - margin * 2);
+          const aspect = im.width > 0 ? im.height / im.width : 1;
+          const drawW = Math.min(60, maxW);
+          const drawH = drawW * aspect;
+          const x = (widthMm - drawW) / 2;
+
+          doc.addImage(imgData, "JPEG", x, y, drawW, drawH);
+        } catch { /* no image, continue */ }
+      }
+
+      const filename = `tux_${copy.toLowerCase()}_${widthMm}mm_order_${order.orderNo}.pdf`;
+      if (opts?.autoPrint) {
+        printJsPdfToDefaultPrinter(doc, filename, opts?.preOpenWin);
+      } else {
+        doc.save(filename);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Could not print ticket. Try again (ensure pop-ups/printing are allowed).");
     }
-
-    const filename = `tux_${copy.toLowerCase()}_${widthMm}mm_order_${order.orderNo}.pdf`;
-    if (opts?.autoPrint) {
-      printJsPdfToDefaultPrinter(doc, filename);
-    } else {
-      doc.save(filename);
-    }
-  } catch (err) {
-    console.error(err);
-    alert("Could not print ticket. Try again (ensure pop-ups/printing are allowed).");
-  }
-};
-
+  };
 
   // 🔹 Simple test-print helper (uses demo order)
   const testPrint = async (width = preferredPaperWidthMm) => {
@@ -1571,8 +1558,12 @@ const printThermalTicket = async (order, widthMm = 80, copy = "Customer", opts =
               </>
             )}
 
+            {/* **** CHANGED: open a tab synchronously, then call checkout(preOpenWin) **** */}
             <button
-              onClick={checkout}
+              onClick={() => {
+                const preOpenWin = window.open("about:blank", "_blank", "noopener,noreferrer");
+                checkout(preOpenWin);
+              }}
               disabled={isCheckingOut}
               style={{
                 background: isCheckingOut ? "#9e9e9e" : "#43a047",
@@ -1696,8 +1687,6 @@ const printThermalTicket = async (order, widthMm = 80, copy = "Customer", opts =
 						>
 					Receipt 80mm
 					</button>
-
-
 
                   <button
                     onClick={() => voidOrderAndRestock(o.orderNo)}
