@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-
+import { printReceiptDirect, choosePrintersViaPrompt } from "./posPrint";
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth, onAuthStateChanged, signInAnonymously } from "firebase/auth";
 import {
@@ -816,13 +816,23 @@ export default function App() {
         }
       }
 
-      // 🔸 Auto-print the receipt (uses preferred width; default 80mm)
-      if (autoPrintOnCheckout) {
-        await printThermalTicket(order, Number(preferredPaperWidthMm) || 80, "Customer", { autoPrint: true });
-      } else {
-        // fallback: still offer a download if auto-print is off
-        await printThermalTicket(order, Number(preferredPaperWidthMm) || 80, "Customer", { autoPrint: false });
-      }
+     // 🔸 AUTO-PRINT via QZ Tray (no dialog) + fallback to PDF if QZ isn’t available
+try {
+  if (autoPrintOnCheckout) {
+    // Customer receipt to your saved Customer printer
+    await printReceiptDirect(order, { widthMm: Number(preferredPaperWidthMm) || 80, copy: "Customer" });
+
+    // Optional: also print a kitchen ticket automatically
+    // await printReceiptDirect(order, { widthMm: 58, copy: "Kitchen" });
+  } else {
+    // If auto-print is off, keep your existing PDF flow
+    await printThermalTicket(order, Number(preferredPaperWidthMm) || 80, "Customer", { autoPrint: true });
+  }
+} catch (err) {
+  console.warn("Direct print failed, falling back to PDF:", err);
+  await printThermalTicket(order, Number(preferredPaperWidthMm) || 80, "Customer", { autoPrint: true });
+}
+
 
       setCart([]);
       setWorker("");
@@ -1350,6 +1360,11 @@ export default function App() {
                 <option value="58">58 mm</option>
               </select>
             </label>
+            <button  onClick={choosePrintersViaPrompt} style={{ padding: "4px 8px", borderRadius: 6, border: `1px solid ${btnBorder}`, background: "#fff", cursor: "pointer" }}
+      >
+        Choose printers
+       </button>
+
             <button onClick={() => testPrint(80)} style={{ padding: "4px 8px", borderRadius: 6, border: `1px solid ${btnBorder}`, background: "#fff", cursor: "pointer" }}>
               Test 80mm
             </button>
@@ -2459,3 +2474,4 @@ export default function App() {
     </div>
   );
 }
+
