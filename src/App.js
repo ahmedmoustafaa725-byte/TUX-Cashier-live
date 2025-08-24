@@ -1194,18 +1194,20 @@ try {
         };
 
         // Order: QR -> Delivery banner -> TUX logo
+         await drawImageFromPaths(
+          ["/receipt/tux-logo.jpg", "/receipt/tux-logo.png", "/tux-logo.jpg", "/tux-logo.png"],
+          Math.min(35, maxW)
+        );
+        
         await drawImageFromPaths(
           ["/receipt/qr.jpg", "/receipt/qr.png", "/qr.jpg", "/qr.png"],
-          Math.min(45, maxW)
+          Math.min(50, maxW)
         );
         await drawImageFromPaths(
           ["/receipt/delivery.jpg", "/receipt/delivery.png", "/delivery.jpg", "/delivery.png"],
           Math.min(60, maxW)
         );
-        await drawImageFromPaths(
-          ["/receipt/tux-logo.jpg", "/receipt/tux-logo.png", "/tux-logo.jpg", "/tux-logo.png"],
-          Math.min(35, maxW)
-        );
+       
       }
 
       // jsPDF can't change page size after creation easily; but printing trims whitespace automatically.
@@ -2471,6 +2473,7 @@ try {
     </div>
   );
 }
+
 
 
 
