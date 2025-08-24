@@ -214,6 +214,50 @@ async function loadAsDataURL(path) {
     r.readAsDataURL(blob);
   });
 }
+// ---- Helper: open jsPDF in hidden iframe and trigger browser print ----
+function printJsPdfToDefaultPrinter(doc, filename = "receipt.pdf") {
+  try {
+    // Ask the PDF viewer to open the print dialog when possible
+    if (typeof doc.autoPrint === "function") doc.autoPrint();
+
+    const blob = doc.output("blob");
+    const blobUrl = URL.createObjectURL(blob);
+
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    iframe.src = blobUrl;
+
+    iframe.onload = () => {
+      // Allow the PDF plugin to initialize
+      setTimeout(() => {
+        try {
+          if (iframe.contentWindow) {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+          }
+        } finally {
+          // Cleanup
+          setTimeout(() => {
+            URL.revokeObjectURL(blobUrl);
+            if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+          }, 1000);
+        }
+      }, 250);
+    };
+
+    document.body.appendChild(iframe);
+  } catch (err) {
+    console.error("printJsPdfToDefaultPrinter failed:", err);
+    // Fallback: download
+    doc.save(filename);
+  }
+}
+
 
 /* --------------------------- BASE DATA --------------------------- */
 const BASE_MENU = [
@@ -1078,110 +1122,117 @@ export default function App() {
    * opts.autoPrint = true will open a new tab with print dialog automatically.
    * NOTE: Browsers control the final "Fit to printable area" toggle. We size the page to widthMm for best results.
    */
-  const printThermalTicket = async (order, widthMm = 80, copy = "Customer", opts = { autoPrint: false }) => {
-    try {
-      if (order.voided) return alert("This order is voided; no tickets can be printed.");
-      if (order.done && copy === "Kitchen") return alert("Order is done; kitchen ticket not available.");
+  // --------------------------- PDF: THERMAL ---------------------------
+const printThermalTicket = async (order, widthMm = 80, copy = "Customer", opts = { autoPrint: false }) => {
+  try {
+    if (order.voided) return alert("This order is voided; no tickets can be printed.");
+    if (order.done && copy === "Kitchen") return alert("Order is done; kitchen ticket not available.");
 
-      const MAX_H = 1000;
-      const doc = new jsPDF({ unit: "mm", format: [widthMm, MAX_H], compress: true });
+    const MAX_H = 1000;
+    const doc = new jsPDF({ unit: "mm", format: [widthMm, MAX_H], compress: true });
 
-      doc.setTextColor(0, 0, 0);
-      doc.setDrawColor(0, 0, 0);
+    doc.setTextColor(0, 0, 0);
+    doc.setDrawColor(0, 0, 0);
 
-      const margin = 4;
-      const colRight = widthMm - margin;
-      let y = margin;
+    const margin = 4;
+    const colRight = widthMm - margin;
+    let y = margin;
 
-      const safe = (s) => String(s ?? "").replace(/[\u2013\u2014]/g, "-");
+    const safe = (s) => String(s ?? "").replace(/[\u2013\u2014]/g, "-");
 
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(12);
-      doc.text(safe("TUX - Burger Truck"), margin, y); y += 6;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(12);
+    doc.text(safe("TUX - Burger Truck"), margin, y); y += 6;
 
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(9);
-      doc.text(`${safe(copy)} Copy`, margin, y); y += 5;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text(`${safe(copy)} Copy`, margin, y); y += 5;
 
-      doc.text(`Order #${order.orderNo}`, margin, y); y += 4;
-      doc.text(new Date(order.date).toLocaleString(), margin, y); y += 5;
+    doc.text(`Order #${order.orderNo}`, margin, y); y += 4;
+    doc.text(new Date(order.date).toLocaleString(), margin, y); y += 5;
 
-      doc.text(`Worker: ${safe(order.worker)}`, margin, y); y += 4;
-      doc.text(`Payment: ${safe(order.payment)} | Type: ${safe(order.orderType)}`, margin, y); y += 5;
+    doc.text(`Worker: ${safe(order.worker)}`, margin, y); y += 4;
+    doc.text(`Payment: ${safe(order.payment)} | Type: ${safe(order.orderType)}`, margin, y); y += 5;
 
-      if (order.orderType === "Delivery") {
-        doc.text(`Delivery Fee: E£${(order.deliveryFee || 0).toFixed(2)}`, margin, y);
-        y += 5;
-      }
+    if (order.orderType === "Delivery") {
+      doc.text(`Delivery Fee: E£${(order.deliveryFee || 0).toFixed(2)}`, margin, y);
+      y += 5;
+    }
 
-      if (order.note) {
-        doc.text("NOTE:", margin, y); y += 5;
-        const wrapped = doc.splitTextToSize(safe(order.note), widthMm - margin * 2);
-        wrapped.forEach(line => { doc.text(line, margin, y); y += 4; });
-        y += 2;
-      }
+    if (order.note) {
+      doc.text("NOTE:", margin, y); y += 5;
+      const wrapped = doc.splitTextToSize(safe(order.note), widthMm - margin * 2);
+      wrapped.forEach(line => { doc.text(line, margin, y); y += 4; });
+      y += 2;
+    }
 
-      doc.text("Items", margin, y); y += 5;
+    doc.text("Items", margin, y); y += 5;
 
-      order.cart.forEach((ci) => {
-        const nameWrapped = doc.splitTextToSize(safe(ci.name), widthMm - margin * 2);
-        nameWrapped.forEach((w, i) => {
-          doc.text(w, margin, y);
-          if (i === 0) doc.text(`E£${Number(ci.price || 0).toFixed(2)}`, colRight, y, { align: "right" });
+    order.cart.forEach((ci) => {
+      const nameWrapped = doc.splitTextToSize(safe(ci.name), widthMm - margin * 2);
+      nameWrapped.forEach((w, i) => {
+        doc.text(w, margin, y);
+        if (i === 0) doc.text(`E£${Number(ci.price || 0).toFixed(2)}`, colRight, y, { align: "right" });
+        y += 4;
+      });
+      (ci.extras || []).forEach((ex) => {
+        const exWrapped = doc.splitTextToSize(`+ ${safe(ex.name)}`, widthMm - margin * 2 - 2);
+        exWrapped.forEach((w, i) => {
+          doc.text(w, margin + 2, y);
+          if (i === 0) doc.text(`E£${Number(ex.price || 0).toFixed(2)}`, colRight, y, { align: "right" });
           y += 4;
         });
-        (ci.extras || []).forEach((ex) => {
-          const exWrapped = doc.splitTextToSize(`+ ${safe(ex.name)}`, widthMm - margin * 2 - 2);
-          exWrapped.forEach((w, i) => {
-            doc.text(w, margin + 2, y);
-            if (i === 0) doc.text(`E£${Number(ex.price || 0).toFixed(2)}`, colRight, y, { align: "right" });
-            y += 4;
-          });
-        });
-        y += 1;
       });
+      y += 1;
+    });
 
-      doc.line(margin, y, widthMm - margin, y); y += 3;
-      doc.text("TOTAL", margin, y);
-      doc.text(`E£${Number(order.total || 0).toFixed(2)}`, widthMm - margin, y, { align: "right" });
-      y += 6;
+    doc.line(margin, y, widthMm - margin, y); y += 3;
+    doc.text("TOTAL", margin, y);
+    doc.text(`E£${Number(order.total || 0).toFixed(2)}`, widthMm - margin, y, { align: "right" });
+    y += 6;
 
-      doc.setFontSize(8);
-      if (order.voided) doc.text("VOIDED / RESTOCKED", margin, y);
-      else if (order.done) doc.text("DONE", margin, y);
-      else doc.text("Thank you! @TUX", margin, y);
-      y += 4;
+    doc.setFontSize(8);
+    if (order.voided) doc.text("VOIDED / RESTOCKED", margin, y);
+    else if (order.done) doc.text("DONE", margin, y);
+    else doc.text("Thank you! @TUX", margin, y);
+    y += 4;
 
-      // 📸 Append icons ONLY to the Customer copy
-      if (copy === "Customer") {
+    // Fit-in customer image (centered, keep aspect) – optional
+    if (copy === "Customer") {
+      try {
+        const imgData = await loadAsDataURL("/tux-receipt.jpg");
+        const im = await new Promise((resolve, reject) => {
+          const _im = new Image();
+          _im.onload = () => resolve(_im);
+          _im.onerror = reject;
+          _im.src = imgData;
+        });
+
         const padding = margin * 2;
-        const maxW = Math.max(10, widthMm - padding);
+        const maxW = Math.max(10, widthMm - padding);   // available width
+        const aspect = im.width > 0 ? im.height / im.width : 1;
+        const drawW = Math.min(60, maxW);                // cap width so it looks nice on 80mm
+        const drawH = drawW * aspect;
+        const x = (widthMm - drawW) / 2;
 
-        // Small helper: tries each path until one loads, then draws it centered.
-        const drawImageFromPaths = async (paths, preferredWidthMm) => {
-          for (const p of paths) {
-            try {
-              const dataUrl = await loadAsDataURL(p);
-              const im = await new Promise((resolve, reject) => {
-                const _im = new Image();
-                _im.onload = () => resolve(_im);
-                _im.onerror = reject;
-                _im.src = dataUrl;
-              });
-              const aspect = im.width > 0 ? im.height / im.width : 1;
-              const drawW = Math.min(preferredWidthMm, maxW);
-              const drawH = drawW * aspect;
-              const x = (widthMm - drawW) / 2;
-              const fmt = p.toLowerCase().endsWith(".png") ? "PNG" : "JPEG";
-              doc.addImage(dataUrl, fmt, x, y, drawW, drawH);
-              y += drawH + 2;
-              return true;
-            } catch {
-              // try next candidate
-            }
-          }
-          return false;
-        };
+        doc.addImage(imgData, "JPEG", x, y, drawW, drawH);
+        y += drawH + 2;
+      } catch {}
+    }
+
+    // --- PRINT instead of download when requested ---
+    const filename = `tux_${copy.toLowerCase()}_${widthMm}mm_order_${order.orderNo}.pdf`;
+    if (opts && opts.autoPrint) {
+      printJsPdfToDefaultPrinter(doc, filename);
+    } else {
+      doc.save(filename); // manual buttons (e.g. Board) can still download
+    }
+  } catch (err) {
+    console.error(err);
+    alert("Could not print ticket. Try again (ensure pop-ups/printing are allowed).");
+  }
+};
+
 
         // Order: QR -> Delivery banner -> TUX logo
         await drawImageFromPaths(
@@ -1671,7 +1722,8 @@ export default function App() {
                     Receipt 58mm
                   </button>
                   <button
-                    onClick={() => printThermalTicket(o, 80, "Customer")}
+                    onClick={() => printThermalTicket(o, 80, "Customer", { autoPrint: true });
+
                     disabled={o.voided}
                     style={{ background: o.voided ? "#00695c88" : "#00695c", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
                   >
@@ -2459,3 +2511,4 @@ export default function App() {
     </div>
   );
 }
+
