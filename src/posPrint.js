@@ -2,6 +2,31 @@
 // Direct ESC/POS printing via QZ Tray — no UI, no prompts.
 // Default: auto-pick the first OS printer found.
 // Optional: hard-code printer names below to force a specific device.
+// ==== QZ SECURITY (signed requests) ====
+
+// Paste the FULL content of qz-public.crt between the lines below
+const QZ_CERT_PEM = `-----BEGIN CERTIFICATE-----
+PASTE EVERYTHING FROM qz-public.crt HERE
+-----END CERTIFICATE-----`;
+
+function setupQzSecurity(qz) {
+  // Provide public certificate
+  qz.security.setCertificatePromise((resolve) => resolve(QZ_CERT_PEM));
+
+  // Ask Netlify function to sign using private key
+  qz.security.setSignaturePromise((toSign) =>
+    new Promise((resolve, reject) => {
+      fetch("/.netlify/functions/qz-sign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ toSign }),
+      })
+        .then((r) => r.text())
+        .then(resolve)
+        .catch(reject);
+    })
+  );
+}
 
 // ── OPTIONAL: hard-code specific printer names (exact OS names) ─────────
 const CUSTOMER_PRINTER = ""; // e.g., "EPSON TM-T20II Receipt"
