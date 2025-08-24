@@ -215,48 +215,6 @@ async function loadAsDataURL(path) {
   });
 }
 
-// ---- Helper: open jsPDF in a (pre-opened) tab and trigger print ----
-// **** CHANGED: now accepts preOpenWin to preserve the user gesture on Netlify/Edge ****
-function printJsPdfToDefaultPrinter(doc, filename = "receipt.pdf", preOpenWin) {
-  try {
-    if (typeof doc.autoPrint === "function") doc.autoPrint();
-
-    const blob = doc.output("blob");
-    const blobUrl = URL.createObjectURL(blob);
-
-    // Use the tab that was opened synchronously in the button click.
-    // If not provided (e.g., direct board print), open one now.
-    const win = preOpenWin || window.open("about:blank", "_blank", "noopener,noreferrer");
-    if (!win) {
-      // Popup blocked → fallback to download
-      doc.save(filename);
-      return;
-    }
-
-    // Inject a hidden iframe that loads the PDF, then trigger print.
-    win.document.write(
-      `<iframe src="${blobUrl}" style="position:fixed;right:0;bottom:0;width:0;height:0;border:0;"></iframe>`
-    );
-    win.document.close();
-
-    setTimeout(() => {
-      try {
-        win.focus();
-        win.print();
-      } finally {
-        setTimeout(() => {
-          try { win.close(); } catch {}
-          URL.revokeObjectURL(blobUrl);
-        }, 500);
-      }
-    }, 250);
-  } catch (err) {
-    console.error("printJsPdfToDefaultPrinter failed:", err);
-    // Fallback: download
-    doc.save(filename);
-  }
-}
-
 /* --------------------------- BASE DATA --------------------------- */
 const BASE_MENU = [
   { id: 1, name: "Single Smashed Patty", price: 95, uses: {} },
@@ -779,8 +737,7 @@ export default function App() {
 
   const removeFromCart = (i) => setCart((c) => c.filter((_, idx) => idx !== i));
 
-  // **** CHANGED: checkout now accepts preOpenWin (tab opened under the click) ****
-  const checkout = async (preOpenWin) => {
+  const checkout = async () => {
     if (isCheckingOut) return;
     setIsCheckingOut(true);
 
@@ -859,11 +816,12 @@ export default function App() {
         }
       }
 
-      // 🔸 Auto-print the receipt
+      // 🔸 Auto-print the receipt (uses preferred width; default 80mm)
       if (autoPrintOnCheckout) {
-        await printThermalTicket(order, Number(preferredPaperWidthMm) || 80, "Customer", { autoPrint: true, preOpenWin });
+        await printThermalTicket(order, Number(preferredPaperWidthMm) || 80, "Customer", { autoPrint: true });
       } else {
-        await printThermalTicket(order, Number(preferredPaperWidthMm) || 80, "Customer", { autoPrint: false, preOpenWin });
+        // fallback: still offer a download if auto-print is off
+        await printThermalTicket(order, Number(preferredPaperWidthMm) || 80, "Customer", { autoPrint: false });
       }
 
       setCart([]);
@@ -1114,15 +1072,22 @@ export default function App() {
     }
   };
 
-  // --------------------------- PDF: THERMAL ---------------------------
-  // **** CHANGED: forward opts.preOpenWin down to the low-level printer ****
-  const printThermalTicket = async (order, widthMm = 80, copy = "Customer", opts = { autoPrint: false, preOpenWin: null }) => {
+  // --------------------------- PDF: THERMAL (with auto-print) ---------------------------
+  /**
+   * Prints ticket as an 80mm/58mm PDF.
+   * opts.autoPrint = true will open a new tab with print dialog automatically.
+   * NOTE: Browsers control the final "Fit to printable area" toggle. We size the page to widthMm for best results.
+   */
+  const printThermalTicket = async (order, widthMm = 80, copy = "Customer", opts = { autoPrint: false }) => {
     try {
       if (order.voided) return alert("This order is voided; no tickets can be printed.");
       if (order.done && copy === "Kitchen") return alert("Order is done; kitchen ticket not available.");
 
       const MAX_H = 1000;
       const doc = new jsPDF({ unit: "mm", format: [widthMm, MAX_H], compress: true });
+
+      doc.setTextColor(0, 0, 0);
+      doc.setDrawColor(0, 0, 0);
 
       const margin = 4;
       const colRight = widthMm - margin;
@@ -1134,6 +1099,7 @@ export default function App() {
       doc.setFontSize(12);
       doc.text(safe("TUX - Burger Truck"), margin, y); y += 6;
 
+      doc.setFont("helvetica", "normal");
       doc.setFontSize(9);
       doc.text(`${safe(copy)} Copy`, margin, y); y += 5;
 
@@ -1157,7 +1123,7 @@ export default function App() {
 
       doc.text("Items", margin, y); y += 5;
 
-      (order.cart || []).forEach((ci) => {
+      order.cart.forEach((ci) => {
         const nameWrapped = doc.splitTextToSize(safe(ci.name), widthMm - margin * 2);
         nameWrapped.forEach((w, i) => {
           doc.text(w, margin, y);
@@ -1186,36 +1152,64 @@ export default function App() {
       else doc.text("Thank you! @TUX", margin, y);
       y += 4;
 
-      // Optional footer image on CUSTOMER copy (place /public/tux-receipt.jpg)
+      // 📸 Append icons ONLY to the Customer copy
       if (copy === "Customer") {
-        try {
-          const imgData = await loadAsDataURL("/tux-receipt.jpg");
-          const im = await new Promise((resolve, reject) => {
-            const _im = new Image();
-            _im.onload = () => resolve(_im);
-            _im.onerror = reject;
-            _im.src = imgData;
-          });
+        const padding = margin * 2;
+        const maxW = Math.max(10, widthMm - padding);
 
-          const maxW = Math.max(10, widthMm - margin * 2);
-          const aspect = im.width > 0 ? im.height / im.width : 1;
-          const drawW = Math.min(60, maxW);
-          const drawH = drawW * aspect;
-          const x = (widthMm - drawW) / 2;
+        // Small helper: tries each path until one loads, then draws it centered.
+        const drawImageFromPaths = async (paths, preferredWidthMm) => {
+          for (const p of paths) {
+            try {
+              const dataUrl = await loadAsDataURL(p);
+              const im = await new Promise((resolve, reject) => {
+                const _im = new Image();
+                _im.onload = () => resolve(_im);
+                _im.onerror = reject;
+                _im.src = dataUrl;
+              });
+              const aspect = im.width > 0 ? im.height / im.width : 1;
+              const drawW = Math.min(preferredWidthMm, maxW);
+              const drawH = drawW * aspect;
+              const x = (widthMm - drawW) / 2;
+              const fmt = p.toLowerCase().endsWith(".png") ? "PNG" : "JPEG";
+              doc.addImage(dataUrl, fmt, x, y, drawW, drawH);
+              y += drawH + 2;
+              return true;
+            } catch {
+              // try next candidate
+            }
+          }
+          return false;
+        };
 
-          doc.addImage(imgData, "JPEG", x, y, drawW, drawH);
-        } catch { /* no image, continue */ }
+        // Order: QR -> Delivery banner -> TUX logo
+        await drawImageFromPaths(
+          ["/receipt/qr.jpg", "/receipt/qr.png", "/qr.jpg", "/qr.png"],
+          Math.min(45, maxW)
+        );
+        await drawImageFromPaths(
+          ["/receipt/delivery.jpg", "/receipt/delivery.png", "/delivery.jpg", "/delivery.png"],
+          Math.min(60, maxW)
+        );
+        await drawImageFromPaths(
+          ["/receipt/tux-logo.jpg", "/receipt/tux-logo.png", "/tux-logo.jpg", "/tux-logo.png"],
+          Math.min(35, maxW)
+        );
       }
 
-      const filename = `tux_${copy.toLowerCase()}_${widthMm}mm_order_${order.orderNo}.pdf`;
+      // jsPDF can't change page size after creation easily; but printing trims whitespace automatically.
+
       if (opts?.autoPrint) {
-        printJsPdfToDefaultPrinter(doc, filename, opts?.preOpenWin);
+        try { doc.autoPrint({ variant: "non-conform" }); } catch {}
+        const url = doc.output("bloburl");
+        window.open(url, "_blank", "noopener,noreferrer");
       } else {
-        doc.save(filename);
+        doc.save(`tux_${copy.toLowerCase()}_${Math.round(widthMm)}mm_order_${order.orderNo}.pdf`);
       }
     } catch (err) {
       console.error(err);
-      alert("Could not print ticket. Try again (ensure pop-ups/printing are allowed).");
+      alert("Could not print ticket. Ensure pop-ups are allowed and try again.");
     }
   };
 
@@ -1558,12 +1552,8 @@ export default function App() {
               </>
             )}
 
-            {/* **** CHANGED: open a tab synchronously, then call checkout(preOpenWin) **** */}
             <button
-              onClick={() => {
-                const preOpenWin = window.open("about:blank", "_blank", "noopener,noreferrer");
-                checkout(preOpenWin);
-              }}
+              onClick={checkout}
               disabled={isCheckingOut}
               style={{
                 background: isCheckingOut ? "#9e9e9e" : "#43a047",
@@ -1681,12 +1671,12 @@ export default function App() {
                     Receipt 58mm
                   </button>
                   <button
-					onClick={() => printThermalTicket(o, 80, "Customer", { autoPrint: true })}
-					disabled={o.voided}
-					style={{ background: o.voided ? "#00695c88" : "#00695c", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
-						>
-					Receipt 80mm
-					</button>
+                    onClick={() => printThermalTicket(o, 80, "Customer")}
+                    disabled={o.voided}
+                    style={{ background: o.voided ? "#00695c88" : "#00695c", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
+                  >
+                    Receipt 80mm
+                  </button>
 
                   <button
                     onClick={() => voidOrderAndRestock(o.orderNo)}
