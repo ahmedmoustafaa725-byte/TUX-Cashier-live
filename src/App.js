@@ -1159,7 +1159,7 @@ try {
       doc.setFontSize(8);
       if (order.voided) doc.text("VOIDED / RESTOCKED", margin, y);
       else if (order.done) doc.text("DONE", margin, y);
-      else if doc.text("Thank you! @TUX /n --------------------------", margin, y);
+      else doc.text("Thank you! @TUX /n --------------------------", margin, y);
       
       y += 4;
 
@@ -2474,6 +2474,7 @@ try {
     </div>
   );
 }
+
 
 
 
