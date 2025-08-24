@@ -1123,6 +1123,7 @@ export default function App() {
    * NOTE: Browsers control the final "Fit to printable area" toggle. We size the page to widthMm for best results.
    */
   // --------------------------- PDF: THERMAL ---------------------------
+// --------------------------- PDF: THERMAL ---------------------------
 const printThermalTicket = async (order, widthMm = 80, copy = "Customer", opts = { autoPrint: false }) => {
   try {
     if (order.voided) return alert("This order is voided; no tickets can be printed.");
@@ -1130,9 +1131,6 @@ const printThermalTicket = async (order, widthMm = 80, copy = "Customer", opts =
 
     const MAX_H = 1000;
     const doc = new jsPDF({ unit: "mm", format: [widthMm, MAX_H], compress: true });
-
-    doc.setTextColor(0, 0, 0);
-    doc.setDrawColor(0, 0, 0);
 
     const margin = 4;
     const colRight = widthMm - margin;
@@ -1144,7 +1142,6 @@ const printThermalTicket = async (order, widthMm = 80, copy = "Customer", opts =
     doc.setFontSize(12);
     doc.text(safe("TUX - Burger Truck"), margin, y); y += 6;
 
-    doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
     doc.text(`${safe(copy)} Copy`, margin, y); y += 5;
 
@@ -1168,7 +1165,7 @@ const printThermalTicket = async (order, widthMm = 80, copy = "Customer", opts =
 
     doc.text("Items", margin, y); y += 5;
 
-    order.cart.forEach((ci) => {
+    (order.cart || []).forEach((ci) => {
       const nameWrapped = doc.splitTextToSize(safe(ci.name), widthMm - margin * 2);
       nameWrapped.forEach((w, i) => {
         doc.text(w, margin, y);
@@ -1197,7 +1194,7 @@ const printThermalTicket = async (order, widthMm = 80, copy = "Customer", opts =
     else doc.text("Thank you! @TUX", margin, y);
     y += 4;
 
-    // Fit-in customer image (centered, keep aspect) – optional
+    // Optional footer image on CUSTOMER copy (place /public/tux-receipt.jpg)
     if (copy === "Customer") {
       try {
         const imgData = await loadAsDataURL("/tux-receipt.jpg");
@@ -1208,24 +1205,21 @@ const printThermalTicket = async (order, widthMm = 80, copy = "Customer", opts =
           _im.src = imgData;
         });
 
-        const padding = margin * 2;
-        const maxW = Math.max(10, widthMm - padding);   // available width
+        const maxW = Math.max(10, widthMm - margin * 2);
         const aspect = im.width > 0 ? im.height / im.width : 1;
-        const drawW = Math.min(60, maxW);                // cap width so it looks nice on 80mm
+        const drawW = Math.min(60, maxW);
         const drawH = drawW * aspect;
         const x = (widthMm - drawW) / 2;
 
         doc.addImage(imgData, "JPEG", x, y, drawW, drawH);
-        y += drawH + 2;
-      } catch {}
+      } catch { /* no image, continue */ }
     }
 
-    // --- PRINT instead of download when requested ---
     const filename = `tux_${copy.toLowerCase()}_${widthMm}mm_order_${order.orderNo}.pdf`;
-    if (opts && opts.autoPrint) {
+    if (opts?.autoPrint) {
       printJsPdfToDefaultPrinter(doc, filename);
     } else {
-      doc.save(filename); // manual buttons (e.g. Board) can still download
+      doc.save(filename);
     }
   } catch (err) {
     console.error(err);
@@ -1234,35 +1228,8 @@ const printThermalTicket = async (order, widthMm = 80, copy = "Customer", opts =
 };
 
 
-        // Order: QR -> Delivery banner -> TUX logo
-        await drawImageFromPaths(
-          ["/receipt/qr.jpg", "/receipt/qr.png", "/qr.jpg", "/qr.png"],
-          Math.min(45, maxW)
-        );
-        await drawImageFromPaths(
-          ["/receipt/delivery.jpg", "/receipt/delivery.png", "/delivery.jpg", "/delivery.png"],
-          Math.min(60, maxW)
-        );
-        await drawImageFromPaths(
-          ["/receipt/tux-logo.jpg", "/receipt/tux-logo.png", "/tux-logo.jpg", "/tux-logo.png"],
-          Math.min(35, maxW)
-        );
-      }
 
-      // jsPDF can't change page size after creation easily; but printing trims whitespace automatically.
 
-      if (opts?.autoPrint) {
-        try { doc.autoPrint({ variant: "non-conform" }); } catch {}
-        const url = doc.output("bloburl");
-        window.open(url, "_blank", "noopener,noreferrer");
-      } else {
-        doc.save(`tux_${copy.toLowerCase()}_${Math.round(widthMm)}mm_order_${order.orderNo}.pdf`);
-      }
-    } catch (err) {
-      console.error(err);
-      alert("Could not print ticket. Ensure pop-ups are allowed and try again.");
-    }
-  };
 
   // 🔹 Simple test-print helper (uses demo order)
   const testPrint = async (width = preferredPaperWidthMm) => {
@@ -1722,13 +1689,14 @@ const printThermalTicket = async (order, widthMm = 80, copy = "Customer", opts =
                     Receipt 58mm
                   </button>
                   <button
-                    onClick={() => printThermalTicket(o, 80, "Customer", { autoPrint: true });
+					onClick={() => printThermalTicket(o, 80, "Customer", { autoPrint: true })}
+					disabled={o.voided}
+					style={{ background: o.voided ? "#00695c88" : "#00695c", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
+						>
+					Receipt 80mm
+					</button>
 
-                    disabled={o.voided}
-                    style={{ background: o.voided ? "#00695c88" : "#00695c", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
-                  >
-                    Receipt 80mm
-                  </button>
+
 
                   <button
                     onClick={() => voidOrderAndRestock(o.orderNo)}
@@ -2511,4 +2479,5 @@ const printThermalTicket = async (order, widthMm = 80, copy = "Customer", opts =
     </div>
   );
 }
+
 
