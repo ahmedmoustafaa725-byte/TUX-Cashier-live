@@ -1152,43 +1152,59 @@ export default function App() {
       else doc.text("Thank you! @TUX", margin, y);
       y += 4;
 
-     if (copy === "Customer") {
-  try {
-    const imgData = await loadAsDataURL("/tux-receipt.jpg");
-    const im = await new Promise((resolve, reject) => {
-      const _im = new Image();
-      _im.onload = () => resolve(_im);
-      _im.onerror = reject;
-      _im.src = imgData;
-    });
+      // 📸 Append icons ONLY to the Customer copy
+      if (copy === "Customer") {
+        const padding = margin * 2;
+        const maxW = Math.max(10, widthMm - padding);
 
-    // Fit-in: center and scale within margins
-    const padding = margin * 2;
-    const maxW = Math.max(10, widthMm - padding);      // available width
-    const aspect = im.width > 0 ? im.height / im.width : 1;
-    const drawW = Math.min(60, maxW);                   // cap width so it looks nice
-    const drawH = drawW * aspect;                       // keep aspect ratio
-    const x = (widthMm - drawW) / 2;
+        // Small helper: tries each path until one loads, then draws it centered.
+        const drawImageFromPaths = async (paths, preferredWidthMm) => {
+          for (const p of paths) {
+            try {
+              const dataUrl = await loadAsDataURL(p);
+              const im = await new Promise((resolve, reject) => {
+                const _im = new Image();
+                _im.onload = () => resolve(_im);
+                _im.onerror = reject;
+                _im.src = dataUrl;
+              });
+              const aspect = im.width > 0 ? im.height / im.width : 1;
+              const drawW = Math.min(preferredWidthMm, maxW);
+              const drawH = drawW * aspect;
+              const x = (widthMm - drawW) / 2;
+              const fmt = p.toLowerCase().endsWith(".png") ? "PNG" : "JPEG";
+              doc.addImage(dataUrl, fmt, x, y, drawW, drawH);
+              y += drawH + 2;
+              return true;
+            } catch {
+              // try next candidate
+            }
+          }
+          return false;
+        };
 
-    doc.addImage(imgData, "JPEG", x, y, drawW, drawH);
-    y += drawH + 2;
-  } catch {}
-}
+        // Order: QR -> Delivery banner -> TUX logo
+        await drawImageFromPaths(
+          ["/receipt/qr.jpg", "/receipt/qr.png", "/qr.jpg", "/qr.png"],
+          Math.min(45, maxW)
+        );
+        await drawImageFromPaths(
+          ["/receipt/delivery.jpg", "/receipt/delivery.png", "/delivery.jpg", "/delivery.png"],
+          Math.min(60, maxW)
+        );
+        await drawImageFromPaths(
+          ["/receipt/tux-logo.jpg", "/receipt/tux-logo.png", "/tux-logo.jpg", "/tux-logo.png"],
+          Math.min(35, maxW)
+        );
+      }
 
-
-      // Cut the page height to content
-/* eslint-disable-next-line no-unused-vars */
-
-    
       // jsPDF can't change page size after creation easily; but printing trims whitespace automatically.
 
       if (opts?.autoPrint) {
         try { doc.autoPrint({ variant: "non-conform" }); } catch {}
-        // Open as blob URL so the browser's PDF viewer shows the Print dialog automatically.
         const url = doc.output("bloburl");
         window.open(url, "_blank", "noopener,noreferrer");
       } else {
-        // Save the PDF (user can print manually)
         doc.save(`tux_${copy.toLowerCase()}_${Math.round(widthMm)}mm_order_${order.orderNo}.pdf`);
       }
     } catch (err) {
@@ -2443,8 +2459,3 @@ export default function App() {
     </div>
   );
 }
-
-
-
-
-
