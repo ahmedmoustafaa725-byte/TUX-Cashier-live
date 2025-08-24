@@ -1,61 +1,40 @@
 // src/posPrint.js
-// QZ Tray helper for direct ESC/POS printing (auto, no browser dialog).
-// Usage:
-//   import { printReceiptDirect, choosePrintersViaPrompt } from "./posPrint";
-//   await printReceiptDirect(order, { widthMm: 80, copy: "Customer" });
+// Direct ESC/POS printing via QZ Tray — no UI, no prompts.
+// Default: auto-pick the first OS printer found.
+// Optional: hard-code printer names below to force a specific device.
 
-/** Get the global qz object safely */
+// ── OPTIONAL: hard-code specific printer names (exact OS names) ─────────
+const CUSTOMER_PRINTER = ""; // e.g., "EPSON TM-T20II Receipt"
+const KITCHEN_PRINTER  = ""; // e.g., "EPSON TM-T20II Kitchen"
+
+// Get global qz object
 function getQz() {
   return typeof window !== "undefined" ? window.qz : undefined;
 }
 
-/** Ensure QZ Tray script is loaded and websocket is connected */
+// Ensure QZ Tray is connected (supports old/new API shapes)
 export async function ensureQz() {
   const qz = getQz();
   if (!qz) {
     throw new Error(
-      "QZ Tray bridge not found. Make sure you added <script src=\"https://cdn.jsdelivr.net/npm/qz-tray/qz-tray.js\"></script> in public/index.html and you’re running in the browser."
+      'QZ Tray bridge not found. Add <script src="https://cdn.jsdelivr.net/npm/qz-tray/qz-tray.js"></script> in public/index.html and open this app in a browser.'
     );
   }
-
-  // Support both old and new API shapes
   if (qz.websocket && typeof qz.websocket.isActive === "function") {
-    if (!qz.websocket.isActive()) {
-      await qz.websocket.connect();
-    }
+    if (!qz.websocket.isActive()) await qz.websocket.connect();
   } else if (typeof qz.isActive === "function" && typeof qz.connect === "function") {
-    if (!qz.isActive()) {
-      await qz.connect();
-    }
+    if (!qz.isActive()) await qz.connect();
   }
   return qz;
 }
 
-/** List available OS printers on this machine */
+// Find OS printers
 export async function listPrinters() {
   const qz = await ensureQz();
   return qz.printers.find();
 }
 
-// Separate saved choices for customer & kitchen printers
-const STORAGE_KEYS = {
-  cust: "PREFERRED_PRINTER_CUSTOMER",
-  kit: "PREFERRED_PRINTER_KITCHEN",
-};
-
-export function savePrinter(which, name) {
-  const key = STORAGE_KEYS[which];
-  if (!key) throw new Error("Unknown printer slot: " + which);
-  localStorage.setItem(key, name);
-}
-
-export function getPrinter(which) {
-  const key = STORAGE_KEYS[which];
-  if (!key) throw new Error("Unknown printer slot: " + which);
-  return localStorage.getItem(key) || null;
-}
-
-/** Create a QZ print config for a given OS printer name */
+// Create print config
 function createConfig(qz, name) {
   return qz.configs.create(name, {
     encoding: "CP437",
@@ -65,8 +44,7 @@ function createConfig(qz, name) {
   });
 }
 
-/* -------------------------- ESC/POS helpers -------------------------- */
-/* (Single literals to satisfy ESLint no-useless-concat) */
+/* ── ESC/POS helpers (single literals to satisfy ESLint) ─────────────── */
 const INIT = "\x1B@";
 
 const A = {
@@ -75,13 +53,13 @@ const A = {
   R: "\x1Ba\x02",
 };
 
-const BOLD_ON = "\x1BE\x01";
+const BOLD_ON  = "\x1BE\x01";
 const BOLD_OFF = "\x1BE\x00";
 
-const DOUBLE_ON = "\x1B!\x30"; // double height+width
+const DOUBLE_ON  = "\x1B!\x30"; // double height+width
 const DOUBLE_OFF = "\x1B!\x00";
 
-// FEED uses a dynamic value; concatenation with a variable is allowed
+// dynamic ok:
 const FEED = (n = 3) => "\x1Bd" + String.fromCharCode(n);
 
 const CUT = "\x1DV\x00";
@@ -95,9 +73,7 @@ function linePrice(left, price, cols) {
 }
 
 /**
- * Build an ESC/POS receipt string (58mm ≈ 32 cols, 80mm ≈ 48 cols)
- * @param {object} order - { orderNo, date, worker, payment, orderType, deliveryFee, itemsTotal, total, cart[], note }
- * @param {object} opts  - { title, address, phone, widthMm, copy }
+ * Build ESC/POS receipt (58mm≈32 cols, 80mm≈48 cols)
  */
 function buildReceipt(order, {
   title = "TUX",
@@ -119,9 +95,7 @@ function buildReceipt(order, {
   if (order?.orderType === "Delivery" && order?.deliveryFee) {
     s += `Delivery Fee: ${Number(order.deliveryFee).toFixed(2)}\n`;
   }
-  if (order?.note) {
-    s += `Note: ${String(order.note).trim()}\n`;
-  }
+  if (order?.note) s += `Note: ${String(order.note).trim()}\n`;
   s += dash(cols);
 
   // Items
@@ -150,7 +124,24 @@ function buildReceipt(order, {
   return s;
 }
 
-/** Low-level: send raw text (ESC/POS) to a named printer */
+// Resolve printer name: prefer hard-coded; else first printer
+async function resolvePrinterName(copy) {
+  const hardcoded =
+    copy === "Kitchen" ? (KITCHEN_PRINTER || CUSTOMER_PRINTER) : (CUSTOMER_PRINTER || KITCHEN_PRINTER);
+  const list = await listPrinters();
+  if (!list.length) throw new Error("No printers found on this machine. Install the driver and restart QZ Tray.");
+  if (hardcoded) {
+    const found = list.find((n) => n === hardcoded);
+    if (!found) {
+      console.warn(`Hard-coded printer "${hardcoded}" not found. Using first available: ${list[0]}`);
+      return list[0];
+    }
+    return hardcoded;
+  }
+  return list[0];
+}
+
+// Low-level: send ESC/POS to a printer
 async function printRawEscPos(printerName, raw) {
   const qz = await ensureQz();
   const data = [{ type: "raw", format: "plain", data: raw }];
@@ -158,41 +149,12 @@ async function printRawEscPos(printerName, raw) {
 }
 
 /**
- * Public API: print a receipt directly (no dialog)
+ * Public: print a receipt (no dialog)
  * @param {object} order
  * @param {object} options - { widthMm: 58|80, copy: "Customer"|"Kitchen" }
  */
 export async function printReceiptDirect(order, { widthMm = 80, copy = "Customer" } = {}) {
-  const slot = copy === "Kitchen" ? "kit" : "cust";
-  let name = getPrinter(slot);
-  if (!name) {
-    const list = await listPrinters();
-    if (!list.length) throw new Error("No printers found on this machine. Install the driver and restart QZ Tray.");
-    name = list[0];
-    savePrinter(slot, name);
-  }
+  const name = await resolvePrinterName(copy);
   const raw = buildReceipt(order, { widthMm, copy });
   await printRawEscPos(name, raw);
-}
-
-/** Simple UI flow to choose and save Customer & Kitchen printers using prompt() */
-export async function choosePrintersViaPrompt() {
-  await ensureQz();
-  const list = await listPrinters();
-  if (!list.length) {
-    alert("No printers found. Install your thermal printer driver and try again.");
-    return;
-  }
-  const currentCust = getPrinter("cust") || list[0];
-  const currentKit = getPrinter("kit") || list[0];
-
-  const cust = window.prompt(`Customer printer:\n${list.join("\n")}`, currentCust);
-  if (cust) savePrinter("cust", cust);
-
-  const kit = window.prompt(`Kitchen printer:\n${list.join("\n")}`, currentKit);
-  if (kit) savePrinter("kit", kit);
-
-  const savedCust = getPrinter("cust");
-  const savedKit = getPrinter("kit");
-  window.alert(`Saved printers:\nCustomer → ${savedCust}\nKitchen  → ${savedKit}`);
 }
