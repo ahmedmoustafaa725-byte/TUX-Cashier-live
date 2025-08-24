@@ -1159,7 +1159,8 @@ try {
       doc.setFontSize(8);
       if (order.voided) doc.text("VOIDED / RESTOCKED", margin, y);
       else if (order.done) doc.text("DONE", margin, y);
-      else doc.text("Thank you! @TUX", margin, y);
+      else if doc.text("Thank you! @TUX", margin, y);
+      else doc.text("--------------------------------", margin, y);
       y += 4;
 
       // 📸 Append icons ONLY to the Customer copy
@@ -1205,7 +1206,7 @@ try {
         );
         await drawImageFromPaths(
           ["/receipt/delivery.jpg", "/receipt/delivery.png", "/delivery.jpg", "/delivery.png"],
-          Math.min(35, maxW)
+          Math.min(60, maxW)
         );
        
       }
@@ -2473,6 +2474,7 @@ try {
     </div>
   );
 }
+
 
 
 
