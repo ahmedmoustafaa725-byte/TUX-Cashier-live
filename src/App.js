@@ -1324,8 +1324,7 @@ export default function App() {
           <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "4px 8px", borderRadius: 6, border: `1px solid ${btnBorder}`, background: dark ? "#222" : "#f3f3f3", flexWrap: "wrap" }}>
             <span role="img" aria-label="printer">🖨️</span>
             <small style={{ opacity: 0.85 }}>
-              Printer: uses your <b>system default</b> (browsers can’t list devices)
-            </small>
+             
             <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
               <input type="checkbox" checked={autoPrintOnCheckout} onChange={(e) => setAutoPrintOnCheckout(e.target.checked)} />
               <small>Auto-print on checkout</small>
@@ -2446,6 +2445,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
