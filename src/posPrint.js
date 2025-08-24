@@ -5,9 +5,24 @@
 // ==== QZ SECURITY (signed requests) ====
 
 // Paste the FULL content of qz-public.crt between the lines below
-const QZ_CERT_PEM = `-----BEGIN CERTIFICATE-----
-PASTE EVERYTHING FROM qz-public.crt HERE
------END CERTIFICATE-----`;
+const QZ_CERT_PEM = -----BEGIN CERTIFICATE-----
+MIICszCCAZsCFEDMPY9Ranwy++6HoBvg+hae7UzGMA0GCSqGSIb3DQEBCwUAMBYx
+FDASBgNVBAMMC3R1eC1jYXNoaWVyMB4XDTI1MDgyNDA1MzM0OFoXDTM1MDgyMjA1
+MzM0OFowFjEUMBIGA1UEAwwLdHV4LWNhc2hpZXIwggEiMA0GCSqGSIb3DQEBAQUA
+A4IBDwAwggEKAoIBAQDNeAnhhvG0+o7G6K2yvTxIFJEnq8TTSg8fXeOjQpmtKoie
+kH6elyNrVhXP3iIHCdQoPNWyHtPfOeldMgex4GDweMs/teRGi/zfSrp+1y/HYZti
+fpc4mtxTAlMtyaehdyESrwDG1bjfskOsB2P6rpGsaoTjwNZmERCDRd1hAptaV0oT
+efXoCb7j7eUJaybiMdjLdfVUY2PSk/+YeerJBmND3Mgn59hSeDabwlm7JYmyx+t7
+cnjUCl1pzXtK3JCnb9h9sD99LxdIb9ShFnXEwJTP7DQzm58JVp0Vadxn5Q6kPhF7
+5a7GxFHh+o+blHkKYy4gc8V2f91mQO5mVRb8Lb5dAgMBAAEwDQYJKoZIhvcNAQEL
+BQADggEBAKtrWGCcl6z/WRBtLSJkUlqMo6NaqCnmDZVN82lzlPGXNa6e1YRGKU7d
+oJtxrmJtkV5dooYeM3Jgbs1B1ZzFxPwcI0V/+5rVBnD3Da7dyxqrf9nl+MjxBKKl
+JpkhyeEE/0BZ+uiDYPR70PZbJAG5KB90u+brvHMXujPwRnG6Y23r+15fMMExPkbZ
+rz44xQzM/voQoO5XmzeYtv4nBSkChiaz9Vt2ESpBBABPUX9X5jSzmdxAvk1c9ESw
+zHThXfS5J1RhyLzbWY3M3OuJS7viLR7XOEtmpvtSgg34oN2mBxs592zD46thr3hk
+VDKwue+bmWVF5Oe1HAc0q3a3jiHN798=
+-----END CERTIFICATE-----
+;
 
 function setupQzSecurity(qz) {
   // Provide public certificate
