@@ -1159,8 +1159,8 @@ try {
       doc.setFontSize(8);
       if (order.voided) doc.text("VOIDED / RESTOCKED", margin, y);
       else if (order.done) doc.text("DONE", margin, y);
-      else if doc.text("Thank you! @TUX", margin, y);
-      else doc.text("--------------------------------", margin, y);
+      else if doc.text("Thank you! @TUX /n --------------------------", margin, y);
+      
       y += 4;
 
       // 📸 Append icons ONLY to the Customer copy
@@ -2474,6 +2474,7 @@ try {
     </div>
   );
 }
+
 
 
 
