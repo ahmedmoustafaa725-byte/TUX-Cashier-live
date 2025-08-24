@@ -1360,10 +1360,7 @@ try {
                 <option value="58">58 mm</option>
               </select>
             </label>
-            <button  onClick={choosePrintersViaPrompt} style={{ padding: "4px 8px", borderRadius: 6, border: `1px solid ${btnBorder}`, background: "#fff", cursor: "pointer" }}
-      >
-        Choose printers
-       </button>
+           
 
             <button onClick={() => testPrint(80)} style={{ padding: "4px 8px", borderRadius: 6, border: `1px solid ${btnBorder}`, background: "#fff", cursor: "pointer" }}>
               Test 80mm
@@ -2474,5 +2471,6 @@ try {
     </div>
   );
 }
+
 
 
