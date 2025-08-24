@@ -847,11 +847,13 @@ export default function App() {
         idemKey: `idk_${fbUser ? fbUser.uid : "anon"}_${Date.now()}_${Math.random().toString(36).slice(2)}`,
       };
 
-      if (!realtimeOrders) setOrders((o) => [order, ...o]);
+      // ✅ Always reflect the order immediately in UI (even when realtime is ON)
+      setOrders((o) => [order, ...o]);
 
       if (cloudEnabled && ordersColRef && fbUser) {
         try {
           const ref = await addDoc(ordersColRef, normalizeOrderForCloud(order));
+          // keep cloudId in non-realtime mode (realtime replaces state via snapshot)
           if (!realtimeOrders) {
             setOrders((prev) => prev.map((oo) => (oo.orderNo === order.orderNo ? { ...oo, cloudId: ref.id } : oo)));
           }
@@ -864,7 +866,6 @@ export default function App() {
       if (autoPrintOnCheckout) {
         await printThermalTicket(order, Number(preferredPaperWidthMm) || 80, "Customer", { autoPrint: true });
       } else {
-        // fallback: still offer a download if auto-print is off
         await printThermalTicket(order, Number(preferredPaperWidthMm) || 80, "Customer", { autoPrint: false });
       }
 
@@ -874,6 +875,9 @@ export default function App() {
       setOrderNote("");
       setOrderType(orderTypes[0] || "Take-Away");
       setDeliveryFee(orderType === "Delivery" ? defaultDeliveryFee : 0);
+
+      // ✅ Clear confirmation so it never feels like “nothing happened”
+      alert(`Order #${allocatedNo} placed ✔`);
     } finally {
       setIsCheckingOut(false);
     }
@@ -1122,7 +1126,7 @@ export default function App() {
    * opts.autoPrint = true will open a new tab with print dialog automatically.
    * NOTE: Browsers control the final "Fit to printable area" toggle. We size the page to widthMm for best results.
    */
-  // --------------------------- PDF: THERMAL ---------------------------
+// --------------------------- PDF: THERMAL ---------------------------
 // --------------------------- PDF: THERMAL ---------------------------
 const printThermalTicket = async (order, widthMm = 80, copy = "Customer", opts = { autoPrint: false }) => {
   try {
@@ -1226,9 +1230,6 @@ const printThermalTicket = async (order, widthMm = 80, copy = "Customer", opts =
     alert("Could not print ticket. Try again (ensure pop-ups/printing are allowed).");
   }
 };
-
-
-
 
 
   // 🔹 Simple test-print helper (uses demo order)
@@ -2479,5 +2480,3 @@ const printThermalTicket = async (order, widthMm = 80, copy = "Customer", opts =
     </div>
   );
 }
-
-
