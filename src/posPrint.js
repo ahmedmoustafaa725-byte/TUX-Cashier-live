@@ -5,7 +5,7 @@
 // ==== QZ SECURITY (signed requests) ====
 
 // Paste the FULL content of qz-public.crt between the lines below
-const QZ_CERT_PEM = -----BEGIN CERTIFICATE-----
+const QZ_CERT_PEM =  `-----BEGIN CERTIFICATE-----
 MIICszCCAZsCFEDMPY9Ranwy++6HoBvg+hae7UzGMA0GCSqGSIb3DQEBCwUAMBYx
 FDASBgNVBAMMC3R1eC1jYXNoaWVyMB4XDTI1MDgyNDA1MzM0OFoXDTM1MDgyMjA1
 MzM0OFowFjEUMBIGA1UEAwwLdHV4LWNhc2hpZXIwggEiMA0GCSqGSIb3DQEBAQUA
@@ -21,7 +21,7 @@ JpkhyeEE/0BZ+uiDYPR70PZbJAG5KB90u+brvHMXujPwRnG6Y23r+15fMMExPkbZ
 rz44xQzM/voQoO5XmzeYtv4nBSkChiaz9Vt2ESpBBABPUX9X5jSzmdxAvk1c9ESw
 zHThXfS5J1RhyLzbWY3M3OuJS7viLR7XOEtmpvtSgg34oN2mBxs592zD46thr3hk
 VDKwue+bmWVF5Oe1HAc0q3a3jiHN798=
------END CERTIFICATE-----
+-----END CERTIFICATE-----`
 ;
 
 function setupQzSecurity(qz) {
