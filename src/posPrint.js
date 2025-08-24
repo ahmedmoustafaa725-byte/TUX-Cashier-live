@@ -45,6 +45,10 @@ export async function ensureQz() {
       'QZ Tray bridge not found. Add <script src="https://cdn.jsdelivr.net/npm/qz-tray/qz-tray.js"></script> in public/index.html and open this app in a browser.'
     );
   }
+
+  // 🔑 NEW: configure QZ security (cert + signer)
+  setupQzSecurity(qz);
+  
   if (qz.websocket && typeof qz.websocket.isActive === "function") {
     if (!qz.websocket.isActive()) await qz.websocket.connect();
   } else if (typeof qz.isActive === "function" && typeof qz.connect === "function") {
