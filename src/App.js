@@ -1152,21 +1152,29 @@ export default function App() {
       else doc.text("Thank you! @TUX", margin, y);
       y += 4;
 
-      if (copy === "Customer") {
-        try {
-          const imgData = await loadAsDataURL("/tux-receipt.jpg");
-          const im = await new Promise((resolve, reject) => {
-            const _im = new Image();
-            _im.onload = () => resolve(_im);
-            _im.onerror = reject;
-            _im.src = imgData;
-          });
-          const targetW = Math.min(38, widthMm - 8);
-          const targetH = targetW * (im.height / im.width || 1);
-          doc.addImage(imgData, "JPEG", (widthMm - targetW) / 2, y, targetW, targetH);
-          y += targetH + 2;
-        } catch {}
-      }
+     if (copy === "Customer") {
+  try {
+    const imgData = await loadAsDataURL("/tux-receipt.jpg");
+    const im = await new Promise((resolve, reject) => {
+      const _im = new Image();
+      _im.onload = () => resolve(_im);
+      _im.onerror = reject;
+      _im.src = imgData;
+    });
+
+    // Fit-in: center and scale within margins
+    const padding = margin * 2;
+    const maxW = Math.max(10, widthMm - padding);      // available width
+    const aspect = im.width > 0 ? im.height / im.width : 1;
+    const drawW = Math.min(60, maxW);                   // cap width so it looks nice
+    const drawH = drawW * aspect;                       // keep aspect ratio
+    const x = (widthMm - drawW) / 2;
+
+    doc.addImage(imgData, "JPEG", x, y, drawW, drawH);
+    y += drawH + 2;
+  } catch {}
+}
+
 
       // Cut the page height to content
       const finalHeight = Math.min(MAX_H, y + margin);
@@ -2436,3 +2444,4 @@ export default function App() {
     </div>
   );
 }
+
