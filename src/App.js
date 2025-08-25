@@ -1202,7 +1202,7 @@ if (order.voided) {
               const x = (widthMm - drawW) / 2;
               const fmt = p.toLowerCase().endsWith(".png") ? "PNG" : "JPEG";
               doc.addImage(dataUrl, fmt, x, y, drawW, drawH);
-              y += drawH + 8;
+              y += drawH + 4;
               return true;
             } catch {
               // try next candidate
@@ -2491,6 +2491,7 @@ if (order.voided) {
     </div>
   );
 }
+
 
 
 
