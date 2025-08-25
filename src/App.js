@@ -1159,7 +1159,7 @@ try {
       doc.setFontSize(8);
       if (order.voided) doc.text("VOIDED / RESTOCKED", margin, y);
       else if (order.done) doc.text("DONE", margin, y);
-      else doc.text("Thank you! @TUX \n\n ---------------------------------------------------------------------------------- \n ", margin, y);
+      else doc.text("Thank you for your Visit!\nSee you Soon\n\n-----------------------------------------------------------------", margin, y);
       
       y += 4;
 
@@ -1185,7 +1185,7 @@ try {
               const x = (widthMm - drawW) / 2;
               const fmt = p.toLowerCase().endsWith(".png") ? "PNG" : "JPEG";
               doc.addImage(dataUrl, fmt, x, y, drawW, drawH);
-              y += drawH + 2;
+              y += drawH + 4;
               return true;
             } catch {
               // try next candidate
@@ -2474,6 +2474,7 @@ try {
     </div>
   );
 }
+
 
 
 
