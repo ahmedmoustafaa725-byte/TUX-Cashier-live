@@ -1209,12 +1209,12 @@ try {
         // Order: QR -> Delivery banner -> TUX logo
          await drawImageFromPaths(
           ["/receipt/tux-logo.jpg", "/receipt/tux-logo.png", "/tux-logo.jpg", "/tux-logo.png"],
-          Math.min(35, maxW)
+          Math.min(50, maxW)
         );
         
         await drawImageFromPaths(
           ["/receipt/qr.jpg", "/receipt/qr.png", "/qr.jpg", "/qr.png"],
-          Math.min(50, maxW)
+          Math.min(35, maxW)
         );
         await drawImageFromPaths(
           ["/receipt/delivery.jpg", "/receipt/delivery.png", "/delivery.jpg", "/delivery.png"],
@@ -2486,6 +2486,7 @@ try {
     </div>
   );
 }
+
 
 
 
