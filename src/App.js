@@ -851,7 +851,7 @@ try {
   } finally {
   setIsCheckingOut(false);
       unlockPrint();            // 🔓 allow next print
-    }
+    };
 
   // --------- Order actions ----------
   const markOrderDone = async (orderNo) => {
@@ -2492,6 +2492,7 @@ const safeBoardPrint = async (order, widthMm, copy) => {
     </div>
   );
 }
+
 
 
 
