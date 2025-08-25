@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import jsPDF from "jspdf";
+import qz from "qz-tray";
+
 import autoTable from "jspdf-autotable";
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth, onAuthStateChanged, signInAnonymously } from "firebase/auth";
@@ -1177,6 +1179,67 @@ if (order.voided) {
   try { doc.setLineDash(); } catch {}
   y += 8; // << good extra space before the logos
 }
+
+      // DEV stub: route "direct" prints to the existing PDF ticket generator
+const printReceiptDirect = async (order, { widthMm = 80, copy = "Customer" } = {}) => {
+  return printThermalTicket(order, Number(widthMm) || 80, copy, { autoPrint: true });
+};
+
+      // --- QZ: Direct thermal print (simple text ticket) ---
+async function ensureQZ() {
+  if (!qz.websocket.isActive()) {
+    await qz.websocket.connect();
+  }
+}
+
+function buildPlainTextReceipt(order, copy = "Customer") {
+  const money = (n) => `E£${Number(n || 0).toFixed(2)}`;
+  let out = "";
+  out += "TUX - Burger Truck\n";
+  out += `${copy} Copy\n`;
+  out += `Order #${order.orderNo}\n`;
+  out += new Date(order.date).toLocaleString() + "\n";
+  out += `Worker: ${order.worker}\n`;
+  out += `Payment: ${order.payment}  Type: ${order.orderType}\n`;
+  if (order.orderType === "Delivery") out += `Delivery Fee: ${money(order.deliveryFee)}\n`;
+  out += "------------------------------\n";
+  for (const ci of order.cart || []) {
+    out += `${ci.name}  ${money(ci.price)}\n`;
+    for (const ex of (ci.extras || [])) {
+      out += `  + ${ex.name}  ${money(ex.price)}\n`;
+    }
+  }
+  out += "------------------------------\n";
+  out += `TOTAL: ${money(order.total)}\n`;
+  if (order.note) out += `NOTE: ${order.note}\n`;
+
+  // ESC/POS partial cut (GS V A 1) – many printers support this
+  out += "\x1dV\x41\x01";
+  return out;
+}
+
+const printReceiptDirect = async (order, { widthMm = 80, copy = "Customer" } = {}) => {
+  await ensureQZ();
+
+  // choose a printer: previously saved name or OS default
+  const saved = localStorage.getItem("qzPrinterName");
+  const printer = saved || await qz.printers.getDefault();
+
+  const cfg = qz.configs.create(printer, {
+    encoding: "utf8",
+    size: { units: "mm", width: Number(widthMm) || 80 },
+    rasterize: false, // raw text, faster
+    copies: 1
+  });
+
+  const text = buildPlainTextReceipt(order, copy);
+
+  // Send raw UTF-8 text; QZ will encode it as bytes
+  const data = [{ type: "raw", data: text }];
+
+  await qz.print(cfg, data);
+};
+
 
 
       // 📸 Append icons ONLY to the Customer copy
@@ -2490,6 +2553,7 @@ if (order.voided) {
     </div>
   );
 }
+
 
 
 
