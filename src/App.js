@@ -1132,6 +1132,9 @@ const printThermalTicket = async (order, widthMm = 80, copy = "Customer", opts =
       doc.line(margin, y, widthMm - margin, y); y += 1.6;
       doc.line(margin, y, widthMm - margin, y); y += 2.8;
       doc.setLineWidth(0.2);
+      // inside your async print function (e.g., printThermalTicket), after you compute maxW:
+await drawBranding(maxW);
+
     };
 
     // Calculate money parts if not provided
@@ -1314,22 +1317,23 @@ const printThermalTicket = async (order, widthMm = 80, copy = "Customer", opts =
           return false;
         };
 
-        // Order: QR -> Delivery banner -> TUX logo
-         await drawImageFromPaths(
-          ["/receipt/tux-logo.jpg", "/receipt/tux-logo.png", "/tux-logo.jpg", "/tux-logo.png"],
-          Math.min(50, maxW)
-        );
-        
-        await drawImageFromPaths(
-          ["/receipt/qr.jpg", "/receipt/qr.png", "/qr.jpg", "/qr.png"],
-          Math.min(35, maxW)
-        );
-        await drawImageFromPaths(
-          ["/receipt/delivery.jpg", "/receipt/delivery.png", "/delivery.jpg", "/delivery.png"],
-          Math.min(60, maxW)
-        );
-       
-      }
+        // put this near where you draw your images
+const drawBranding = async (maxW) => {
+  // Order: QR -> Delivery banner -> TUX logo
+  await drawImageFromPaths(
+    ["/receipt/qr.jpg", "/receipt/qr.png", "/qr.jpg", "/qr.png"],
+    Math.min(45, maxW)
+  );
+  await drawImageFromPaths(
+    ["/receipt/delivery-banner.jpg", "/receipt/delivery-banner.png"],
+    Math.min(30, maxW)
+  );
+  await drawImageFromPaths(
+    ["/receipt/tux-logo.jpg", "/receipt/tux-logo.png", "/tux-logo.jpg", "/tux-logo.png"],
+    Math.min(50, maxW)
+  );
+};
+
 
       // jsPDF can't change page size after creation easily; but printing trims whitespace automatically.
 
@@ -2594,6 +2598,7 @@ const printThermalTicket = async (order, widthMm = 80, copy = "Customer", opts =
     </div>
   );
 }
+
 
 
 
