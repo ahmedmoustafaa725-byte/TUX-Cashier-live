@@ -34,11 +34,11 @@ export async function listPrinters() {
   return qz.printers.find();
 }
 
-// Create print config
+// Create print config (we keep rasterize:false for raw ESC/POS text)
 function createConfig(qz, name, overrides = {}) {
   return qz.configs.create(name, {
     encoding: "CP437",
-    rasterize: false, // raw ESC/POS text; images are handled via raw image flavor below
+    rasterize: false,
     margins: { top: 0, right: 0, bottom: 0, left: 0 },
     colorType: "grayscale",
     ...overrides,
@@ -60,10 +60,7 @@ const BOLD_OFF = "\x1BE\x00";
 const DOUBLE_ON  = "\x1B!\x30"; // double height+width
 const DOUBLE_OFF = "\x1B!\x00";
 
-// feed n lines
 const FEED = (n = 3) => "\x1Bd" + String.fromCharCode(n);
-
-// full cut
 const CUT = "\x1DV\x00";
 
 const dash = (n) => "-".repeat(n) + "\n";
@@ -80,48 +77,60 @@ async function resolveFirstExisting(paths) {
     try {
       const res = await fetch(p, { method: "HEAD" });
       if (res.ok) return p;
-    } catch (_) {}
+    } catch {}
   }
   return null;
 }
 
-/** Build array of raw-image items for ESC/POS via QZ Tray (centered) */
-async function buildLogoItems() {
-  // Try common locations/filenames; feel free to change to your exact files
-  const qrPath       = await resolveFirstExisting(["/receipt/qr.png","/receipt/qr.jpg","/qr.png","/qr.jpg"]);
-  const deliveryPath = await resolveFirstExisting(["/receipt/delivery.png","/receipt/delivery.jpg","/delivery.png","/delivery.jpg"]);
-  const tuxPath      = await resolveFirstExisting(["/receipt/tux.png","/receipt/tux.jpg","/logo.png","/logo.jpg"]);
+/**
+ * Build array of logo image items (Customer copy only), matching your PDF order:
+ *  Logo (≈35mm) → QR (≈35mm) → Delivery banner (≈60mm)
+ * Notes:
+ *  - ESC/POS raw images don't accept mm sizing reliably via QZ API.
+ *  - For best results, PRE-SIZE your files at ~203dpi: 35mm≈280px, 60mm≈480px.
+ *  - We center them and add small feeds between.
+ */
+async function buildLogoItemsLikePdf(widthMm) {
+  // Try these filenames in /public or /public/receipt
+  const logoPath     = await resolveFirstExisting([
+    "/receipt/tux-logo.png", "/receipt/tux-logo.jpg", "/tux-logo.png", "/tux-logo.jpg",
+    "/receipt/tux.png", "/receipt/tux.jpg", "/logo.png", "/logo.jpg",
+  ]);
+  const qrPath       = await resolveFirstExisting([
+    "/receipt/qr.png", "/receipt/qr.jpg", "/qr.png", "/qr.jpg",
+  ]);
+  const deliveryPath = await resolveFirstExisting([
+    "/receipt/delivery.png", "/receipt/delivery.jpg", "/delivery.png", "/delivery.jpg",
+  ]);
 
-  const items = [];
-
-  // Center align for images
-  items.push(A.C);
-
+  // Helper to create raw-image items. We let the printer handle scale;
+  // pre-size your PNG/JPG width in pixels to match target mm (see note above).
   const toImage = (filePath) => ({
     type: "raw",
     format: "image",
-    flavor: "file",            // path/URL served by your app (Netlify public/)
+    flavor: "file",
     data: filePath,
     options: {
-      language: "ESCPOS",      // let QZ convert to ESC/POS image commands
-      dotDensity: "double",    // good balance for 80mm printers
-      // You can also use { width: 380 } to constrain width in dots if desired
+      language: "ESCPOS",
+      // dotDensity influences darkness/width behavior on many printers.
+      // 'double' usually looks good on 80mm units.
+      dotDensity: "double",
+      // If your images look too wide/narrow, try 'single' or 'triple'.
     },
   });
 
-  if (qrPath)       items.push(toImage(qrPath), FEED(1));
-  if (deliveryPath) items.push(toImage(deliveryPath), FEED(1));
-  if (tuxPath)      items.push(toImage(tuxPath), FEED(1));
-
-  // back to left align for any subsequent raw text (if any)
-  items.push(A.L);
-
+  const items = [];
+  items.push(A.C);                  // center align for images
+  if (logoPath)     { items.push(toImage(logoPath));     items.push(FEED(1)); }
+  if (qrPath)       { items.push(toImage(qrPath));       items.push(FEED(1)); }
+  if (deliveryPath) { items.push(toImage(deliveryPath)); items.push(FEED(1)); }
+  items.push(A.L);                  // back to left align
   return items;
 }
 
 /**
- * Build ESC/POS receipt (58mm≈32 cols, 80mm≈48 cols)
- * Now supports includeCut: pass false when you want to append logos before cutting.
+ * Build ESC/POS receipt text (58mm≈32 cols, 80mm≈48 cols).
+ * includeCut=false lets us append logos first, then cut.
  */
 function buildReceipt(order, {
   title = "TUX",
@@ -172,10 +181,7 @@ function buildReceipt(order, {
   // Footer (copy label)
   s += FEED(2) + A.C + `${copy} copy\n`;
 
-  // Only cut here if requested; for Customer we append logos then cut.
-  if (includeCut) {
-    s += FEED(3) + CUT;
-  }
+  if (includeCut) s += FEED(3) + CUT;
   return s;
 }
 
@@ -199,15 +205,13 @@ async function resolvePrinterName(copy) {
 // Low-level: send mixed data (raw strings + raw images) to a printer
 async function printMixed(printerName, data) {
   const qz = await ensureQz();
-  // Note: we keep rasterize:false; raw-image flavor handles ESC/POS images directly.
   await qz.print(createConfig(qz, printerName), data);
 }
 
 // Low-level: send pure ESC/POS text to a printer
 async function printRawEscPos(printerName, raw) {
   const qz = await ensureQz();
-  const data = [raw]; // shorthand for { type:'raw', format:'command', flavor:'plain', data: raw }
-  await qz.print(createConfig(qz, printerName), data);
+  await qz.print(createConfig(qz, printerName), [raw]);
 }
 
 /**
@@ -222,16 +226,16 @@ export async function printReceiptDirect(order, { widthMm = 80, copy = "Customer
     // 1) Build receipt WITHOUT final cut
     const rawNoCut = buildReceipt(order, { widthMm, copy, includeCut: false });
 
-    // 2) Build logo items (centered). If none exist, this returns just alignment resets.
-    const logoItems = await buildLogoItems();
+    // 2) Build logos in the same order/feel as your PDF code (Logo → QR → Delivery)
+    const logoItems = await buildLogoItemsLikePdf(widthMm);
 
-    // 3) Add some spacing and then CUT
+    // 3) Tail: some spacing, then CUT
     const tail = [FEED(2), CUT];
 
-    // 4) Print all in-order: text -> logos -> tail
+    // 4) Print in-order: text → logos → cut
     await printMixed(name, [rawNoCut, ...logoItems, ...tail]);
   } else {
-    // Kitchen: unchanged behavior (no logos)
+    // Kitchen: text only (no logos)
     const raw = buildReceipt(order, { widthMm, copy, includeCut: true });
     await printRawEscPos(name, raw);
   }
