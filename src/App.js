@@ -932,7 +932,7 @@ try {
     for (const t of orderTypes) byType[t] = 0;
     for (const o of validOrders) {
       const itemsOnly = Number(o.itemsTotal != null ? o.itemsTotal : (o.total - (o.deliveryFee || 0)));
-      if (byType[o.orderType] == null) byType[o.orderType] += 0;
+      if (byType[o.orderType] == null) byType[o.orderType] = 0;
       byType[o.orderType] += itemsOnly;
     }
     const deliveryFeesTotal = validOrders.reduce((s, o) => s + (o.deliveryFee || 0), 0);
@@ -1262,6 +1262,7 @@ const printThermalTicket = async (order, widthMm = 80, copy = "Customer", opts =
 
     // Optional final dashed line to look like tear-off
     dashedDivider();
+    await drawBranding(maxW);
 
     // Trim page height
     doc.internal.pageSize.height = y + margin;
@@ -2597,6 +2598,7 @@ const drawBranding = async (maxW) => {
     </div>
   );
 }
+
 
 
 
