@@ -1276,8 +1276,6 @@ const printThermalTicket = async (order, widthMm = 80, copy = "Customer", opts =
       win ? win.addEventListener("load", doPrint) : window.open(url);
       return;
     }
-// inside your async print function (e.g., printThermalTicket), after you compute maxW:
-await drawBranding(maxW);
 
     // Otherwise just save or return doc as needed
     doc.save(`TUX_Order_${safe(order.orderNo)}_${safe(copy)}.pdf`);
@@ -2599,6 +2597,7 @@ const drawBranding = async (maxW) => {
     </div>
   );
 }
+
 
 
 
