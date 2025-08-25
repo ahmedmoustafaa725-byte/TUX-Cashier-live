@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { printReceiptDirect} from "./posPrint";
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth, onAuthStateChanged, signInAnonymously } from "firebase/auth";
 import {
@@ -2491,6 +2490,7 @@ if (order.voided) {
     </div>
   );
 }
+
 
 
 
