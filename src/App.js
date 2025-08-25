@@ -1133,7 +1133,7 @@ const printThermalTicket = async (order, widthMm = 80, copy = "Customer", opts =
       doc.line(margin, y, widthMm - margin, y); y += 2.8;
       doc.setLineWidth(0.2);
       // inside your async print function (e.g., printThermalTicket), after you compute maxW:
-await drawBranding(maxW);
+        await drawBranding(maxW);
 
     };
 
@@ -2598,6 +2598,7 @@ const drawBranding = async (maxW) => {
     </div>
   );
 }
+
 
 
 
