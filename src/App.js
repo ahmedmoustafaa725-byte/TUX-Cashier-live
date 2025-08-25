@@ -1172,11 +1172,7 @@ if (order.voided) {
   y += 8; // << good extra space before the logos
 }
 
-      // DEV stub: route "direct" prints to the existing PDF ticket generator
-const printReceiptDirect = async (order, { widthMm = 80, copy = "Customer" } = {}) => {
-  return printThermalTicket(order, Number(widthMm) || 80, copy, { autoPrint: true });
-};
-
+  
       // --- QZ: Direct thermal print (simple text ticket) ---
 async function ensureQZ() {
   if (!qz.websocket.isActive()) {
@@ -2545,6 +2541,7 @@ const printReceiptDirect = async (order, { widthMm = 80, copy = "Customer" } = {
     </div>
   );
 }
+
 
 
 
