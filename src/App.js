@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useRef } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { printReceiptDirect} from "./posPrint";
@@ -719,14 +719,6 @@ export default function App() {
 
   // --------- Cart / Checkout ----------
   const [isCheckingOut, setIsCheckingOut] = useState(false); // guard against double taps
-// 🔒 Prevents double / repeated prints across the whole app
-const printingRef = useRef(false);
-const lockPrint = () => {
-  if (printingRef.current) return false;
-  printingRef.current = true;
-  return true;
-};
-const unlockPrint = () => { printingRef.current = false; };
 
   const addToCart = () => {
     if (!selectedBurger) return alert("Select a burger/item first.");
@@ -745,9 +737,9 @@ const unlockPrint = () => { printingRef.current = false; };
 
   const removeFromCart = (i) => setCart((c) => c.filter((_, idx) => idx !== i));
 
- const checkout = async () => {
-   if (!lockPrint()) return;   // 🔒 refuse if already printing
-   setIsCheckingOut(true);     // UI feedback only
+  const checkout = async () => {
+    if (isCheckingOut) return;
+    setIsCheckingOut(true);
 
     try {
       if (!dayMeta.startedAt || dayMeta.endedAt) return alert("Start a shift first (Shift → Start Shift).");
@@ -848,10 +840,10 @@ try {
       setOrderNote("");
       setOrderType(orderTypes[0] || "Take-Away");
       setDeliveryFee(orderType === "Delivery" ? defaultDeliveryFee : 0);
-  } finally {
-  setIsCheckingOut(false);
-      unlockPrint();            // 🔓 allow next print
-    };
+    } finally {
+      setIsCheckingOut(false);
+    }
+  };
 
   // --------- Order actions ----------
   const markOrderDone = async (orderNo) => {
@@ -1232,15 +1224,6 @@ try {
       alert("Could not print ticket. Ensure pop-ups are allowed and try again.");
     }
   };
-// 🔒 Board printing guard so a double click doesn't queue 2 jobs
-const safeBoardPrint = async (order, widthMm, copy) => {
-  if (!lockPrint()) return;
-  try {
-    await printThermalTicket(order, widthMm, copy);
-  } finally {
-    unlockPrint();
-  }
-};
 
   // 🔹 Simple test-print helper (uses demo order)
   const testPrint = async (width = preferredPaperWidthMm) => {
@@ -1583,19 +1566,17 @@ const safeBoardPrint = async (order, widthMm, copy) => {
               </>
             )}
 
-           <button
-  type="button"          // ✅ added
-  onClick={checkout}
-  disabled={isCheckingOut}
-  style={{
-    background: isCheckingOut ? "#9e9e9e" : "#43a047",
-    color: "white", border: "none", borderRadius: 6, padding: "8px 12px",
-    cursor: isCheckingOut ? "not-allowed" : "pointer",
-  }}
->
-  {isCheckingOut ? "Processing..." : "Checkout"}
-</button>
-
+            <button
+              onClick={checkout}
+              disabled={isCheckingOut}
+              style={{
+                background: isCheckingOut ? "#9e9e9e" : "#43a047",
+                color: "white", border: "none", borderRadius: 6, padding: "8px 12px",
+                cursor: isCheckingOut ? "not-allowed" : "pointer",
+              }}
+            >
+              {isCheckingOut ? "Processing..." : "Checkout"}
+            </button>
             <small>Next order #: <b>{nextOrderNo}</b></small>
           </div>
 
@@ -1675,7 +1656,7 @@ const safeBoardPrint = async (order, widthMm, copy) => {
                   )}
 
                   <button
-                    onClick={() => safeBoardPrint(o, 58, "Kitchen")}
+                    onClick={() => printThermalTicket(o, 58, "Kitchen")}
                     disabled={o.done || o.voided}
                     style={{
                       background: o.done || o.voided ? "#b39ddb" : "#7e57c2",
@@ -1686,7 +1667,7 @@ const safeBoardPrint = async (order, widthMm, copy) => {
                     Kitchen 58mm
                   </button>
                   <button
-                    onClick={() => safeBoardPrint(o, 80, "Kitchen")}
+                    onClick={() => printThermalTicket(o, 80, "Kitchen")}
                     disabled={o.done || o.voided}
                     style={{
                       background: o.done || o.voided ? "#8e24aa88" : "#6a1b9a",
@@ -1697,14 +1678,14 @@ const safeBoardPrint = async (order, widthMm, copy) => {
                     Kitchen 80mm
                   </button>
                   <button
-                    onClick={() => safeBoardPrint(o, 58, "Customer")}
+                    onClick={() => printThermalTicket(o, 58, "Customer")}
                     disabled={o.voided}
                     style={{ background: o.voided ? "#26a69a88" : "#00897b", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
                   >
                     Receipt 58mm
                   </button>
                   <button
-                    onClick={() => safeBoardPrint(o, 80, "Customer")}
+                    onClick={() => printThermalTicket(o, 80, "Customer")}
                     disabled={o.voided}
                     style={{ background: o.voided ? "#00695c88" : "#00695c", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
                   >
@@ -2492,8 +2473,6 @@ const safeBoardPrint = async (order, widthMm, copy) => {
     </div>
   );
 }
-
-
 
 
 
