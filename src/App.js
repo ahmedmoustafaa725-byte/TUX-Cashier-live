@@ -1156,12 +1156,29 @@ try {
       doc.text(`E£${Number(order.total || 0).toFixed(2)}`, widthMm - margin, y, { align: "right" });
       y += 6;
 
-      doc.setFontSize(8);
-      if (order.voided) doc.text("VOIDED / RESTOCKED", margin, y);
-      else if (order.done) doc.text("DONE", margin, y);
-      else doc.text("         Thank you for your Visit!\nSee you Soon\n\n-----------------------------------------------------------------", margin, y);
-      
-      y += 4;
+     doc.setFontSize(8);
+
+if (order.voided) {
+  doc.text("VOIDED / RESTOCKED", margin, y);
+  y += 5;
+} else if (order.done) {
+  doc.text("DONE", margin, y);
+  y += 5;
+} else {
+  // print each line and advance Y properly
+  const footerLines = [
+    "Thank you for your Visit!",
+    "See you Soon",
+  ];
+  footerLines.forEach((line) => { doc.text(line, margin, y); y += 4; });
+
+  // draw a full-width separator line
+  try { doc.setLineDash([1, 1], 0); } catch {}
+  doc.line(margin, y, widthMm - margin, y);
+  try { doc.setLineDash(); } catch {}
+  y += 8; // << good extra space before the logos
+}
+
 
       // 📸 Append icons ONLY to the Customer copy
       if (copy === "Customer") {
@@ -2474,6 +2491,7 @@ try {
     </div>
   );
 }
+
 
 
 
