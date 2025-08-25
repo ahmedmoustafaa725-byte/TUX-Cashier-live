@@ -932,7 +932,7 @@ try {
     for (const t of orderTypes) byType[t] = 0;
     for (const o of validOrders) {
       const itemsOnly = Number(o.itemsTotal != null ? o.itemsTotal : (o.total - (o.deliveryFee || 0)));
-      if (byType[o.orderType] == null) byType[o.orderType] = 0;
+      if (byType[o.orderType] == null) byType[o.orderType] += 0;
       byType[o.orderType] += itemsOnly;
     }
     const deliveryFeesTotal = validOrders.reduce((s, o) => s + (o.deliveryFee || 0), 0);
@@ -1082,210 +1082,99 @@ try {
     }
   };
 
- // --------------------------- PDF: THERMAL (with auto-print) ---------------------------
-/**
- * Prints ticket as an 80mm/58mm PDF.
- * opts.autoPrint = true opens print dialog automatically in a new tab.
- * NOTE: Browsers control the final "Fit to printable area" toggle. We size the page to widthMm for best results.
- */
-const printThermalTicket = async (order, widthMm = 80, copy = "Customer", opts = { autoPrint: false }) => {
-  try {
-    if (order.voided) return alert("This order is voided; no tickets can be printed.");
-    if (order.done && copy === "Kitchen") return alert("Order is done; kitchen ticket not available.");
+  // --------------------------- PDF: THERMAL (with auto-print) ---------------------------
+  /**
+   * Prints ticket as an 80mm/58mm PDF.
+   * opts.autoPrint = true will open a new tab with print dialog automatically.
+   * NOTE: Browsers control the final "Fit to printable area" toggle. We size the page to widthMm for best results.
+   */
+  const printThermalTicket = async (order, widthMm = 80, copy = "Customer", opts = { autoPrint: false }) => {
+    try {
+      if (order.voided) return alert("This order is voided; no tickets can be printed.");
+      if (order.done && copy === "Kitchen") return alert("Order is done; kitchen ticket not available.");
 
-    const MAX_H = 1000;
-    const doc = new jsPDF({ unit: "mm", format: [widthMm, MAX_H], compress: true });
+      const MAX_H = 1000;
+      const doc = new jsPDF({ unit: "mm", format: [widthMm, MAX_H], compress: true });
 
-    // --- helpers ---
-    const safe = (s) => String(s ?? "").replace(/[\u2013\u2014]/g, "-");
-    const fmt = (n) => `E£${Number(n || 0).toFixed(2)}`;
-    const margin = 4;
-    const innerW = widthMm - margin * 2;
-    const colRight = widthMm - margin;
-    let y = margin;
+      doc.setTextColor(0, 0, 0);
+      doc.setDrawColor(0, 0, 0);
 
-    const center = (txt, fs = 10, font = ["helvetica", "normal"]) => {
-      doc.setFont(font[0], font[1]);
-      doc.setFontSize(fs);
-      const tw = doc.getTextWidth(txt);
-      doc.text(txt, margin + innerW / 2, y, { align: "center", baseline: "top" });
-      y += fs * 0.48 + 2; // gentle spacing
-    };
+      const margin = 4;
+      const colRight = widthMm - margin;
+      let y = margin;
 
-    const leftRight = (l, r, fs = 9, font = ["helvetica", "normal"]) => {
-      doc.setFont(font[0], font[1]);
-      doc.setFontSize(fs);
-      doc.text(l, margin, y);
-      doc.text(r, colRight, y, { align: "right" });
-      y += fs * 0.42 + 2;
-    };
+      const safe = (s) => String(s ?? "").replace(/[\u2013\u2014]/g, "-");
 
-    const dashedDivider = (space = 1.5, dash = 2) => {
-      try { doc.setLineDash([dash, space], 0); } catch {}
-      doc.line(margin, y, widthMm - margin, y);
-      try { doc.setLineDash(); } catch {}
-      y += 2.5;
-    };
-
-    const doubleRule = () => {
-      doc.setLineWidth(0.4);
-      doc.line(margin, y, widthMm - margin, y); y += 1.6;
-      doc.line(margin, y, widthMm - margin, y); y += 2.8;
-      doc.setLineWidth(0.2);
-     
-
-    };
-
-    // Calculate money parts if not provided
-    const calcSubtotal = () => {
-      let sum = 0;
-      (order.cart || []).forEach(ci => {
-        const qty = Number(ci.qty || 1);
-        sum += qty * Number(ci.price || 0);
-        (ci.extras || []).forEach(ex => sum += qty * Number(ex.price || 0));
-      });
-      return sum;
-    };
-    const subTotal = Number(order.subtotal ?? calcSubtotal());
-    const deliveryFee = Number(order.deliveryFee || 0);
-    const discount = Number(order.discount || 0);
-    const grandTotal = Number(order.total ?? (subTotal + deliveryFee - discount));
-
-    // --- styles ---
-    doc.setTextColor(0, 0, 0);
-    doc.setDrawColor(0, 0, 0);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-
-    // =================== HEADER ===================
-    // (Do NOT change your logo code if you draw it elsewhere. This only lays out text around it.)
-    center(safe("TUX - Burger Truck"), 14, ["helvetica", "bold"]);
-    center("El-Saada St – Zahraa El-Maadi", 9);     // <— edit your street line here
-     // <— edit contact/socials here
-    dashedDivider();
-
-    // Receipt title line
-    center(`${safe(copy)} COPY`, 9, ["helvetica", "bold"]);
-    dashedDivider();
-
-    // =================== ORDER META ===================
-    leftRight(`Order #${safe(order.orderNo)}`, new Date(order.date).toLocaleString(), 9);
-    leftRight(`Worker: ${safe(order.worker)}`, `Type: ${safe(order.orderType)}`, 9);
-    leftRight(`Payment: ${safe(order.payment)}`, "", 9);
-
-    if (order.orderType === "Delivery" && deliveryFee > 0) {
-      leftRight("Delivery Fee", fmt(deliveryFee), 9);
-    }
-
-    if (order.note) {
-      dashedDivider();
-      doc.setFont("helvetica", "bold"); doc.setFontSize(9);
-      doc.text("NOTE:", margin, y); y += 4;
       doc.setFont("helvetica", "normal");
-      const wrapped = doc.splitTextToSize(safe(order.note), innerW);
-      wrapped.forEach(line => { doc.text(line, margin, y); y += 4; });
-    }
+      doc.setFontSize(12);
+      doc.text(safe("TUX - Burger Truck"), margin, y); y += 6;
 
-    dashedDivider();
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.text(`${safe(copy)} Copy`, margin, y); y += 5;
 
-    // =================== ITEMS ===================
-    // Column layout
-    // Qty | Item .................................... | Price
-    const xQty = margin;
-    const xName = margin + 8;
-    const xPrice = colRight;
+      doc.text(`Order #${order.orderNo}`, margin, y); y += 4;
+      doc.text(new Date(order.date).toLocaleString(), margin, y); y += 5;
 
-    // Header row
-    doc.setFont("helvetica", "bold"); doc.setFontSize(9);
-    doc.text("Q", xQty, y);
-    doc.text("Item", xName, y);
-    doc.text("Price", xPrice, y, { align: "right" });
-    y += 4;
-    doc.setFont("helvetica", "normal");
+      doc.text(`Worker: ${safe(order.worker)}`, margin, y); y += 4;
+      doc.text(`Payment: ${safe(order.payment)} | Type: ${safe(order.orderType)}`, margin, y); y += 5;
 
-    // Items
-    (order.cart || []).forEach((ci) => {
-      const qty = Number(ci.qty || 1);
-      const linePrice = Number(ci.price || 0);
-      // Item name can wrap
-      const nameLines = doc.splitTextToSize(safe(ci.name), xPrice - xName - 2);
-      // First row with qty + price
-      doc.text(String(qty), xQty, y);
-      doc.text(nameLines[0], xName, y);
-      doc.text(fmt(qty * linePrice), xPrice, y, { align: "right" });
-      y += 4;
-
-      // Continuation of name if wrapped
-      for (let i = 1; i < nameLines.length; i++) {
-        doc.text(nameLines[i], xName, y);
-        y += 4;
+      if (order.orderType === "Delivery") {
+        doc.text(`Delivery Fee: E£${(order.deliveryFee || 0).toFixed(2)}`, margin, y);
+        y += 5;
       }
 
-      // Extras indented with '+'
-      (ci.extras || []).forEach((ex) => {
-        const exLines = doc.splitTextToSize(`+ ${safe(ex.name)}`, xPrice - (xName + 4));
-        doc.text(exLines[0], xName + 4, y);
-        doc.text(fmt(qty * Number(ex.price || 0)), xPrice, y, { align: "right" });
-        y += 4;
-        for (let i = 1; i < exLines.length; i++) {
-          doc.text(exLines[i], xName + 4, y);
+      if (order.note) {
+        doc.text("NOTE:", margin, y); y += 5;
+        const wrapped = doc.splitTextToSize(safe(order.note), widthMm - margin * 2);
+        wrapped.forEach(line => { doc.text(line, margin, y); y += 4; });
+        y += 2;
+      }
+
+      doc.text("Items", margin, y); y += 5;
+
+      order.cart.forEach((ci) => {
+        const nameWrapped = doc.splitTextToSize(safe(ci.name), widthMm - margin * 2);
+        nameWrapped.forEach((w, i) => {
+          doc.text(w, margin, y);
+          if (i === 0) doc.text(`E£${Number(ci.price || 0).toFixed(2)}`, colRight, y, { align: "right" });
           y += 4;
-        }
+        });
+        (ci.extras || []).forEach((ex) => {
+          const exWrapped = doc.splitTextToSize(`+ ${safe(ex.name)}`, widthMm - margin * 2 - 2);
+          exWrapped.forEach((w, i) => {
+            doc.text(w, margin + 2, y);
+            if (i === 0) doc.text(`E£${Number(ex.price || 0).toFixed(2)}`, colRight, y, { align: "right" });
+            y += 4;
+          });
+        });
+        y += 1;
       });
 
-      y += 1.5; // small gap between items
-    });
+      doc.line(margin, y, widthMm - margin, y); y += 3;
+      doc.text("TOTAL", margin, y);
+      doc.text(`E£${Number(order.total || 0).toFixed(2)}`, widthMm - margin, y, { align: "right" });
+      y += 6;
 
-    dashedDivider();
+      doc.setFontSize(8);
+     if (order.voided) {
+        doc.text("VOIDED / RESTOCKED", margin, y);
+        y += 5;
+      } else if (order.done) {
+        doc.text("DONE", margin, y);
+        y += 5;
+      } else {
+        const footerLines = [
+          "Thank you for your Visit!",
+          "See you Soon",
+        ];
+        footerLines.forEach((line) => { doc.text(line, margin, y); y += 4; });
 
-    // =================== TOTALS ===================
-    leftRight("Subtotal", fmt(subTotal), 10);
-    if (discount > 0) leftRight("Discount", `- ${fmt(discount)}`, 10);
-    if (deliveryFee > 0) leftRight("Delivery", fmt(deliveryFee), 10);
-
-    doubleRule();
-    doc.setFont("helvetica", "bold"); doc.setFontSize(11);
-    leftRight("TOTAL", fmt(grandTotal), 11);
-    doc.setFont("helvetica", "normal"); doc.setFontSize(9);
-
-    dashedDivider();
-
-    // =================== STATUS / FOOTER ===================
-    if (order.voided) {
-      center("VOIDED / RESTOCKED", 10, ["helvetica", "bold"]);
-    } else if (order.done) {
-      center("DONE", 10, ["helvetica", "bold"]);
-    } else {
-      center("Thank you for your visit!", 9, ["helvetica", "bold"]);
-      center("Keep this receipt for your records.", 8);
-    }
-
-    // Optional final dashed line to look like tear-off
-    dashedDivider();
-    await drawBranding(maxW);
-
-    // Trim page height
-    doc.internal.pageSize.height = y + margin;
-
-    // Auto-print flow (opens new tab then triggers print)
-    if (opts.autoPrint) {
-      const blob = doc.output("blob");
-      const url = URL.createObjectURL(blob);
-      const win = window.open(url);
-      // In some browsers the load event may not fire; a small delay is a pragmatic fallback.
-      const doPrint = () => { try { win.focus(); win.print(); } catch {} };
-      win ? win.addEventListener("load", doPrint) : window.open(url);
-      return;
-    }
-
-    // Otherwise just save or return doc as needed
-    doc.save(`TUX_Order_${safe(order.orderNo)}_${safe(copy)}.pdf`);
-  } catch (err) {
-    console.error("printThermalTicket error:", err);
-    alert("Could not generate receipt. Check console for details.");
-  }
-};
-
+        try { doc.setLineDash([1, 1], 0); } catch {}
+        doc.line(margin, y, widthMm - margin, y);
+        try { doc.setLineDash(); } catch {}
+        y += 8;
+      }
       // 📸 Append icons ONLY to the Customer copy
       if (copy === "Customer") {
         const padding = margin * 2;
@@ -1317,23 +1206,22 @@ const printThermalTicket = async (order, widthMm = 80, copy = "Customer", opts =
           return false;
         };
 
-        // put this near where you draw your images
-const drawBranding = async (maxW) => {
-  // Order: QR -> Delivery banner -> TUX logo
-  await drawImageFromPaths(
-    ["/receipt/qr.jpg", "/receipt/qr.png", "/qr.jpg", "/qr.png"],
-    Math.min(45, maxW)
-  );
-  await drawImageFromPaths(
-    ["/receipt/delivery-banner.jpg", "/receipt/delivery-banner.png"],
-    Math.min(30, maxW)
-  );
-  await drawImageFromPaths(
-    ["/receipt/tux-logo.jpg", "/receipt/tux-logo.png", "/tux-logo.jpg", "/tux-logo.png"],
-    Math.min(50, maxW)
-  );
-};
-
+        // Order: QR -> Delivery banner -> TUX logo
+         await drawImageFromPaths(
+          ["/receipt/tux-logo.jpg", "/receipt/tux-logo.png", "/tux-logo.jpg", "/tux-logo.png"],
+          Math.min(35, maxW)
+        );
+        
+        await drawImageFromPaths(
+          ["/receipt/qr.jpg", "/receipt/qr.png", "/qr.jpg", "/qr.png"],
+          Math.min(50, maxW)
+        );
+        await drawImageFromPaths(
+          ["/receipt/delivery.jpg", "/receipt/delivery.png", "/delivery.jpg", "/delivery.png"],
+          Math.min(60, maxW)
+        );
+       
+      }
 
       // jsPDF can't change page size after creation easily; but printing trims whitespace automatically.
 
@@ -2598,13 +2486,6 @@ const drawBranding = async (maxW) => {
     </div>
   );
 }
-
-
-
-
-
-
-
 
 
 
