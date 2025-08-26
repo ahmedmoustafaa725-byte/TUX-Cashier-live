@@ -19,7 +19,7 @@ import {
   where,
   doc as fsDoc,
   writeBatch,
-  runTransaction,
+  runTransaction, // <-- atomic counter
 } from "firebase/firestore";
 
 /* --------------------------- FIREBASE CONFIG --------------------------- */
@@ -42,18 +42,6 @@ function ensureFirebase() {
 /* --------------------------- APP SETTINGS --------------------------- */
 const SHOP_ID = "tux";
 
-/* ---------- Helpers: colors for item/extra buttons ---------- */
-function hexToRgb(hex) {
-  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex || "");
-  if (!m) return { r: 255, g: 255, b: 255 };
-  return { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) };
-}
-function getTextColorForBg(hex) {
-  const { r, g, b } = hexToRgb(hex);
-  const yiq = (r * 299 + g * 587 + b * 114) / 1000;
-  return yiq >= 140 ? "#000" : "#fff";
-}
-
 function packStateForCloud(state) {
   const {
     menu,
@@ -73,8 +61,6 @@ function packStateForCloud(state) {
     expenses,
     dayMeta,
     bankTx,
-    autoPrintOnCheckout,
-    preferredPaperWidthMm,
   } = state;
 
   return {
@@ -127,8 +113,6 @@ function packStateForCloud(state) {
       ...t,
       date: t.date ? t.date.toISOString() : null,
     })),
-    autoPrintOnCheckout: !!autoPrintOnCheckout,
-    preferredPaperWidthMm: Number(preferredPaperWidthMm || 80),
   };
 }
 
@@ -158,7 +142,7 @@ function unpackStateFromCloud(data, fallbackDayMeta = {}) {
   if (data.dayMeta) {
     out.dayMeta = {
       startedBy: data.dayMeta.startedBy || "",
-      currentWorker: data.dayMeta.currentWorker || "",
+      currentWorker: data.dayMeta.currentWorker || "", // NEW: tracked separately
       startedAt: data.dayMeta.startedAt ? new Date(data.dayMeta.startedAt) : null,
       endedAt: data.dayMeta.endedAt ? new Date(data.dayMeta.endedAt) : null,
       endedBy: data.dayMeta.endedBy || "",
@@ -190,11 +174,6 @@ function unpackStateFromCloud(data, fallbackDayMeta = {}) {
   if (typeof data.defaultDeliveryFee === "number")
     out.defaultDeliveryFee = data.defaultDeliveryFee;
 
-  if (typeof data.autoPrintOnCheckout === "boolean")
-    out.autoPrintOnCheckout = data.autoPrintOnCheckout;
-  if (typeof data.preferredPaperWidthMm === "number")
-    out.preferredPaperWidthMm = data.preferredPaperWidthMm;
-
   return out;
 }
 
@@ -207,8 +186,8 @@ function normalizeOrderForCloud(order) {
     deliveryFee: order.deliveryFee,
     total: order.total,
     itemsTotal: order.itemsTotal,
-    cashReceived: order.cashReceived ?? null,
-    changeDue: order.changeDue ?? null,
+    cashReceived: order.cashReceived ?? null, // NEW
+    changeDue: order.changeDue ?? null, // NEW
     done: !!order.done,
     voided: !!order.voided,
     note: order.note || "",
@@ -233,8 +212,8 @@ function orderFromCloudDoc(id, d) {
     deliveryFee: Number(d.deliveryFee || 0),
     total: Number(d.total || 0),
     itemsTotal: Number(d.itemsTotal || 0),
-    cashReceived: d.cashReceived != null ? Number(d.cashReceived) : null,
-    changeDue: d.changeDue != null ? Number(d.changeDue) : null,
+    cashReceived: d.cashReceived != null ? Number(d.cashReceived) : null, // NEW
+    changeDue: d.changeDue != null ? Number(d.changeDue) : null, // NEW
     done: !!d.done,
     voided: !!d.voided,
     note: d.note || "",
@@ -245,7 +224,7 @@ function orderFromCloudDoc(id, d) {
   };
 }
 
-/* ---------- De-duplicate safety ---------- */
+/* ---------- De-duplicate safety (keep latest per orderNo) ---------- */
 function dedupeOrders(list) {
   const byNo = new Map();
   for (const o of list || []) {
@@ -259,38 +238,38 @@ function dedupeOrders(list) {
 
 /* --------------------------- BASE DATA --------------------------- */
 const BASE_MENU = [
-  { id: 1, name: "Single Smashed Patty", price: 95, uses: {}, color: "" },
-  { id: 2, name: "Double Smashed Patty", price: 140, uses: {}, color: "" },
-  { id: 3, name: "Triple Smashed Patty", price: 160, uses: {}, color: "" },
-  { id: 4, name: "Tux Quatro Smashed Patty", price: 190, uses: {}, color: "" },
-  { id: 14, name: "TUXIFY Single", price: 120, uses: {}, color: "" },
-  { id: 15, name: "TUXIFY Double", price: 160, uses: {}, color: "" },
-  { id: 16, name: "TUXIFY Triple", price: 200, uses: {}, color: "" },
-  { id: 17, name: "TUXIFY Quatro", price: 240, uses: {}, color: "" },
-  { id: 5, name: "Classic Fries", price: 25, uses: {}, color: "" },
-  { id: 6, name: "Cheese Fries", price: 40, uses: {}, color: "" },
-  { id: 7, name: "Chili Fries", price: 50, uses: {}, color: "" },
-  { id: 8, name: "Tux Fries", price: 75, uses: {}, color: "" },
-  { id: 9, name: "Doppy Fries", price: 95, uses: {}, color: "" },
-  { id: 10, name: "Classic Hawawshi", price: 80, uses: {}, color: "" },
-  { id: 11, name: "Tux Hawawshi", price: 100, uses: {}, color: "" },
-  { id: 12, name: "Soda", price: 20, uses: {}, color: "" },
-  { id: 13, name: "Water", price: 10, uses: {}, color: "" },
+  { id: 1, name: "Single Smashed Patty", price: 95, uses: {} },
+  { id: 2, name: "Double Smashed Patty", price: 140, uses: {} },
+  { id: 3, name: "Triple Smashed Patty", price: 160, uses: {} },
+  { id: 4, name: "Tux Quatro Smashed Patty", price: 190, uses: {} },
+  { id: 14, name: "TUXIFY Single", price: 120, uses: {} },
+  { id: 15, name: "TUXIFY Double", price: 160, uses: {} },
+  { id: 16, name: "TUXIFY Triple", price: 200, uses: {} },
+  { id: 17, name: "TUXIFY Quatro", price: 240, uses: {} },
+  { id: 5, name: "Classic Fries", price: 25, uses: {} },
+  { id: 6, name: "Cheese Fries", price: 40, uses: {} },
+  { id: 7, name: "Chili Fries", price: 50, uses: {} },
+  { id: 8, name: "Tux Fries", price: 75, uses: {} },
+  { id: 9, name: "Doppy Fries", price: 95, uses: {} },
+  { id: 10, name: "Classic Hawawshi", price: 80, uses: {} },
+  { id: 11, name: "Tux Hawawshi", price: 100, uses: {} },
+  { id: 12, name: "Soda", price: 20, uses: {} },
+  { id: 13, name: "Water", price: 10, uses: {} },
 ];
 const BASE_EXTRAS = [
-  { id: 101, name: "Extra Smashed Patty", price: 40, uses: {}, color: "" },
-  { id: 102, name: "Bacon", price: 20, uses: {}, color: "" },
-  { id: 103, name: "Cheese", price: 15, uses: {}, color: "" },
-  { id: 104, name: "Ranch", price: 15, uses: {}, color: "" },
-  { id: 105, name: "Mushroom", price: 15, uses: {}, color: "" },
-  { id: 106, name: "Caramelized Onion", price: 10, uses: {}, color: "" },
-  { id: 107, name: "Jalapeno", price: 10, uses: {}, color: "" },
-  { id: 108, name: "Tux Sauce", price: 10, uses: {}, color: "" },
-  { id: 109, name: "Extra Bun", price: 10, uses: {}, color: "" },
-  { id: 110, name: "Pickle", price: 5, uses: {}, color: "" },
-  { id: 111, name: "BBQ / Ketchup / Sweet Chili / Hot Sauce", price: 5, uses: {}, color: "" },
-  { id: 112, name: "Mozzarella Cheese", price: 20, uses: {}, color: "" },
-  { id: 113, name: "Tux Hawawshi Sauce", price: 10, uses: {}, color: "" },
+  { id: 101, name: "Extra Smashed Patty", price: 40, uses: {} },
+  { id: 102, name: "Bacon", price: 20, uses: {} },
+  { id: 103, name: "Cheese", price: 15, uses: {} },
+  { id: 104, name: "Ranch", price: 15, uses: {} },
+  { id: 105, name: "Mushroom", price: 15, uses: {} },
+  { id: 106, name: "Caramelized Onion", price: 10, uses: {} },
+  { id: 107, name: "Jalapeno", price: 10, uses: {} },
+  { id: 108, name: "Tux Sauce", price: 10, uses: {} },
+  { id: 109, name: "Extra Bun", price: 10, uses: {} },
+  { id: 110, name: "Pickle", price: 5, uses: {} },
+  { id: 111, name: "BBQ / Ketchup / Sweet Chili / Hot Sauce", price: 5, uses: {} },
+  { id: 112, name: "Mozzarella Cheese", price: 20, uses: {} },
+  { id: 113, name: "Tux Hawawshi Sauce", price: 10, uses: {} },
 ];
 const DEFAULT_INVENTORY = [
   { id: "meat", name: "Meat", unit: "g", qty: 0 },
@@ -311,7 +290,7 @@ const DEFAULT_ADMIN_PINS = {
 };
 const norm = (v) => String(v ?? "").trim();
 
-// Bulk delete helper
+// Bulk delete helper (used at endDay)
 async function purgeOrdersInCloud(db, ordersColRef, startDate, endDate) {
   try {
     const startTs = Timestamp.fromDate(startDate);
@@ -340,7 +319,7 @@ async function purgeOrdersInCloud(db, ordersColRef, startDate, endDate) {
   }
 }
 
-/* --------------------------- COUNTER --------------------------- */
+/* --------------------------- COUNTER: Atomic orderNo --------------------------- */
 async function allocateOrderNoAtomic(db, counterDocRef) {
   const next = await runTransaction(db, async (tx) => {
     const snap = await tx.get(counterDocRef);
@@ -356,7 +335,7 @@ async function allocateOrderNoAtomic(db, counterDocRef) {
   return next;
 }
 
-// ========= HTML thermal printing helpers =========
+// ========= HTML thermal printing helpers (outside the component) =========
 function escHtml(s) {
   return String(s ?? "")
     .replace(/&/g, "&amp;")
@@ -366,12 +345,13 @@ function escHtml(s) {
 }
 
 function buildReceiptHTML(order, widthMm = 80) {
-  const m = Math.max(0, Math.min(4, 4));
+  const m = Math.max(0, Math.min(4, 4)); // padding mm
   const currency = (v) => `E£${Number(v || 0).toFixed(2)}`;
   const dt = new Date(order.date);
   const orderDateStr = `${dt.getDate()}/${dt.getMonth() + 1}/${dt.getFullYear()}`;
   const orderTimeStr = dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
+  // compute items subtotal with quantities
   const itemsSubtotal =
     order.itemsTotal != null
       ? Number(order.itemsTotal || 0)
@@ -393,6 +373,7 @@ function buildReceiptHTML(order, widthMm = 80) {
   const grandTotal =
     order.total != null ? Number(order.total || 0) : itemsSubtotal + deliveryFee;
 
+  // ==== Build items table rows (4 columns: Item | Qty | Price | Total) ====
   const rowsHtml = (order.cart || [])
     .map((ci) => {
       const q = Number(ci.qty || 1);
@@ -485,7 +466,7 @@ function buildReceiptHTML(order, widthMm = 80) {
   .table { display:grid; grid-auto-rows:auto; row-gap:1mm; }
   .thead, .tr {
     display:grid;
-    grid-template-columns: 5fr 1fr 2fr 2.5fr;
+    grid-template-columns: 5fr 1fr 2fr 2.5fr; /* Item | Qty | Price | Total */
     column-gap: 2mm; align-items: end;
   }
   .thead {
@@ -519,6 +500,7 @@ function buildReceiptHTML(order, widthMm = 80) {
     <div class="title">TUX — Burger Truck</div>
     <div class="meta address">El-Saada St – Zahraa El-Maadi</div>
 
+    <!-- Order meta -->
     <div class="meta">Order No: <strong>#${escHtml(order.orderNo)}</strong></div>
     <div class="meta">Order Date: <strong>${escHtml(orderDateStr)}</strong> • Time: <strong>${escHtml(orderTimeStr)}</strong></div>
     <div class="meta">Worker: ${escHtml(order.worker)} • Payment: ${escHtml(order.payment)} • Type: ${escHtml(order.orderType || "")}</div>
@@ -611,7 +593,7 @@ export default function App() {
 
   const [selectedBurger, setSelectedBurger] = useState(null);
   const [selectedExtras, setSelectedExtras] = useState([]);
-  const [selectedQty, setSelectedQty] = useState(1);
+  const [selectedQty, setSelectedQty] = useState(1); // NEW: qty for the next add
   const [cart, setCart] = useState([]);
 
   const [worker, setWorker] = useState("");
@@ -620,7 +602,7 @@ export default function App() {
   const [orderType, setOrderType] = useState(orderTypes[0] || "Take-Away");
   const [deliveryFee, setDeliveryFee] = useState(0);
 
-  const [cashReceived, setCashReceived] = useState(0);
+  const [cashReceived, setCashReceived] = useState(0); // NEW: cash paid
 
   const [inventory, setInventory] = useState(DEFAULT_INVENTORY);
   const [newInvName, setNewInvName] = useState("");
@@ -632,22 +614,38 @@ export default function App() {
   const [inventoryLockedAt, setInventoryLockedAt] = useState(null);
 
   const [adminPins, setAdminPins] = useState({ ...DEFAULT_ADMIN_PINS });
-  const [showPins, setShowPins] = useState(false);
   const [pricesUnlocked, setPricesUnlocked] = useState(false);
+  const [adminPinsEditUnlocked, setAdminPinsEditUnlocked] = useState({
+    1: false,
+    2: false,
+    3: false,
+    4: false,
+    5: false,
+    6: false,
+  });
 
   const [orders, setOrders] = useState([]);
   const [nextOrderNo, setNextOrderNo] = useState(1);
 
   const [expenses, setExpenses] = useState([]);
-
+  const [newExpName, setNewExpName] = useState("");
+  const [newExpUnit, setNewExpUnit] = useState("pcs");
+  const [newExpQty, setNewExpQty] = useState(1);
+  const [newExpUnitPrice, setNewExpUnitPrice] = useState(0);
+  const [newExpNote, setNewExpNote] = useState("");
 
   const [bankUnlocked, setBankUnlocked] = useState(false);
   const [bankTx, setBankTx] = useState([]);
- 
+  const [bankForm, setBankForm] = useState({
+    type: "deposit",
+    amount: 0,
+    worker: "",
+    note: "",
+  });
 
   const [dayMeta, setDayMeta] = useState({
     startedBy: "",
-    currentWorker: "",
+    currentWorker: "", // NEW
     startedAt: null,
     endedAt: null,
     endedBy: "",
@@ -657,13 +655,27 @@ export default function App() {
     shiftChanges: [],
   });
 
-  const [sortBy] = useState("date-desc");
+  const [sortBy, setSortBy] = useState("date-desc");
 
   const [nowStr, setNowStr] = useState(new Date().toLocaleString());
   useEffect(() => {
     const t = setInterval(() => setNowStr(new Date().toLocaleString()), 1000);
     return () => clearInterval(t);
   }, []);
+
+  
+
+  const [newMenuName, setNewMenuName] = useState("");
+  const [newMenuPrice, setNewMenuPrice] = useState(0);
+  const [newExtraName, setNewExtraName] = useState("");
+  const [newExtraPrice, setNewExtraPrice] = useState(0);
+
+  // JSPrintManager state
+  const [jspmReady, setJspmReady] = useState(false);
+  const [jspmPrinters, setJspmPrinters] = useState([]);
+  const [selectedPrinter, setSelectedPrinter] = useState(
+    localStorage.getItem("jspmPrinter") || ""
+  );
 
   /* --------------------------- FIREBASE STATE --------------------------- */
   const [fbReady, setFbReady] = useState(false);
@@ -677,7 +689,7 @@ export default function App() {
   });
   const [hydrated, setHydrated] = useState(false);
 
-  // NEW: Printing preferences (persisted)
+  // NEW: Printing preferences (UI + logic)
   const [autoPrintOnCheckout, setAutoPrintOnCheckout] = useState(true);
   const [preferredPaperWidthMm, setPreferredPaperWidthMm] = useState(80); // default 80mm
 
@@ -715,6 +727,35 @@ export default function App() {
     () => (db ? fsDoc(db, "shops", SHOP_ID, "state", "counters") : null),
     [db]
   );
+
+  // Start JSPrintManager & fetch printers
+  useEffect(() => {
+    const JSPM = window.JSPM;
+    if (!JSPM) return; // SDK script not loaded yet
+
+    try {
+      JSPM.JSPrintManager.auto_reconnect = true;
+      JSPM.JSPrintManager.start();
+
+      JSPM.JSPrintManager.WS.onStatusChanged = async () => {
+        const open =
+          JSPM.JSPrintManager.websocket_status === JSPM.WSStatus.Open;
+        setJspmReady(open);
+        if (open) {
+          try {
+            const list = await JSPM.JSPrintManager.getPrinters();
+            setJspmPrinters(list || []);
+            if (!selectedPrinter && list?.length) setSelectedPrinter(list[0]);
+          } catch (e) {
+            console.warn("JSPM getPrinters failed:", e);
+          }
+        }
+      };
+    } catch (e) {
+      console.warn("JSPM init failed:", e);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Keep UI's "next order #" in sync with the shared counter
   useEffect(() => {
@@ -758,11 +799,6 @@ export default function App() {
           if (unpacked.expenses) setExpenses(unpacked.expenses);
           if (unpacked.dayMeta) setDayMeta(unpacked.dayMeta);
           if (unpacked.bankTx) setBankTx(unpacked.bankTx);
-          if (typeof unpacked.autoPrintOnCheckout === "boolean")
-            setAutoPrintOnCheckout(unpacked.autoPrintOnCheckout);
-          if (typeof unpacked.preferredPaperWidthMm === "number")
-            setPreferredPaperWidthMm(unpacked.preferredPaperWidthMm);
-
           setCloudStatus((s) => ({ ...s, lastLoadAt: new Date(), error: null }));
         }
       } catch (e) {
@@ -804,10 +840,6 @@ export default function App() {
       if (unpacked.expenses) setExpenses(unpacked.expenses);
       if (unpacked.dayMeta) setDayMeta(unpacked.dayMeta);
       if (unpacked.bankTx) setBankTx(unpacked.bankTx);
-      if (typeof unpacked.autoPrintOnCheckout === "boolean")
-        setAutoPrintOnCheckout(unpacked.autoPrintOnCheckout);
-      if (typeof unpacked.preferredPaperWidthMm === "number")
-        setPreferredPaperWidthMm(unpacked.preferredPaperWidthMm);
 
       setCloudStatus((s) => ({ ...s, lastLoadAt: new Date(), error: null }));
       alert("Loaded from cloud ✔");
@@ -817,7 +849,7 @@ export default function App() {
     }
   };
 
-  // Autosave (state doc)
+  // Autosave (state doc) – never saves orders when realtime is ON
   useEffect(() => {
     if (!cloudEnabled || !stateDocRef || !fbUser || !hydrated) return;
     const t = setTimeout(async () => {
@@ -840,8 +872,6 @@ export default function App() {
           expenses,
           dayMeta,
           bankTx,
-          autoPrintOnCheckout,
-          preferredPaperWidthMm,
         });
         await setDoc(stateDocRef, body, { merge: true });
         setCloudStatus((s) => ({ ...s, lastSaveAt: new Date(), error: null }));
@@ -874,8 +904,6 @@ export default function App() {
     dayMeta,
     bankTx,
     realtimeOrders,
-    autoPrintOnCheckout,
-    preferredPaperWidthMm,
   ]);
 
   const startedAtMs = dayMeta?.startedAt
@@ -936,7 +964,9 @@ export default function App() {
     const expected = norm(adminPins[n]);
     const attempt = norm(entered);
     if (!expected) {
-      alert(`Admin ${n} has no PIN set; set a PIN in Edit → Admin PINs.`);
+      alert(
+        `Admin ${n} has no PIN set; set a PIN in Prices → Admin PINs.`
+      );
       return null;
     }
     if (attempt !== expected) {
@@ -990,7 +1020,7 @@ export default function App() {
     if (!name) return alert("Worker name required.");
     setDayMeta({
       startedBy: name,
-      currentWorker: name,
+      currentWorker: name, // NEW
       startedAt: new Date(),
       endedAt: null,
       endedBy: "",
@@ -1000,11 +1030,16 @@ export default function App() {
       shiftChanges: [],
     });
     if (!inventoryLocked && inventory.length) {
-      if (window.confirm("Lock current Inventory as Start-of-Day snapshot?"))
+      if (
+        window.confirm(
+          "Lock current Inventory as Start-of-Day snapshot?"
+        )
+      )
         lockInventoryForDay();
     }
   };
 
+  // NEW: Change shift updates only current worker (does NOT change startedBy)
   const changeShift = () => {
     if (!dayMeta.startedAt || dayMeta.endedAt)
       return alert("Start a shift first.");
@@ -1023,6 +1058,15 @@ export default function App() {
       ],
     }));
     alert(`On-duty changed: ${prev || "?"} → ${newName}`);
+  };
+
+  // NEW: Edit "Started by" (correction only)
+  const editStartedBy = () => {
+    if (!dayMeta.startedAt) return alert("Start a shift first.");
+    const nm = window.prompt("Enter the correct 'Started by' name:", dayMeta.startedBy || "");
+    const v = norm(nm);
+    if (!v) return;
+    setDayMeta((d) => ({ ...d, startedBy: v }));
   };
 
   const endDay = async () => {
@@ -1135,7 +1179,7 @@ export default function App() {
       ...selectedBurger,
       extras: [...selectedExtras],
       price: selectedBurger.price,
-      qty,
+      qty, // NEW
       uses,
     };
     setCart((c) => [...c, line]);
@@ -1175,6 +1219,7 @@ export default function App() {
       if (!payment) return alert("Select payment.");
       if (!orderType) return alert("Select order type.");
 
+      // Stock check (respect qty)
       const required = {};
       for (const line of cart) {
         const uses = line.uses || {};
@@ -1190,6 +1235,7 @@ export default function App() {
           );
         }
       }
+      // Deduct
       setInventory((inv) =>
         inv.map((it) => {
           const need = required[it.id] || 0;
@@ -1197,6 +1243,7 @@ export default function App() {
         })
       );
 
+      // Totals with qty
       const itemsTotal = cart.reduce((s, b) => {
         const ex = (b.extras || []).reduce((t, e) => t + Number(e.price || 0), 0);
         return s + (Number(b.price || 0) + ex) * Number(b.qty || 1);
@@ -1204,10 +1251,12 @@ export default function App() {
       const delFee = orderType === "Delivery" ? Math.max(0, Number(deliveryFee || 0)) : 0;
       const total = itemsTotal + delFee;
 
+      // Cash & change
       const cashVal = payment === "Cash" ? Number(cashReceived || 0) : null;
       const changeDue =
         payment === "Cash" ? Math.max(0, Number((cashVal || 0) - total)) : null;
 
+      // Allocate order number (atomic)
       let allocatedNo = nextOrderNo;
       if (cloudEnabled && counterDocRef && fbUser && db) {
         try {
@@ -1306,6 +1355,7 @@ export default function App() {
     if (ord.voided) return alert("This order is already voided & restocked.");
     if (!window.confirm(`Void order #${orderNo} and restock inventory?`)) return;
 
+    // give back uses (respect qty)
     const giveBack = {};
     for (const line of ord.cart) {
       const uses = line.uses || {};
@@ -1420,44 +1470,6 @@ export default function App() {
       (a, b) => b.count - a.count || b.revenue - a.revenue
     );
     return { items, extras };
-  }, [orders]);
-
-  // Old-items tables data
-  const reportItemRows = useMemo(() => {
-    const acc = new Map(); // key: name|price
-    for (const o of orders) {
-      if (o.voided) continue;
-      for (const line of o.cart || []) {
-        const price = Number(line.price || 0);
-        const q = Number(line.qty || 1);
-        const extrasSum = (line.extras || []).reduce((s, e) => s + Number(e.price || 0), 0);
-        const key = `${line.name}|${price}`;
-        const prev = acc.get(key) || { name: line.name, price, qty: 0, total: 0 };
-        prev.qty += q;
-        prev.total += (price + extrasSum) * q;
-        acc.set(key, prev);
-      }
-    }
-    return Array.from(acc.values()).sort((a, b) => b.qty - a.qty || b.total - a.total);
-  }, [orders]);
-
-  const reportExtraRows = useMemo(() => {
-    const acc = new Map(); // key: name|price
-    for (const o of orders) {
-      if (o.voided) continue;
-      for (const line of o.cart || []) {
-        const q = Number(line.qty || 1);
-        for (const ex of line.extras || []) {
-          const price = Number(ex.price || 0);
-          const key = `${ex.name}|${price}`;
-          const prev = acc.get(key) || { name: ex.name, price, qty: 0, total: 0 };
-          prev.qty += q;
-          prev.total += price * q;
-          acc.set(key, prev);
-        }
-      }
-    }
-    return Array.from(acc.values()).sort((a, b) => b.qty - a.qty || b.total - a.total);
   }, [orders]);
 
   const inventoryReportRows = useMemo(() => {
@@ -1640,8 +1652,8 @@ export default function App() {
   };
 
   const handleTabClick = (key) => {
-    if (key === "edit" && !pricesUnlocked) {
-      const entered = window.prompt("Enter Editor PIN to open Edit:", "");
+    if (key === "prices" && !pricesUnlocked) {
+      const entered = window.prompt("Enter Editor PIN to open Prices:", "");
       if (entered == null) return;
       if (norm(entered) !== norm(EDITOR_PIN)) return alert("Wrong PIN.");
       setPricesUnlocked(true);
@@ -1654,37 +1666,17 @@ export default function App() {
     setActiveTab(key);
   };
 
-  
+  const bankBalance = useMemo(() => {
+    return bankTx.reduce((sum, t) => {
+      const a = Number(t.amount || 0);
+      if (t.type === "deposit" || t.type === "init" || t.type === "adjustUp") return sum + a;
+      if (t.type === "withdraw" || t.type === "adjustDown") return sum - a;
+      return sum;
+    }, 0);
+  }, [bankTx]);
 
   /* --------------------------- UI --------------------------- */
 
-  /* ---------- Reorder helpers for Edit tab ---------- */
-  const moveMenu = (idx, dir) => {
-    setMenu((arr) => {
-      const next = [...arr];
-      const j = idx + dir;
-      if (j < 0 || j >= next.length) return arr;
-      const [it] = next.splice(idx, 1);
-      next.splice(j, 0, it);
-      return next;
-    });
-  };
-  const moveExtra = (idx, dir) => {
-    setExtraList((arr) => {
-      const next = [...arr];
-      const j = idx + dir;
-      if (j < 0 || j >= next.length) return arr;
-      const [it] = next.splice(idx, 1);
-      next.splice(j, 0, it);
-      return next;
-    });
-  };
-
-  // Small inline editor toggles
-  const [openUsesMenu, setOpenUsesMenu] = useState({});
-  const [openColorMenu, setOpenColorMenu] = useState({});
-  const [openUsesExtra, setOpenUsesExtra] = useState({});
-  const [openColorExtra, setOpenColorExtra] = useState({});
 
   return (
     <div style={containerStyle}>
@@ -1728,103 +1720,92 @@ export default function App() {
                 color: "#fff",
                 border: "none",
                 borderRadius: 6,
-                padding: "6px 10 px",
+                padding: "6px 10px",
                 cursor: "pointer",
               }}
             >
               Start Shift
             </button>
+            <small style={{ opacity: 0.8 }}>
+              Select/enter worker first (Orders tab) or you'll be prompted.
+            </small>
           </>
         ) : (
           <>
             <span>
-              <b>Shift started by:</b> {dayMeta.startedBy || "—"} &nbsp;|&nbsp;{" "}
-              <b>On-duty:</b> {dayMeta.currentWorker || "—"} &nbsp;|&nbsp;{" "}
-              <b>Started at:</b>{" "}
-              {dayMeta.startedAt ? new Date(dayMeta.startedAt).toLocaleString() : "—"}
+              Started by <b>{dayMeta.startedBy}</b> at{" "}
+              <b>{new Date(dayMeta.startedAt).toLocaleString()}</b>
+              {dayMeta.currentWorker && (
+                <> • Current: <b>{dayMeta.currentWorker}</b></>
+              )}
             </span>
+            <button
+              onClick={() => generatePDF()}
+              style={{
+                background: "#7e57c2",
+                color: "white",
+                border: "none",
+                borderRadius: 6,
+                padding: "6px 10px",
+                cursor: "pointer",
+              }}
+            >
+              Download PDF Report
+            </button>
             <button
               onClick={changeShift}
               style={{
-                background: "#1565c0",
-                color: "#fff",
+                background: "#37474f",
+                color: "white",
                 border: "none",
                 borderRadius: 6,
                 padding: "6px 10px",
                 cursor: "pointer",
               }}
             >
-              Change Worker
+              Change Shift (on-duty)
             </button>
             <button
-              onClick={() => generatePDF(false)}
+              onClick={editStartedBy}
               style={{
-                background: "#6d4c41",
-                color: "#fff",
+                background: "#455a64",
+                color: "white",
                 border: "none",
                 borderRadius: 6,
                 padding: "6px 10px",
                 cursor: "pointer",
               }}
             >
-              Download Report (PDF)
+              Edit “Started by”
             </button>
             <button
               onClick={endDay}
               style={{
-                background: "#c62828",
-                color: "#fff",
+                background: "#e53935",
+                color: "white",
                 border: "none",
                 borderRadius: 6,
                 padding: "6px 10px",
                 cursor: "pointer",
               }}
             >
-              End Day & Reset
+              End the Day (requires PDF)
             </button>
           </>
         )}
-
-        <div style={{ flex: 1 }} />
-
-        <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <input
-            type="checkbox"
-            checked={dark}
-            onChange={(e) => setDark(e.target.checked)}
-          />
-          Dark
-        </label>
-
-        <button
-          onClick={loadFromCloud}
-          style={{
-            border: `1px solid ${btnBorder}`,
-            background: "white",
-            borderRadius: 6,
-            padding: "6px 10px",
-            cursor: "pointer",
-          }}
-        >
-          Load from Cloud
-        </button>
       </div>
 
       {/* Tabs */}
-      <div
-        style={{
-          display: "flex",
-          gap: 8,
-          marginBottom: 10,
-          flexWrap: "wrap",
-        }}
-      >
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
         {[
-          ["orders", "Orders Board"],
-          ["pos", "POS"],
-          ["report", "Report"],
-          ["edit", "Edit"],
-          ["settings", "Settings"],
+          ["orders", "Orders"],
+          ["board", "Orders Board"],
+          ["inventory", "Inventory"],
+          ["expenses", "Expenses"],
+          ["bank", "Bank"],
+          ["reports", "Reports"],
+          ["prices", "Prices"],
+          ["settings", "Settings"], // NEW tab
         ].map(([key, label]) => (
           <button
             key={key}
@@ -1833,8 +1814,8 @@ export default function App() {
               padding: "8px 12px",
               borderRadius: 6,
               border: `1px solid ${btnBorder}`,
-              background: activeTab === key ? "#1976d2" : "white",
-              color: activeTab === key ? "#fff" : (dark ? "#eee" : "#000"),
+              background: activeTab === key ? "#ffd54f" : dark ? "#333" : "#eee",
+              color: dark ? "#fff" : "#000",
               cursor: "pointer",
             }}
           >
@@ -1843,95 +1824,940 @@ export default function App() {
         ))}
       </div>
 
-      {/* ======== ORDERS BOARD ======== */}
+      {/* ORDERS */}
       {activeTab === "orders" && (
-        <div
-          style={{
-            border: `1px solid ${cardBorder}`,
-            borderRadius: 8,
-            padding: 12,
-          }}
-        >
-          {orders.length === 0 ? (
-            <div style={{ opacity: 0.7 }}>No orders yet.</div>
-          ) : (
-            <div style={{ display: "grid", gap: 8 }}>
-              {orders.map((o) => (
-                <div
-                  key={o.orderNo}
+        <div>
+          <h2>Select item</h2>
+
+          <div style={{ display: "flex", gap: 24, alignItems: "flex-start", flexWrap: "wrap" }}>
+            <div style={{ flex: 1, minWidth: 300 }}>
+              <h3>Burgers & Items</h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {menu.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => setSelectedBurger(item)}
+                    style={{
+                      textAlign: "left",
+                      padding: 10,
+                      border: `1px solid ${btnBorder}`,
+                      borderRadius: 6,
+                      background:
+                        selectedBurger?.id === item.id
+                          ? "#c8e6c9"
+                          : dark
+                          ? "#1e1e1e"
+                          : "#fafafa",
+                      color: dark ? "#eee" : "#000",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {item.name} — E£{item.price}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ flex: 1, minWidth: 300 }}>
+              <h3>Extras (for selected item)</h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {extraList.map((ex) => {
+                  const checked = !!selectedExtras.find((e) => e.id === ex.id);
+                  return (
+                    <label
+                      key={ex.id}
+                      style={{
+                        padding: 10,
+                        border: `1px solid ${btnBorder}`,
+                        borderRadius: 6,
+                        background: checked
+                          ? "#e1f5fe"
+                          : dark
+                          ? "#1e1e1e"
+                          : "#fafafa",
+                        color: dark ? "#eee" : "#000",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleExtra(ex)}
+                        style={{ marginRight: 8 }}
+                      />
+                      {ex.name} — E£{ex.price}
+                    </label>
+                  );
+                })}
+              </div>
+
+              {/* NEW: Qty stepper + Add */}
+              <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8 }}>
+                <strong>Qty:</strong>
+                <button
+                  onClick={() => setSelectedQty((q) => Math.max(1, Number(q || 1) - 1))}
+                  style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${btnBorder}` }}
+                >
+                  –
+                </button>
+                <input
+                  type="number"
+                  value={selectedQty}
+                  onChange={(e) => setSelectedQty(Math.max(1, Number(e.target.value || 1)))}
+                  style={{ width: 70, textAlign: "center" }}
+                />
+                <button
+                  onClick={() => setSelectedQty((q) => Math.max(1, Number(q || 1) + 1))}
+                  style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${btnBorder}` }}
+                >
+                  +
+                </button>
+
+                <button
+                  onClick={addToCart}
                   style={{
-                    border: `1px solid ${cardBorder}`,
-                    borderRadius: 8,
-                    padding: 10,
-                    background: dark ? "#1b1b1b" : "#fff",
+                    marginLeft: "auto",
+                    padding: "10px 14px",
+                    borderRadius: 6,
+                    border: "none",
+                    background: "#42a5f5",
+                    color: "white",
+                    cursor: "pointer",
                   }}
                 >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      flexWrap: "wrap",
-                      justifyContent: "space-between",
-                    }}
-                  >
-                    <div style={{ fontWeight: 700 }}>
-                      #{o.orderNo} — {o.worker} — {o.payment} — {o.orderType || ""}
-                      {o.voided ? " — VOIDED" : o.done ? " — DONE" : ""}
+                  Add to cart
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Cart */}
+          <h3 style={{ marginTop: 16 }}>Cart</h3>
+          {cart.length === 0 && <p>No items yet.</p>}
+          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+            {cart.map((it, idx) => {
+              const extrasSum = (it.extras || []).reduce(
+                (t, e) => t + Number(e.price || 0),
+                0
+              );
+              const lineTotal =
+                (Number(it.price || 0) + extrasSum) * Number(it.qty || 1);
+              return (
+                <li
+                  key={idx}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 12,
+                    border: `1px solid ${cardBorder}`,
+                    borderRadius: 6,
+                    padding: 8,
+                    marginBottom: 6,
+                    background: dark ? "#1a1a1a" : "transparent",
+                  }}
+                >
+                  <div style={{ flex: 1 }}>
+                    <strong>{it.name}</strong> — E£{it.price}
+                    {it.extras?.length > 0 && (
+                      <ul style={{ margin: "4px 0 0 16px", color: dark ? "#bbb" : "#555" }}>
+                        {it.extras.map((e) => (
+                          <li key={e.id}>+ {e.name} (E£{e.price})</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+
+                  {/* Qty stepper in cart */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <button
+                      onClick={() => changeQty(idx, -1)}
+                      style={{
+                        padding: "4px 8px",
+                        borderRadius: 6,
+                        border: `1px solid ${btnBorder}`,
+                      }}
+                    >
+                      –
+                    </button>
+                    <input
+                      type="number"
+                      value={it.qty || 1}
+                      onChange={(e) => setQty(idx, e.target.value)}
+                      style={{ width: 60, textAlign: "center" }}
+                    />
+                    <button
+                      onClick={() => changeQty(idx, +1)}
+                      style={{
+                        padding: "4px 8px",
+                        borderRadius: 6,
+                        border: `1px solid ${btnBorder}`,
+                      }}
+                    >
+                      +
+                    </button>
+                  </div>
+
+                  <div style={{ minWidth: 120, textAlign: "right" }}>
+                    <div>
+                      <small>Line total</small>
                     </div>
-                    <div style={{ opacity: 0.8 }}>
-                      {o.date ? new Date(o.date).toLocaleString() : ""}
+                    <div>
+                      <b>E£{lineTotal.toFixed(2)}</b>
                     </div>
                   </div>
 
-                  <div style={{ marginTop: 6, fontSize: 14 }}>
-                    {(o.cart || []).map((l, i) => (
-                      <div key={i} style={{ display: "flex", gap: 8 }}>
-                        <div style={{ flex: 1 }}>
-                          {l.qty}× {l.name}
-                          {(l.extras || []).length ? (
-                            <span style={{ opacity: 0.8 }}>
-                              {" "}
-                              (+{l.extras.map((e) => e.name).join(", ")})
-                            </span>
-                          ) : null}
-                        </div>
-                        <div style={{ width: 90, textAlign: "right" }}>
-                          E£{Number(l.price || 0).toFixed(2)}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div
+                  <button
+                    onClick={() => removeFromCart(idx)}
                     style={{
-                      display: "flex",
-                      gap: 8,
-                      marginTop: 10,
-                      flexWrap: "wrap",
+                      background: "#ef5350",
+                      color: "white",
+                      border: "none",
+                      borderRadius: 6,
+                      padding: "6px 10px",
+                      cursor: "pointer",
                     }}
                   >
+                    Remove
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+
+          {/* Notes */}
+          <div style={{ margin: "8px 0 12px" }}>
+            <label>
+              <strong>Order notes:</strong>{" "}
+              <input
+                type="text"
+                value={orderNote}
+                placeholder="e.g., no pickles, extra spicy"
+                onChange={(e) => setOrderNote(e.target.value)}
+                style={{
+                  width: 420,
+                  maxWidth: "90%",
+                  padding: "6px 8px",
+                  borderRadius: 6,
+                  border: `1px solid ${btnBorder}`,
+                  background: dark ? "#1e1e1e" : "white",
+                  color: dark ? "#eee" : "#000",
+                }}
+              />
+            </label>
+          </div>
+
+          {/* Selection groups & Checkout */}
+          <div style={{ display: "grid", gap: 12 }}>
+            {/* Button groups row */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr 1fr",
+                gap: 8,
+              }}
+            >
+              {/* Worker group */}
+              <div
+                style={{
+                  border: `1px solid ${btnBorder}`,
+                  borderRadius: 8,
+                  padding: 8,
+                  background: dark ? "#191919" : "#fafafa",
+                }}
+              >
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>Worker</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {workers.map((w) => (
+                    <button
+                      key={w}
+                      onClick={() => setWorker(w)}
+                      style={{
+                        padding: "8px 10px",
+                        borderRadius: 8,
+                        border: `1px solid ${btnBorder}`,
+                        background: worker === w ? "#c8e6c9" : "#fff",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {w}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Payment group */}
+              <div
+                style={{
+                  border: `1px solid ${btnBorder}`,
+                  borderRadius: 8,
+                  padding: 8,
+                  background: dark ? "#191919" : "#fafafa",
+                }}
+              >
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>Payment</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {paymentMethods.map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => setPayment(p)}
+                      style={{
+                        padding: "8px 10px",
+                        borderRadius: 8,
+                        border: `1px solid ${btnBorder}`,
+                        background: payment === p ? "#c8e6c9" : "#fff",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Cash received */}
+                {payment === "Cash" && (
+                  <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <label>
+                      Cash received:&nbsp;
+                      <input
+                        type="number"
+                        value={cashReceived}
+                        onChange={(e) => setCashReceived(Number(e.target.value || 0))}
+                        style={{ width: 140 }}
+                      />
+                    </label>
+                    <small style={{ opacity: 0.8 }}>
+                      Change:{" "}
+                      <b>
+                        E£
+                        {(
+                          Math.max(
+                            0,
+                            Number(cashReceived || 0) -
+                              (cart.reduce((s, b) => {
+                                const ex = (b.extras || []).reduce(
+                                  (t, e) => t + Number(e.price || 0),
+                                  0
+                                );
+                                return (
+                                  s + (Number(b.price || 0) + ex) * Number(b.qty || 1)
+                                );
+                              }, 0) +
+                                (orderType === "Delivery"
+                                  ? Number(deliveryFee || 0)
+                                  : 0))
+                          ) || 0
+                        ).toFixed(2)}
+                      </b>
+                    </small>
+                  </div>
+                )}
+              </div>
+
+              {/* Order type group */}
+              <div
+                style={{
+                  border: `1px solid ${btnBorder}`,
+                  borderRadius: 8,
+                  padding: 8,
+                  background: dark ? "#191919" : "#fafafa",
+                }}
+              >
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>Order Type</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {orderTypes.map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => {
+                        setOrderType(t);
+                        setDeliveryFee(t === "Delivery" ? (deliveryFee || defaultDeliveryFee) : 0);
+                      }}
+                      style={{
+                        padding: "8px 10px",
+                        borderRadius: 8,
+                        border: `1px solid ${btnBorder}`,
+                        background: orderType === t ? "#c8e6c9" : "#fff",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+
+                {orderType === "Delivery" && (
+                  <div style={{ marginTop: 8 }}>
+                    <label>
+                      Delivery fee:&nbsp;
+                      <input
+                        type="number"
+                        value={deliveryFee}
+                        onChange={(e) => setDeliveryFee(Number(e.target.value || 0))}
+                        style={{ width: 120 }}
+                      />
+                    </label>
+                    <small style={{ opacity: 0.75 }}>
+                      &nbsp;(Default: E£{Number(defaultDeliveryFee || 0).toFixed(2)})
+                    </small>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Totals + Checkout row */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+              }}
+            >
+              <div>
+                <strong>Order Total (incl. delivery if any):</strong>{" "}
+                E£
+                {(
+                  cart.reduce((s, b) => {
+                    const ex = (b.extras || []).reduce(
+                      (t, e) => t + Number(e.price || 0),
+                      0
+                    );
+                    return (
+                      s + (Number(b.price || 0) + ex) * Number(b.qty || 1)
+                    );
+                  }, 0) +
+                  (orderType === "Delivery"
+                    ? Number(deliveryFee || 0)
+                    : 0)
+                ).toFixed(2)}
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <button
+                  onClick={checkout}
+                  disabled={isCheckingOut}
+                  style={{
+                    background: isCheckingOut ? "#9e9e9e" : "#43a047",
+                    color: "white",
+                    border: "none",
+                    borderRadius: 8,
+                    padding: "10px 14px",
+                    cursor: isCheckingOut ? "not-allowed" : "pointer",
+                    minWidth: 140,
+                  }}
+                >
+                  {isCheckingOut ? "Processing..." : "Checkout"}
+                </button>
+                <small>
+                  Next order #: <b>{nextOrderNo}</b>
+                </small>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ORDERS BOARD */}
+      {activeTab === "board" && (
+        <div>
+          <h2>Orders Board {realtimeOrders ? "(Live)" : ""}</h2>
+          {orders.length === 0 && <p>No orders yet.</p>}
+          <ul style={{ listStyle: "none", padding: 0 }}>
+            {orders.map((o) => (
+              <li
+                key={`${o.cloudId || "local"}_${o.orderNo}`}
+                style={{
+                  border: `1px solid ${cardBorder}`,
+                  borderRadius: 6,
+                  padding: 10,
+                  marginBottom: 8,
+                  background: o.voided
+                    ? dark
+                      ? "#4a2b2b"
+                      : "#ffebee"
+                    : o.done
+                    ? dark
+                      ? "#14331a"
+                      : "#e8f5e9"
+                    : dark
+                    ? "#333018"
+                    : "#fffde7",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <strong>
+                    Order #{o.orderNo} — E£{o.total.toFixed(2)}{" "}
+                    {o.cloudId ? "☁" : ""}
+                  </strong>
+                  <span>{o.date.toLocaleString()}</span>
+                </div>
+                <div style={{ color: dark ? "#ccc" : "#555", marginTop: 4 }}>
+                  Worker: {o.worker} • Payment: {o.payment} • Type:{" "}
+                  {o.orderType || "-"}
+                  {o.orderType === "Delivery" && (
+                    <> • Delivery: E£{Number(o.deliveryFee || 0).toFixed(2)}</>
+                  )}
+                  {o.payment === "Cash" && o.cashReceived != null && (
+                    <> • Cash: E£{o.cashReceived.toFixed(2)} • Change: E£{(o.changeDue || 0).toFixed(2)}</>
+                  )}
+                  {" "}• Status:{" "}
+                  <strong>
+                    {o.voided ? "Voided & Restocked" : o.done ? "Done" : "Not done"}
+                  </strong>
+                  {o.voided && o.restockedAt && (
+                    <span> • Restocked at: {o.restockedAt.toLocaleString()}</span>
+                  )}
+                </div>
+
+                <ul style={{ marginTop: 8, marginBottom: 8 }}>
+                  {o.cart.map((ci, idx) => (
+                    <li key={idx} style={{ marginLeft: 12 }}>
+                      • {ci.name} × {ci.qty || 1} — E£{ci.price} each
+                      {ci.extras?.length > 0 && (
+                        <ul
+                          style={{
+                            margin: "2px 0 6px 18px",
+                            color: dark ? "#bbb" : "#555",
+                          }}
+                        >
+                          {ci.extras.map((ex) => (
+                            <li key={ex.id}>
+                              + {ex.name} (E£{ex.price}) × {ci.qty || 1}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {!o.done && !o.voided && (
                     <button
                       onClick={() => markOrderDone(o.orderNo)}
-                      disabled={o.done || o.voided}
                       style={{
-                        background: o.done ? "#9e9e9e" : "#2e7d32",
-                        color: "#fff",
+                        background: "#43a047",
+                        color: "white",
                         border: "none",
                         borderRadius: 6,
                         padding: "6px 10px",
-                        cursor: o.done || o.voided ? "not-allowed" : "pointer",
+                        cursor: "pointer",
                       }}
                     >
-                      Mark Done
+                      Mark DONE (locks)
                     </button>
-
+                  )}
+                  {o.done && (
                     <button
-                      onClick={() =>
-                        printReceiptHTML(o, Number(preferredPaperWidthMm) || 80, "Customer")
-                      }
+                      disabled
                       style={{
-                        background: "#37474f",
+                        background: "#9e9e9e",
+                        color: "white",
+                        border: "none",
+                        borderRadius: 6,
+                        padding: "6px 10px",
+                        cursor: "not-allowed",
+                      }}
+                    >
+                      DONE (locked)
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => printReceiptHTML(o, 58, "Kitchen")}
+                    disabled={o.done || o.voided}
+                    style={{
+                      background: o.done || o.voided ? "#b39ddb" : "#7e57c2",
+                      color: "white",
+                      border: "none",
+                      borderRadius: 6,
+                      padding: "6px 10px",
+                      cursor: o.done || o.voided ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Kitchen 58mm
+                  </button>
+                  <button
+                    onClick={() => printReceiptHTML(o, 80, "Kitchen")}
+                    disabled={o.done || o.voided}
+                    style={{
+                      background: o.done || o.voided ? "#8e24aa88" : "#6a1b9a",
+                      color: "white",
+                      border: "none",
+                      borderRadius: 6,
+                      padding: "6px 10px",
+                      cursor: o.done || o.voided ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Kitchen 80mm
+                  </button>
+                  <button
+                    onClick={() => printReceiptHTML(o, 58, "Customer")}
+                    disabled={o.voided}
+                    style={{
+                      background: o.voided ? "#26a69a88" : "#00897b",
+                      color: "white",
+                      border: "none",
+                      borderRadius: 6,
+                      padding: "6px 10px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Receipt 58mm
+                  </button>
+                  <button
+                    onClick={() => printReceiptHTML(o, 80, "Customer")}
+                    disabled={o.voided}
+                    style={{
+                      background: o.voided ? "#00695c88" : "#00695c",
+                      color: "white",
+                      border: "none",
+                      borderRadius: 6,
+                      padding: "6px 10px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Receipt 80mm
+                  </button>
+
+                  <button
+                    onClick={() => voidOrderAndRestock(o.orderNo)}
+                    disabled={o.done || o.voided}
+                    style={{
+                      background: o.done || o.voided ? "#ef9a9a" : "#c62828",
+                      color: "white",
+                      border: "none",
+                      borderRadius: 6,
+                      padding: "6px 10px",
+                      cursor: o.done || o.voided ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Void & Restock
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* INVENTORY */}
+      {activeTab === "inventory" && (
+        <div>
+          <h2>Inventory</h2>
+
+          <div
+            style={{
+              padding: 10,
+              borderRadius: 6,
+              background: inventoryLocked
+                ? dark
+                  ? "#2b3a2b"
+                  : "#e8f5e9"
+                : dark
+                ? "#332d1e"
+                : "#fffde7",
+              marginBottom: 10,
+            }}
+          >
+            {inventoryLocked ? (
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                }}
+              >
+                <strong>Locked:</strong>
+                <span>
+                  Start-of-day captured{" "}
+                  {inventoryLockedAt
+                    ? `at ${new Date(inventoryLockedAt).toLocaleString()}`
+                    : "" }
+                  . Editing disabled until <b>End the Day</b> or admin unlock.
+                </span>
+                <button
+                  onClick={unlockInventoryWithPin}
+                  style={{
+                    background: "#8e24aa",
+                    color: "white",
+                    border: "none",
+                    borderRadius: 6,
+                    padding: "6px 10px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Unlock Inventory (Admin PIN)
+                </button>
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                }}
+              >
+                <span>Set your quantities, then:</span>
+                <button
+                  onClick={lockInventoryForDay}
+                  style={{
+                    background: "#2e7d32",
+                    color: "white",
+                    border: "none",
+                    borderRadius: 6,
+                    padding: "6px 10px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Lock Inventory (start of day)
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div style={{ marginTop: 8 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ textAlign: "left" }}>
+                  <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>
+                    Item
+                  </th>
+                  <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>
+                    Unit
+                  </th>
+                  <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>
+                    Qty
+                  </th>
+                  <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {inventory.map((it) => (
+                  <tr key={it.id}>
+                    <td style={{ padding: 6 }}>{it.name}</td>
+                    <td style={{ padding: 6 }}>{it.unit}</td>
+                    <td style={{ padding: 6 }}>
+                      <input
+                        type="number"
+                        value={it.qty}
+                        disabled={inventoryLocked}
+                        onChange={(e) => {
+                          const v = Math.max(0, Number(e.target.value || 0));
+                          setInventory((inv) =>
+                            inv.map((x) =>
+                              x.id === it.id ? { ...x, qty: v } : x
+                            )
+                          );
+                        }}
+                                               style={{ width: 120 }}
+                      />
+                    </td>
+                    <td style={{ padding: 6 }}>
+                      <button
+                        disabled={inventoryLocked}
+                        onClick={() =>
+                          setInventory((inv) => inv.filter((x) => x.id !== it.id))
+                        }
+                        style={{
+                          background: inventoryLocked ? "#9e9e9e" : "#c62828",
+                          color: "#fff",
+                          border: "none",
+                          borderRadius: 6,
+                          padding: "6px 10px",
+                          cursor: inventoryLocked ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* Add new inventory item */}
+            {!inventoryLocked && (
+              <div
+                style={{
+                  marginTop: 12,
+                  display: "flex",
+                  gap: 8,
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                }}
+              >
+                <input
+                  type="text"
+                  placeholder="Item name"
+                  value={newInvName}
+                  onChange={(e) => setNewInvName(e.target.value)}
+                  style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+                />
+                <input
+                  type="text"
+                  placeholder="Unit (g, pcs...)"
+                  value={newInvUnit}
+                  onChange={(e) => setNewInvUnit(e.target.value)}
+                  style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 120 }}
+                />
+                <input
+                  type="number"
+                  placeholder="Qty"
+                  value={newInvQty}
+                  onChange={(e) => setNewInvQty(Number(e.target.value || 0))}
+                  style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 120 }}
+                />
+                <button
+                  onClick={() => {
+                    const name = String(newInvName || "").trim();
+                    const unit = String(newInvUnit || "").trim() || "pcs";
+                    const qty = Math.max(0, Number(newInvQty || 0));
+                    if (!name) return alert("Name required.");
+                    const id =
+                      name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$|/g, "") ||
+                      `inv_${Date.now()}`;
+                    if (inventory.some((x) => x.id === id)) {
+                      return alert("Item with same id exists, use a different name.");
+                    }
+                    setInventory((inv) => [...inv, { id, name, unit, qty }]);
+                    setNewInvName("");
+                    setNewInvUnit("");
+                    setNewInvQty(0);
+                  }}
+                  style={{
+                    background: "#1976d2",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 6,
+                    padding: "8px 12px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Add item
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* EXPENSES */}
+      {activeTab === "expenses" && (
+        <div>
+          <h2>Expenses (Shift)</h2>
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+            <input
+              type="text"
+              placeholder="Name"
+              value={newExpName}
+              onChange={(e) => setNewExpName(e.target.value)}
+              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+            />
+            <input
+              type="text"
+              placeholder="Unit"
+              value={newExpUnit}
+              onChange={(e) => setNewExpUnit(e.target.value)}
+              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 120 }}
+            />
+            <input
+              type="number"
+              placeholder="Qty"
+              value={newExpQty}
+              onChange={(e) => setNewExpQty(Number(e.target.value || 0))}
+              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 120 }}
+            />
+            <input
+              type="number"
+              placeholder="Unit Price (E£)"
+              value={newExpUnitPrice}
+              onChange={(e) => setNewExpUnitPrice(Number(e.target.value || 0))}
+              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 160 }}
+            />
+            <input
+              type="text"
+              placeholder="Note"
+              value={newExpNote}
+              onChange={(e) => setNewExpNote(e.target.value)}
+              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 220 }}
+            />
+            <button
+              onClick={() => {
+                const name = String(newExpName || "").trim();
+                if (!name) return alert("Expense name required.");
+                const row = {
+                  id: `exp_${Date.now()}`,
+                  name,
+                  unit: newExpUnit || "pcs",
+                  qty: Math.max(0, Number(newExpQty || 0)),
+                  unitPrice: Math.max(0, Number(newExpUnitPrice || 0)),
+                  note: newExpNote || "",
+                  date: new Date(),
+                };
+                setExpenses((arr) => [row, ...arr]);
+                setNewExpName("");
+                setNewExpUnit("pcs");
+                setNewExpQty(1);
+                setNewExpUnitPrice(0);
+                setNewExpNote("");
+              }}
+              style={{
+                background: "#2e7d32",
+                color: "#fff",
+                border: "none",
+                borderRadius: 6,
+                padding: "8px 12px",
+                cursor: "pointer",
+              }}
+            >
+              Add Expense
+            </button>
+          </div>
+
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Name</th>
+                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit</th>
+                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Qty</th>
+                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit Price</th>
+                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Total</th>
+                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Date</th>
+                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Note</th>
+                <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {expenses.map((e) => (
+                <tr key={e.id}>
+                  <td style={{ padding: 6 }}>{e.name}</td>
+                  <td style={{ padding: 6 }}>{e.unit}</td>
+                  <td style={{ padding: 6, textAlign: "right" }}>{e.qty}</td>
+                  <td style={{ padding: 6, textAlign: "right" }}>E£{Number(e.unitPrice || 0).toFixed(2)}</td>
+                  <td style={{ padding: 6, textAlign: "right" }}>
+                    E£{(Number(e.qty || 0) * Number(e.unitPrice || 0)).toFixed(2)}
+                  </td>
+                  <td style={{ padding: 6 }}>{e.date ? new Date(e.date).toLocaleString() : ""}</td>
+                  <td style={{ padding: 6 }}>{e.note}</td>
+                  <td style={{ padding: 6 }}>
+                    <button
+                      onClick={() => setExpenses((arr) => arr.filter((x) => x.id !== e.id))}
+                      style={{
+                        background: "#c62828",
                         color: "#fff",
                         border: "none",
                         borderRadius: 6,
@@ -1939,328 +2765,565 @@ export default function App() {
                         cursor: "pointer",
                       }}
                     >
-                      Print
+                      Remove
                     </button>
+                  </td>
+                </tr>
+              ))}
+              {expenses.length === 0 && (
+                <tr>
+                  <td colSpan={8} style={{ padding: 8, opacity: 0.8 }}>
+                    No expenses yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
 
+      {/* BANK */}
+      {activeTab === "bank" && (
+        <div>
+          <h2>Bank / Cashbox</h2>
+          <div
+            style={{
+              marginBottom: 10,
+              padding: 10,
+              borderRadius: 6,
+              background: dark ? "#1b2631" : "#e3f2fd",
+              display: "flex",
+              gap: 12,
+              alignItems: "center",
+              flexWrap: "wrap",
+            }}
+          >
+            <strong>Balance:</strong> <span>E£{bankBalance.toFixed(2)}</span>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              alignItems: "center",
+              flexWrap: "wrap",
+              marginBottom: 12,
+            }}
+          >
+            <select
+              value={bankForm.type}
+              onChange={(e) => setBankForm((f) => ({ ...f, type: e.target.value }))}
+              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+            >
+              <option value="deposit">Deposit (+)</option>
+              <option value="withdraw">Withdraw (-)</option>
+              <option value="adjustUp">Adjust Up (+)</option>
+              <option value="adjustDown">Adjust Down (-)</option>
+              <option value="init">Init (set by margin)</option>
+            </select>
+            <input
+              type="number"
+              placeholder="Amount"
+              value={bankForm.amount}
+              onChange={(e) => setBankForm((f) => ({ ...f, amount: Number(e.target.value || 0) }))}
+              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 160 }}
+            />
+            <input
+              type="text"
+              placeholder="Worker"
+              list="bank-worker-list"
+              value={bankForm.worker}
+              onChange={(e) => setBankForm((f) => ({ ...f, worker: e.target.value }))}
+              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 180 }}
+            />
+            <datalist id="bank-worker-list">
+              {workers.map((w) => (
+                <option key={w} value={w} />
+              ))}
+            </datalist>
+            <input
+              type="text"
+              placeholder="Note"
+              value={bankForm.note}
+              onChange={(e) => setBankForm((f) => ({ ...f, note: e.target.value }))}
+              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 240 }}
+            />
+            <button
+              onClick={() => {
+                const amt = Number(bankForm.amount || 0);
+                if (!(amt > 0)) return alert("Enter a positive amount.");
+                const row = {
+                  id: `tx_${Date.now()}`,
+                  type: bankForm.type,
+                  amount: amt,
+                  worker: bankForm.worker || (dayMeta.currentWorker || dayMeta.startedBy || ""),
+                  note: bankForm.note || "",
+                  date: new Date(),
+                };
+                setBankTx((arr) => [row, ...arr]);
+                setBankForm({ type: "deposit", amount: 0, worker: "", note: "" });
+              }}
+              style={{
+                background: "#1976d2",
+                color: "#fff",
+                border: "none",
+                borderRadius: 6,
+                padding: "8px 12px",
+                cursor: "pointer",
+              }}
+            >
+              Add Transaction
+            </button>
+          </div>
+
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Type</th>
+                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Amount</th>
+                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Worker</th>
+                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Date</th>
+                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Note</th>
+                <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {bankTx.map((t) => (
+                <tr key={t.id}>
+                  <td style={{ padding: 6 }}>{t.type}</td>
+                  <td style={{ padding: 6, textAlign: "right" }}>E£{Number(t.amount || 0).toFixed(2)}</td>
+                  <td style={{ padding: 6 }}>{t.worker || "—"}</td>
+                  <td style={{ padding: 6 }}>{t.date ? new Date(t.date).toLocaleString() : ""}</td>
+                  <td style={{ padding: 6 }}>{t.note || "—"}</td>
+                  <td style={{ padding: 6 }}>
                     <button
-                      onClick={() => voidOrderAndRestock(o.orderNo)}
-                      disabled={o.voided}
+                      onClick={() => setBankTx((arr) => arr.filter((x) => x.id !== t.id))}
                       style={{
                         background: "#c62828",
                         color: "#fff",
                         border: "none",
                         borderRadius: 6,
                         padding: "6px 10px",
-                        cursor: o.voided ? "not-allowed" : "pointer",
+                        cursor: "pointer",
                       }}
                     >
-                      Void & Restock
+                      Remove
                     </button>
-
-                    <div style={{ flex: 1 }} />
-                    <div style={{ fontWeight: 700 }}>
-                      TOTAL: E£{Number(o.total || 0).toFixed(2)}
-                    </div>
-                  </div>
-                </div>
+                  </td>
+                </tr>
               ))}
-            </div>
-          )}
+              {bankTx.length === 0 && (
+                <tr>
+                  <td colSpan={6} style={{ padding: 8, opacity: 0.8 }}>
+                    No transactions yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       )}
 
-      {/* ======== POS ======== */}
-      {activeTab === "pos" && (
-        <div style={{ display: "grid", gap: 12 }}>
-          {/* Menu buttons */}
-          <div
-            style={{
-              border: `1px solid ${cardBorder}`,
-              borderRadius: 8,
-              padding: 10,
-            }}
-          >
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Menu</div>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))",
-                gap: 8,
-              }}
-            >
-              {menu.map((m) => (
-                <button
-                  key={m.id}
-                  onClick={() => setSelectedBurger(m)}
-                  style={{
-                    border: `1px solid ${btnBorder}`,
-                    borderRadius: 8,
-                    padding: 10,
-                    cursor: "pointer",
-                    background: m.color || "#ffffff",
-                    color: getTextColorForBg(m.color || "#ffffff"),
-                    textAlign: "left",
-                  }}
-                >
-                  <div style={{ fontWeight: 700 }}>{m.name}</div>
-                  <div>E£{Number(m.price || 0).toFixed(2)}</div>
-                </button>
-              ))}
-            </div>
-          </div>
+      {/* REPORTS */}
+      {activeTab === "reports" && (
+        <div>
+          <h2>Reports</h2>
 
-          {/* Extras */}
-          <div
-            style={{
-              border: `1px solid ${cardBorder}`,
-              borderRadius: 8,
-              padding: 10,
-            }}
-          >
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Extras</div>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))",
-                gap: 8,
-              }}
-            >
-              {extraList.map((ex) => {
-                const selected = !!selectedExtras.find((e) => e.id === ex.id);
-                return (
-                  <button
-                    key={ex.id}
-                    onClick={() => toggleExtra(ex)}
-                    style={{
-                      border: `2px solid ${selected ? "#1976d2" : btnBorder}`,
-                      borderRadius: 8,
-                      padding: 10,
-                      cursor: "pointer",
-                      background: ex.color || "#ffffff",
-                      color: getTextColorForBg(ex.color || "#ffffff"),
-                      textAlign: "left",
-                    }}
-                  >
-                    <div style={{ fontWeight: 700 }}>{ex.name}</div>
-                    <div>E£{Number(ex.price || 0).toFixed(2)}</div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Quantity + Add */}
           <div
             style={{
               display: "flex",
-              gap: 10,
+              gap: 8,
               alignItems: "center",
-              border: `1px solid ${cardBorder}`,
-              borderRadius: 8,
-              padding: 10,
               flexWrap: "wrap",
+              marginBottom: 10,
             }}
           >
-            <div>
-              <b>Selected:</b>{" "}
-              {selectedBurger ? selectedBurger.name : <span style={{ opacity: 0.6 }}>—</span>}
-            </div>
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <label>Qty</label>
-              <input
-                type="number"
-                min={1}
-                value={selectedQty}
-                onChange={(e) => setSelectedQty(Number(e.target.value || 1))}
-                style={{ width: 70 }}
-              />
-            </div>
+            <label>
+              Sort:&nbsp;
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+              >
+                <option value="date-desc">Date ↓</option>
+                <option value="date-asc">Date ↑</option>
+                <option value="worker">Worker</option>
+                <option value="payment">Payment</option>
+              </select>
+            </label>
             <button
-              onClick={addToCart}
+              onClick={() => generatePDF()}
               style={{
-                background: "#2e7d32",
+                background: "#7e57c2",
                 color: "#fff",
                 border: "none",
                 borderRadius: 6,
-                padding: "6px 10px",
+                padding: "8px 12px",
                 cursor: "pointer",
               }}
             >
-              Add to Cart
+              Download PDF Report
             </button>
           </div>
 
-          {/* Cart */}
           <div
             style={{
-              border: `1px solid ${cardBorder}`,
-              borderRadius: 8,
-              padding: 10,
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+              gap: 10,
+              marginBottom: 12,
             }}
           >
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Cart</div>
-            {cart.length === 0 ? (
-              <div style={{ opacity: 0.7 }}>Cart is empty.</div>
-            ) : (
-              <div style={{ display: "grid", gap: 6 }}>
-                {cart.map((line, i) => {
-                  const lineExtras = (line.extras || []).map((e) => e.name).join(", ");
-                  const lineTotal =
-                    (Number(line.price || 0) +
-                      (line.extras || []).reduce((s, e) => s + Number(e.price || 0), 0)) *
-                    Number(line.qty || 1);
-                  return (
-                    <div
-                      key={i}
-                      style={{
-                        border: `1px solid ${cardBorder}`,
-                        borderRadius: 6,
-                        padding: 8,
-                      }}
-                    >
-                      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 700 }}>{line.name}</div>
-                          <div style={{ opacity: 0.8, fontSize: 13 }}>
-                            {lineExtras ? `+ ${lineExtras}` : ""}
-                          </div>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <button
-                            onClick={() => changeQty(i, -1)}
-                            style={{ padding: "2px 8px" }}
-                          >
-                            -
-                          </button>
-                          <input
-                            type="number"
-                            value={line.qty}
-                            min={1}
-                            onChange={(e) => setQty(i, Number(e.target.value || 1))}
-                            style={{ width: 64 }}
-                          />
-                          <button
-                            onClick={() => changeQty(i, +1)}
-                            style={{ padding: "2px 8px" }}
-                          >
-                            +
-                          </button>
-                        </div>
-                        <div style={{ width: 110, textAlign: "right", fontWeight: 700 }}>
-                          E£{lineTotal.toFixed(2)}
-                        </div>
-                        <button
-                          onClick={() => removeFromCart(i)}
-                          style={{
-                            marginLeft: 8,
-                            border: `1px solid ${btnBorder}`,
-                            padding: "4px 8px",
-                            borderRadius: 6,
-                            cursor: "pointer",
-                          }}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+            <div style={{ padding: 10, border: `1px solid ${cardBorder}`, borderRadius: 8 }}>
+              <h4 style={{ marginTop: 0 }}>Totals</h4>
+              <div>Revenue (items): <b>E£{totals.revenueTotal.toFixed(2)}</b></div>
+              <div>Delivery fees: <b>E£{totals.deliveryFeesTotal.toFixed(2)}</b></div>
+              <div>Expenses: <b>E£{totals.expensesTotal.toFixed(2)}</b></div>
+              <div>Margin: <b>E£{totals.margin.toFixed(2)}</b></div>
+            </div>
+
+            <div style={{ padding: 10, border: `1px solid ${cardBorder}`, borderRadius: 8 }}>
+              <h4 style={{ marginTop: 0 }}>By Payment</h4>
+              <ul style={{ margin: 0, paddingLeft: 16 }}>
+                {Object.keys(totals.byPay).map((p) => (
+                  <li key={p}>
+                    {p}: <b>E£{Number(totals.byPay[p] || 0).toFixed(2)}</b>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div style={{ padding: 10, border: `1px solid ${cardBorder}`, borderRadius: 8 }}>
+              <h4 style={{ marginTop: 0 }}>By Order Type</h4>
+              <ul style={{ margin: 0, paddingLeft: 16 }}>
+                {Object.keys(totals.byType).map((t) => (
+                  <li key={t}>
+                    {t}: <b>E£{Number(totals.byType[t] || 0).toFixed(2)}</b>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
 
-          {/* Checkout */}
+          <h3>Orders</h3>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>#</th>
+                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Date</th>
+                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Worker</th>
+                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Payment</th>
+                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Type</th>
+                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Delivery</th>
+                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Total</th>
+                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {getSortedOrders().map((o) => (
+                <tr key={`${o.cloudId || "local"}_${o.orderNo}`}>
+                  <td style={{ padding: 6 }}>{o.orderNo}</td>
+                  <td style={{ padding: 6 }}>{o.date.toLocaleString()}</td>
+                  <td style={{ padding: 6 }}>{o.worker}</td>
+                  <td style={{ padding: 6 }}>{o.payment}</td>
+                  <td style={{ padding: 6 }}>{o.orderType || "-"}</td>
+                  <td style={{ padding: 6, textAlign: "right" }}>E£{Number(o.deliveryFee || 0).toFixed(2)}</td>
+                  <td style={{ padding: 6, textAlign: "right" }}>E£{Number(o.total || 0).toFixed(2)}</td>
+                  <td style={{ padding: 6 }}>
+                    {o.voided ? "Voided" : o.done ? "Done" : "Open"}
+                  </td>
+                </tr>
+              ))}
+              {orders.length === 0 && (
+                <tr>
+                  <td colSpan={8} style={{ padding: 8, opacity: 0.8 }}>
+                    No orders yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* PRICES */}
+      {activeTab === "prices" && (
+        <div>
+          <h2>Prices & Catalog (PIN: Editor)</h2>
+
+          {/* Workers & Payment & Order Types */}
           <div
             style={{
-              border: `1px solid ${cardBorder}`,
-              borderRadius: 8,
-              padding: 10,
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+              gap: 10,
+              marginBottom: 12,
             }}
           >
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-              <div>
-                <label>Worker</label>
-                <br />
-                <select value={worker} onChange={(e) => setWorker(e.target.value)}>
-                  <option value="">—</option>
-                  {workers.map((w) => (
-                    <option key={w} value={w}>
-                      {w}
-                    </option>
-                  ))}
-                </select>
+            <div style={{ padding: 10, border: `1px solid ${cardBorder}`, borderRadius: 8 }}>
+              <h4 style={{ marginTop: 0 }}>Workers</h4>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                {workers.map((w) => (
+                  <span
+                    key={w}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: 8,
+                      border: `1px solid ${btnBorder}`,
+                      background: "#fff",
+                    }}
+                  >
+                    {w}{" "}
+                    <button
+                      onClick={() => setWorkers((arr) => arr.filter((x) => x !== w))}
+                      style={{
+                        marginLeft: 6,
+                        border: "none",
+                        background: "#ef5350",
+                        color: "#fff",
+                        borderRadius: 6,
+                        padding: "2px 6px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
               </div>
-
-              <div>
-                <label>Payment</label>
-                <br />
-                <select value={payment} onChange={(e) => setPayment(e.target.value)}>
-                  <option value="">—</option>
-                  {paymentMethods.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
+              <div style={{ display: "flex", gap: 6 }}>
+                <input
+                  type="text"
+                  placeholder="Add worker"
+                  value={newWorker}
+                  onChange={(e) => setNewWorker(e.target.value)}
+                  style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+                />
+                <button
+                  onClick={() => {
+                    const v = norm(newWorker);
+                    if (!v) return;
+                    if (workers.includes(v)) return alert("Worker exists.");
+                    setWorkers((arr) => [...arr, v]);
+                    setNewWorker("");
+                  }}
+                  style={{
+                    background: "#1976d2",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 6,
+                    padding: "6px 10px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Add
+                </button>
               </div>
+            </div>
 
-              <div>
-                <label>Order Type</label>
-                <br />
-                <select value={orderType} onChange={(e) => setOrderType(e.target.value)}>
-                  {orderTypes.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
+            <div style={{ padding: 10, border: `1px solid ${cardBorder}`, borderRadius: 8 }}>
+              <h4 style={{ marginTop: 0 }}>Payment Methods</h4>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                {paymentMethods.map((p) => (
+                  <span
+                    key={p}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: 8,
+                      border: `1px solid ${btnBorder}`,
+                      background: "#fff",
+                    }}
+                  >
+                    {p}{" "}
+                    <button
+                      onClick={() =>
+                        setPaymentMethods((arr) => arr.filter((x) => x !== p))
+                      }
+                      style={{
+                        marginLeft: 6,
+                        border: "none",
+                        background: "#ef5350",
+                        color: "#fff",
+                        borderRadius: 6,
+                        padding: "2px 6px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
               </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <input
+                  type="text"
+                  placeholder="Add payment"
+                  value={newPayment}
+                  onChange={(e) => setNewPayment(e.target.value)}
+                  style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+                />
+                <button
+                  onClick={() => {
+                    const v = norm(newPayment);
+                    if (!v) return;
+                    if (paymentMethods.includes(v)) return alert("Payment exists.");
+                    setPaymentMethods((arr) => [...arr, v]);
+                    setNewPayment("");
+                  }}
+                  style={{
+                    background: "#1976d2",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 6,
+                    padding: "6px 10px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Add
+                </button>
+              </div>
+            </div>
 
-              {orderType === "Delivery" && (
-                <div>
-                  <label>Delivery Fee (E£)</label>
-                  <br />
+            <div style={{ padding: 10, border: `1px solid ${cardBorder}`, borderRadius: 8 }}>
+              <h4 style={{ marginTop: 0 }}>Order Types</h4>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                {orderTypes.map((t) => (
+                  <span
+                    key={t}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: 8,
+                      border: `1px solid ${btnBorder}`,
+                      background: "#fff",
+                    }}
+                  >
+                    {t}{" "}
+                    <button
+                      onClick={() => setOrderTypes((arr) => arr.filter((x) => x !== t))}
+                      style={{
+                        marginLeft: 6,
+                        border: "none",
+                        background: "#ef5350",
+                        color: "#fff",
+                        borderRadius: 6,
+                        padding: "2px 6px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 8 }}>
+                <input
+                  type="text"
+                  placeholder="Add order type"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      const v = norm(e.currentTarget.value);
+                      if (!v) return;
+                      if (orderTypes.includes(v)) return alert("Type exists.");
+                      setOrderTypes((arr) => [...arr, v]);
+                      e.currentTarget.value = "";
+                    }
+                  }}
+                  style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+                />
+              </div>
+              <div>
+                <label>
+                  Default Delivery Fee:&nbsp;
                   <input
                     type="number"
-                    value={deliveryFee}
-                    onChange={(e) => setDeliveryFee(Number(e.target.value || 0))}
-                    style={{ width: 120 }}
-                  />
-                </div>
-              )}
-
-              {payment === "Cash" && (
-                <div>
-                  <label>Cash Received (E£)</label>
-                  <br />
-                  <input
-                    type="number"
-                    value={cashReceived}
-                    onChange={(e) => setCashReceived(Number(e.target.value || 0))}
+                    value={defaultDeliveryFee}
+                    onChange={(e) => setDefaultDeliveryFee(Number(e.target.value || 0))}
                     style={{ width: 140 }}
                   />
+                </label>
+              </div>
+            </div>
+          </div>
+
+          {/* Menu */}
+          <div style={{ marginTop: 8 }}>
+            <h3 style={{ marginBottom: 6 }}>Menu Items</h3>
+            <div style={{ display: "grid", gap: 8 }}>
+              {menu.map((m) => (
+                <div
+                  key={m.id}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 160px 140px",
+                    gap: 8,
+                    alignItems: "center",
+                    border: `1px solid ${cardBorder}`,
+                    borderRadius: 8,
+                    padding: 8,
+                    background: dark ? "#1a1a1a" : "transparent",
+                  }}
+                >
+                  <input
+                    type="text"
+                    value={m.name}
+                    onChange={(e) =>
+                      setMenu((arr) => arr.map((x) => (x.id === m.id ? { ...x, name: e.target.value } : x)))
+                    }
+                    style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+                  />
+                  <input
+                    type="number"
+                    value={m.price}
+                    onChange={(e) =>
+                      setMenu((arr) => arr.map((x) => (x.id === m.id ? { ...x, price: Number(e.target.value || 0) } : x)))
+                    }
+                    style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+                  />
+                  <button
+                    onClick={() => setMenu((arr) => arr.filter((x) => x.id !== m.id))}
+                    style={{
+                      background: "#c62828",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 6,
+                      padding: "8px 10px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Remove
+                  </button>
                 </div>
-              )}
+              ))}
             </div>
 
-            <div style={{ marginTop: 10 }}>
-              <label>Order Note</label>
-              <br />
-              <textarea
-                value={orderNote}
-                onChange={(e) => setOrderNote(e.target.value)}
-                rows={3}
-                style={{ width: "100%" }}
-                placeholder="Optional instructions…"
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+              <input
+                type="text"
+                placeholder="New item name"
+                value={newMenuName}
+                onChange={(e) => setNewMenuName(e.target.value)}
+                style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 240 }}
               />
-            </div>
-
-            <div style={{ display: "flex", gap: 10, marginTop: 10, alignItems: "center" }}>
+              <input
+                type="number"
+                placeholder="Price"
+                value={newMenuPrice}
+                onChange={(e) => setNewMenuPrice(Number(e.target.value || 0))}
+                style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 160 }}
+              />
               <button
-                onClick={checkout}
-                disabled={isCheckingOut}
+                onClick={() => {
+                  const name = String(newMenuName || "").trim();
+                  if (!name) return alert("Name required.");
+                  const price = Math.max(0, Number(newMenuPrice || 0));
+                  const nextId =
+                    (menu.reduce((mx, it) => Math.max(mx, Number(it.id) || 0), 0) || 0) + 1;
+                  setMenu((arr) => [...arr, { id: nextId, name, price, uses: {} }]);
+                  setNewMenuName("");
+                  setNewMenuPrice(0);
+                }}
                 style={{
-                  background: "#2e7d32",
+                  background: "#1976d2",
                   color: "#fff",
                   border: "none",
                   borderRadius: 6,
@@ -2268,787 +3331,313 @@ export default function App() {
                   cursor: "pointer",
                 }}
               >
-                {isCheckingOut ? "Processing…" : "Checkout"}
+                Add Menu Item
               </button>
-              <div style={{ opacity: 0.8, fontSize: 13 }}>
-                {autoPrintOnCheckout
-                  ? `Auto-print enabled • ${preferredPaperWidthMm}mm`
-                  : "Auto-print OFF"}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ======== REPORT ======== */}
-      {activeTab === "report" && (
-        <div style={{ display: "grid", gap: 12 }}>
-          <div
-            style={{
-              border: `1px solid ${cardBorder}`,
-              borderRadius: 8,
-              padding: 10,
-            }}
-          >
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Totals (excluding voided)</div>
-            <div>Revenue (items only): E£{totals.revenueTotal.toFixed(2)}</div>
-            <div>Delivery Fees (not in revenue): E£{totals.deliveryFeesTotal.toFixed(2)}</div>
-            <div>Expenses: E£{totals.expensesTotal.toFixed(2)}</div>
-            <div style={{ fontWeight: 700 }}>
-              Margin: E£{(totals.margin || 0).toFixed(2)}
             </div>
           </div>
 
-          {/* Old UI: Items list with Price / Qty / Total */}
-          <div
-            style={{
-              border: `1px solid ${cardBorder}`,
-              borderRadius: 8,
-              padding: 10,
-            }}
-          >
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Items (old view)</div>
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr>
-                    <th style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>Item</th>
-                    <th style={{ textAlign: "right", borderBottom: "1px solid #ccc" }}>
-                      Price (E£)
-                    </th>
-                    <th style={{ textAlign: "right", borderBottom: "1px solid #ccc" }}>Qty</th>
-                    <th style={{ textAlign: "right", borderBottom: "1px solid #ccc" }}>Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {reportItemRows.map((r, i) => (
-                    <tr key={i}>
-                      <td style={{ padding: "6px 0" }}>{r.name}</td>
-                      <td style={{ textAlign: "right" }}>{r.price.toFixed(2)}</td>
-                      <td style={{ textAlign: "right" }}>{r.qty}</td>
-                      <td style={{ textAlign: "right" }}>{r.total.toFixed(2)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Extras table (old view) */}
-          <div
-            style={{
-              border: `1px solid ${cardBorder}`,
-              borderRadius: 8,
-              padding: 10,
-            }}
-          >
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Extras (old view)</div>
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr>
-                    <th style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>Extra</th>
-                    <th style={{ textAlign: "right", borderBottom: "1px solid #ccc" }}>
-                      Price (E£)
-                    </th>
-                    <th style={{ textAlign: "right", borderBottom: "1px solid #ccc" }}>Qty</th>
-                    <th style={{ textAlign: "right", borderBottom: "1px solid #ccc" }}>Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {reportExtraRows.map((r, i) => (
-                    <tr key={i}>
-                      <td style={{ padding: "6px 0" }}>{r.name}</td>
-                      <td style={{ textAlign: "right" }}>{r.price.toFixed(2)}</td>
-                      <td style={{ textAlign: "right" }}>{r.qty}</td>
-                      <td style={{ textAlign: "right" }}>{r.total.toFixed(2)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ======== EDIT ======== */}
-      {activeTab === "edit" && (
-        <div style={{ display: "grid", gap: 16 }}>
-          {/* Workers & Payment Methods editor */}
-          <div
-            style={{
-              border: `1px solid ${cardBorder}`,
-              borderRadius: 8,
-              padding: 10,
-            }}
-          >
-            <div style={{ fontWeight: 700, marginBottom: 8 }}>Workers & Payments</div>
-            <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-              <div>
-                <div style={{ fontWeight: 600 }}>Workers</div>
-                <div style={{ display: "grid", gap: 6 }}>
-                  {workers.map((w, i) => (
-                    <div key={i} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                      <input
-                        value={w}
-                        onChange={(e) =>
-                          setWorkers((arr) => arr.map((x, j) => (j === i ? e.target.value : x)))
-                        }
-                      />
-                      <button
-                        onClick={() =>
-                          setWorkers((arr) => arr.filter((_, j) => j !== i))
-                        }
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  ))}
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <input
-                      placeholder="New worker"
-                      value={newWorker}
-                      onChange={(e) => setNewWorker(e.target.value)}
-                    />
-                    <button
-                      onClick={() => {
-                        const v = norm(newWorker);
-                        if (!v) return;
-                        setWorkers((arr) => [...arr, v]);
-                        setNewWorker("");
-                      }}
-                    >
-                      Add
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <div style={{ fontWeight: 600 }}>Payment Methods</div>
-                <div style={{ display: "grid", gap: 6 }}>
-                  {paymentMethods.map((p, i) => (
-                    <div key={i} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                      <input
-                        value={p}
-                        onChange={(e) =>
-                          setPaymentMethods((arr) =>
-                            arr.map((x, j) => (j === i ? e.target.value : x))
-                          )
-                        }
-                      />
-                      <button
-                        onClick={() =>
-                          setPaymentMethods((arr) => arr.filter((_, j) => j !== i))
-                        }
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  ))}
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <input
-                      placeholder="New method"
-                      value={newPayment}
-                      onChange={(e) => setNewPayment(e.target.value)}
-                    />
-                    <button
-                      onClick={() => {
-                        const v = norm(newPayment);
-                        if (!v) return;
-                        setPaymentMethods((arr) => [...arr, v]);
-                        setNewPayment("");
-                      }}
-                    >
-                      Add
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Menu Items editor (like screenshot) */}
-          <div
-            style={{
-              border: `1px solid ${cardBorder}`,
-              borderRadius: 8,
-              padding: 10,
-            }}
-          >
-            <div style={{ fontWeight: 700, marginBottom: 8 }}>Menu Items</div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 140px 220px 260px",
-                gap: 8,
-                fontWeight: 700,
-                marginBottom: 6,
-              }}
-            >
-              <div>Name</div>
-              <div style={{ textAlign: "right", paddingRight: 10 }}>Price (E£)</div>
-              <div>Uses</div>
-              <div>Actions</div>
-            </div>
-
-            {menu.map((it, idx) => (
-              <div
-                key={it.id}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 140px 220px 260px",
-                  gap: 8,
-                  alignItems: "center",
-                  borderTop: `1px solid ${cardBorder}`,
-                  padding: "8px 0",
-                }}
-              >
-                {/* Name */}
-                <input
-                  value={it.name}
-                  onChange={(e) =>
-                    setMenu((arr) =>
-                      arr.map((x, j) => (j === idx ? { ...x, name: e.target.value } : x))
-                    )
-                  }
-                />
-
-                {/* Price */}
-                <input
-                  type="number"
-                  value={it.price}
-                  onChange={(e) =>
-                    setMenu((arr) =>
-                      arr.map((x, j) => (j === idx ? { ...x, price: Number(e.target.value || 0) } : x))
-                    )
-                  }
-                  style={{ textAlign: "right", paddingRight: 10 }}
-                />
-
-                {/* Uses + Color */}
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  <button
-                    onClick={() =>
-                      setOpenUsesMenu((o) => ({ ...o, [it.id]: !o[it.id] }))
-                    }
-                    style={{ padding: "6px 10px" }}
-                  >
-                    Edit Uses
-                  </button>
-
-                  <button
-                    onClick={() =>
-                      setOpenColorMenu((o) => ({ ...o, [it.id]: !o[it.id] }))
-                    }
-                    style={{ padding: "6px 10px" }}
-                  >
-                    Edit Color
-                  </button>
-                </div>
-
-                {/* Actions */}
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  <button onClick={() => moveMenu(idx, -1)} title="Move up">
-                    ↑
-                  </button>
-                  <button onClick={() => moveMenu(idx, +1)} title="Move down">
-                    ↓
-                  </button>
-                  <button
-                    onClick={() =>
-                      setMenu((arr) => arr.filter((_, j) => j !== idx))
-                    }
-                    style={{ background: "#e53935", color: "#fff", padding: "6px 10px" }}
-                  >
-                    Delete
-                  </button>
-                </div>
-
-                {/* Uses editor row */}
-                {openUsesMenu[it.id] && (
-                  <div
-                    style={{
-                      gridColumn: "1 / -1",
-                      background: softBg,
-                      borderRadius: 6,
-                      padding: 10,
-                      display: "grid",
-                      gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))",
-                      gap: 8,
-                    }}
-                  >
-                    {inventory.map((inv) => {
-                      const cur = Number((it.uses || {})[inv.id] || 0);
-                      return (
-                        <div key={inv.id} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                          <div style={{ minWidth: 90 }}>{inv.name}</div>
-                          <input
-                            type="number"
-                            min={0}
-                            value={cur}
-                            onChange={(e) => {
-                              const n = Math.max(0, Number(e.target.value || 0));
-                              setMenu((arr) =>
-                                arr.map((x, j) => {
-                                  if (j !== idx) return x;
-                                  const uses = { ...(x.uses || {}) };
-                                  if (!n) delete uses[inv.id];
-                                  else uses[inv.id] = n;
-                                  return { ...x, uses };
-                                })
-                              );
-                            }}
-                            style={{ width: 100 }}
-                          />
-                          <div style={{ opacity: 0.8 }}>{inv.unit}</div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Color editor row */}
-                {openColorMenu[it.id] && (
-                  <div
-                    style={{
-                      gridColumn: "1 / -1",
-                      background: softBg,
-                      borderRadius: 6,
-                      padding: 10,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <div style={{ width: 160, display: "flex", alignItems: "center", gap: 8 }}>
-                      <input
-                        type="color"
-                        value={it.color || "#ffffff"}
-                        onChange={(e) =>
-                          setMenu((arr) =>
-                            arr.map((x, j) => (j === idx ? { ...x, color: e.target.value } : x))
-                          )
-                        }
-                        style={{ width: 40, height: 30, padding: 0, border: "none" }}
-                      />
-                      <div
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: 6,
-                          border: `1px solid ${btnBorder}`,
-                          background: it.color || "#ffffff",
-                          color: getTextColorForBg(it.color || "#ffffff"),
-                        }}
-                      >
-                        Preview
-                      </div>
-                    </div>
-                    <button onClick={() => setOpenColorMenu((o) => ({ ...o, [it.id]: false }))}>
-                      Close
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* Extras editor (same layout) */}
-          <div
-            style={{
-              border: `1px solid ${cardBorder}`,
-              borderRadius: 8,
-              padding: 10,
-            }}
-          >
-            <div style={{ fontWeight: 700, marginBottom: 8 }}>Extras</div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 140px 220px 260px",
-                gap: 8,
-                fontWeight: 700,
-                marginBottom: 6,
-              }}
-            >
-              <div>Name</div>
-              <div style={{ textAlign: "right", paddingRight: 10 }}>Price (E£)</div>
-              <div>Uses</div>
-              <div>Actions</div>
-            </div>
-
-            {extraList.map((it, idx) => (
-              <div
-                key={it.id}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 140px 220px 260px",
-                  gap: 8,
-                  alignItems: "center",
-                  borderTop: `1px solid ${cardBorder}`,
-                  padding: "8px 0",
-                }}
-              >
-                <input
-                  value={it.name}
-                  onChange={(e) =>
-                    setExtraList((arr) =>
-                      arr.map((x, j) => (j === idx ? { ...x, name: e.target.value } : x))
-                    )
-                  }
-                />
-                <input
-                  type="number"
-                  value={it.price}
-                  onChange={(e) =>
-                    setExtraList((arr) =>
-                      arr.map((x, j) => (j === idx ? { ...x, price: Number(e.target.value || 0) } : x))
-                    )
-                  }
-                  style={{ textAlign: "right", paddingRight: 10 }}
-                />
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  <button
-                    onClick={() =>
-                      setOpenUsesExtra((o) => ({ ...o, [it.id]: !o[it.id] }))
-                    }
-                    style={{ padding: "6px 10px" }}
-                  >
-                    Edit Uses
-                  </button>
-                  <button
-                    onClick={() =>
-                      setOpenColorExtra((o) => ({ ...o, [it.id]: !o[it.id] }))
-                    }
-                    style={{ padding: "6px 10px" }}
-                  >
-                    Edit Color
-                  </button>
-                </div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  <button onClick={() => moveExtra(idx, -1)}>↑</button>
-                  <button onClick={() => moveExtra(idx, +1)}>↓</button>
-                  <button
-                    onClick={() =>
-                      setExtraList((arr) => arr.filter((_, j) => j !== idx))
-                    }
-                    style={{ background: "#e53935", color: "#fff", padding: "6px 10px" }}
-                  >
-                    Delete
-                  </button>
-                </div>
-
-                {openUsesExtra[it.id] && (
-                  <div
-                    style={{
-                      gridColumn: "1 / -1",
-                      background: softBg,
-                      borderRadius: 6,
-                      padding: 10,
-                      display: "grid",
-                      gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))",
-                      gap: 8,
-                    }}
-                  >
-                    {inventory.map((inv) => {
-                      const cur = Number((it.uses || {})[inv.id] || 0);
-                      return (
-                        <div key={inv.id} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                          <div style={{ minWidth: 90 }}>{inv.name}</div>
-                          <input
-                            type="number"
-                            min={0}
-                            value={cur}
-                            onChange={(e) => {
-                              const n = Math.max(0, Number(e.target.value || 0));
-                              setExtraList((arr) =>
-                                arr.map((x, j) => {
-                                  if (j !== idx) return x;
-                                  const uses = { ...(x.uses || {}) };
-                                  if (!n) delete uses[inv.id];
-                                  else uses[inv.id] = n;
-                                  return { ...x, uses };
-                                })
-                              );
-                            }}
-                            style={{ width: 100 }}
-                          />
-                          <div style={{ opacity: 0.8 }}>{inv.unit}</div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {openColorExtra[it.id] && (
-                  <div
-                    style={{
-                      gridColumn: "1 / -1",
-                      background: softBg,
-                      borderRadius: 6,
-                      padding: 10,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <div style={{ width: 160, display: "flex", alignItems: "center", gap: 8 }}>
-                      <input
-                        type="color"
-                        value={it.color || "#ffffff"}
-                        onChange={(e) =>
-                          setExtraList((arr) =>
-                            arr.map((x, j) => (j === idx ? { ...x, color: e.target.value } : x))
-                          )
-                        }
-                        style={{ width: 40, height: 30, padding: 0, border: "none" }}
-                      />
-                      <div
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: 6,
-                          border: `1px solid ${btnBorder}`,
-                          background: it.color || "#ffffff",
-                          color: getTextColorForBg(it.color || "#ffffff"),
-                        }}
-                      >
-                        Preview
-                      </div>
-                    </div>
-                    <button onClick={() => setOpenColorExtra((o) => ({ ...o, [it.id]: false }))}>
-                      Close
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* Inventory quick editor */}
-          <div
-            style={{
-              border: `1px solid ${cardBorder}`,
-              borderRadius: 8,
-              padding: 10,
-            }}
-          >
-            <div style={{ fontWeight: 700, marginBottom: 8 }}>Inventory</div>
-            {inventoryLocked && (
-  <button
-    onClick={unlockInventoryWithPin}
-    style={{
-      marginBottom: 8,
-      background: "#f9a825",
-      color: "#000",
-      border: "none",
-      borderRadius: 6,
-      padding: "6px 10px",
-      cursor: "pointer",
-    }}
-  >
-    Unlock Inventory (Admin PIN)
-  </button>
-)}
-
+          {/* Extras */}
+          <div style={{ marginTop: 16 }}>
+            <h3 style={{ marginBottom: 6 }}>Extras</h3>
             <div style={{ display: "grid", gap: 8 }}>
-              {inventory.map((it, i) => (
-                <div key={it.id} style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {extraList.map((ex) => (
+                <div
+                  key={ex.id}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 160px 140px",
+                    gap: 8,
+                    alignItems: "center",
+                    border: `1px solid ${cardBorder}`,
+                    borderRadius: 8,
+                    padding: 8,
+                    background: dark ? "#1a1a1a" : "transparent",
+                  }}
+                >
                   <input
-                    value={it.name}
+                    type="text"
+                    value={ex.name}
                     onChange={(e) =>
-                      setInventory((arr) =>
-                        arr.map((x, j) => (j === i ? { ...x, name: e.target.value } : x))
-                      )
+                      setExtraList((arr) => arr.map((x) => (x.id === ex.id ? { ...x, name: e.target.value } : x)))
                     }
-                    style={{ width: 200 }}
-                  />
-                  <input
-                    value={it.unit}
-                    onChange={(e) =>
-                      setInventory((arr) =>
-                        arr.map((x, j) => (j === i ? { ...x, unit: e.target.value } : x))
-                      )
-                    }
-                    style={{ width: 120 }}
+                    style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
                   />
                   <input
                     type="number"
-                    value={it.qty}
+                    value={ex.price}
                     onChange={(e) =>
-                      setInventory((arr) =>
-                        arr.map((x, j) => (j === i ? { ...x, qty: Number(e.target.value || 0) } : x))
+                      setExtraList((arr) =>
+                        arr.map((x) => (x.id === ex.id ? { ...x, price: Number(e.target.value || 0) } : x))
                       )
                     }
-                    style={{ width: 120 }}
+                    style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
                   />
                   <button
-                    onClick={() => {
-                      const id = prompt("New id (letters/numbers only)?", it.id) || it.id;
-                      setInventory((arr) =>
-                        arr.map((x, j) => (j === i ? { ...x, id } : x))
-                      );
+                    onClick={() => setExtraList((arr) => arr.filter((x) => x.id !== ex.id))}
+                    style={{
+                      background: "#c62828",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 6,
+                      padding: "8px 10px",
+                      cursor: "pointer",
                     }}
                   >
-                    Set ID
-                  </button>
-                  <button
-                    onClick={() => setInventory((arr) => arr.filter((_, j) => j !== i))}
-                    style={{ background: "#e53935", color: "#fff", padding: "6px 10px" }}
-                  >
-                    Delete
+                    Remove
                   </button>
                 </div>
               ))}
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <input
-                  placeholder="Name"
-                  value={newInvName}
-                  onChange={(e) => setNewInvName(e.target.value)}
-                  style={{ width: 200 }}
-                />
-                <input
-                  placeholder="Unit"
-                  value={newInvUnit}
-                  onChange={(e) => setNewInvUnit(e.target.value)}
-                  style={{ width: 120 }}
-                />
-                <input
-                  type="number"
-                  placeholder="Qty"
-                  value={newInvQty}
-                  onChange={(e) => setNewInvQty(Number(e.target.value || 0))}
-                  style={{ width: 120 }}
-                />
-                <button
-                  onClick={() => {
-                    const name = norm(newInvName);
-                    const unit = norm(newInvUnit) || "pcs";
-                    if (!name) return;
-                    const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-                    setInventory((arr) => [...arr, { id, name, unit, qty: Number(newInvQty || 0) }]);
-                    setNewInvName("");
-                    setNewInvUnit("");
-                    setNewInvQty(0);
-                  }}
-                >
-                  Add Inventory Item
-                </button>
-              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+              <input
+                type="text"
+                placeholder="New extra name"
+                value={newExtraName}
+                onChange={(e) => setNewExtraName(e.target.value)}
+                style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 240 }}
+              />
+              <input
+                type="number"
+                placeholder="Price"
+                value={newExtraPrice}
+                onChange={(e) => setNewExtraPrice(Number(e.target.value || 0))}
+                style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 160 }}
+              />
+              <button
+                onClick={() => {
+                  const name = String(newExtraName || "").trim();
+                  if (!name) return alert("Name required.");
+                  const price = Math.max(0, Number(newExtraPrice || 0));
+                  const nextId =
+                    (extraList.reduce((mx, it) => Math.max(mx, Number(it.id) || 0), 100) || 100) + 1;
+                  setExtraList((arr) => [...arr, { id: nextId, name, price, uses: {} }]);
+                  setNewExtraName("");
+                  setNewExtraPrice(0);
+                }}
+                style={{
+                  background: "#1976d2",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 6,
+                  padding: "8px 12px",
+                  cursor: "pointer",
+                }}
+              >
+                Add Extra
+              </button>
             </div>
           </div>
 
-          {/* Admin PINs view */}
-          <div
-            style={{
-              border: `1px solid ${cardBorder}`,
-              borderRadius: 8,
-              padding: 10,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{ fontWeight: 700 }}>Admin PINs</div>
-              <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <input
-                  type="checkbox"
-                  checked={showPins}
-                  onChange={(e) => setShowPins(e.target.checked)}
-                />
-                Show
-              </label>
-            </div>
-            {showPins && (
-              <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
-                {Object.keys(adminPins).map((k) => (
-                  <div key={k} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <div style={{ width: 90 }}>Admin {k}</div>
-                    <input
-                      value={adminPins[k]}
-                      onChange={(e) =>
-                        setAdminPins((obj) => ({ ...obj, [k]: e.target.value }))
-                      }
-                      style={{ width: 160 }}
-                    />
+          {/* Admin PINs */}
+          <div style={{ marginTop: 16 }}>
+            <h3 style={{ marginBottom: 6 }}>Admin PINs (1–6)</h3>
+            <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))" }}>
+              {[1, 2, 3, 4, 5, 6].map((n) => (
+                <div
+                  key={n}
+                  style={{ border: `1px solid ${cardBorder}`, borderRadius: 8, padding: 8 }}
+                >
+                  <div style={{ marginBottom: 6 }}>
+                    <strong>Admin {n}</strong>
                   </div>
-                ))}
-              </div>
-            )}
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <input
+                      type={adminPinsEditUnlocked[n] ? "text" : "password"}
+                      value={adminPins[n] || ""}
+                      onChange={(e) =>
+                        setAdminPins((pins) => ({ ...pins, [n]: e.target.value }))
+                      }
+                      style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+                    />
+                    <button
+                      onClick={() =>
+                        setAdminPinsEditUnlocked((st) => ({ ...st, [n]: !st[n] }))
+                      }
+                      style={{
+                        border: `1px solid ${btnBorder}`,
+                        background: "#fff",
+                        borderRadius: 6,
+                        padding: "6px 10px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {adminPinsEditUnlocked[n] ? "Hide" : "Show"}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
 
-      {/* ======== SETTINGS ======== */}
+      {/* SETTINGS */}
       {activeTab === "settings" && (
-        <div
-          style={{
-            border: `1px solid ${cardBorder}`,
-            borderRadius: 8,
-            padding: 12,
-            display: "grid",
-            gap: 12,
-          }}
-        >
-          <div style={{ fontWeight: 700 }}>Printing</div>
-          <label style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-            <input
-              type="checkbox"
-              checked={autoPrintOnCheckout}
-              onChange={(e) => setAutoPrintOnCheckout(e.target.checked)}
-            />
-            Auto-print on Checkout
-          </label>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div>Paper width (mm)</div>
-            <input
-              type="number"
-              value={preferredPaperWidthMm}
-              onChange={(e) =>
-                setPreferredPaperWidthMm(Math.max(40, Number(e.target.value || 80)))
-              }
-              style={{ width: 120 }}
-            />
-            <div style={{ opacity: 0.7 }}>(58 or 80 are common)</div>
-          </div>
+        <div>
+          <h2>Settings</h2>
 
-          <div style={{ height: 6 }} />
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+              gap: 12,
+            }}
+          >
+            <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 8, padding: 10 }}>
+              <h4 style={{ marginTop: 0 }}>Appearance</h4>
+              <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={dark}
+                  onChange={(e) => setDark(!!e.target.checked)}
+                />
+                Dark mode
+              </label>
+            </div>
 
-          <div style={{ fontWeight: 700 }}>Cloud</div>
-          <label style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-            <input
-              type="checkbox"
-              checked={cloudEnabled}
-              onChange={(e) => setCloudEnabled(e.target.checked)}
-            />
-            Cloud sync (autosave)
-          </label>
-          <label style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-            <input
-              type="checkbox"
-              checked={realtimeOrders}
-              onChange={(e) => setRealtimeOrders(e.target.checked)}
-            />
-            Orders: realtime stream during active shift
-          </label>
-          <div style={{ opacity: 0.8, fontSize: 13 }}>
-            Last save: {cloudStatus.lastSaveAt ? cloudStatus.lastSaveAt.toLocaleTimeString() : "—"}
-            {" • "}
-            Last load: {cloudStatus.lastLoadAt ? cloudStatus.lastLoadAt.toLocaleTimeString() : "—"}
-            {cloudStatus.error ? (
-              <>
-                {" • "}
-                <span style={{ color: "#c62828" }}>{String(cloudStatus.error)}</span>
-              </>
-            ) : null}
+            <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 8, padding: 10 }}>
+              <h4 style={{ marginTop: 0 }}>Cloud Sync</h4>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={cloudEnabled}
+                  onChange={(e) => setCloudEnabled(!!e.target.checked)}
+                />
+                Auto cloud save (background)
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={realtimeOrders}
+                  onChange={(e) => setRealtimeOrders(!!e.target.checked)}
+                />
+                Realtime orders (shift window)
+              </label>
+
+              <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                <button
+                  onClick={loadFromCloud}
+                  style={{
+                    background: "#1976d2",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 6,
+                    padding: "8px 12px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Sync Now (Pull)
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!stateDocRef || !fbUser) return alert("Firebase not ready.");
+                    try {
+                      const body = packStateForCloud({
+                        menu,
+                        extraList,
+                        orders: realtimeOrders ? [] : orders,
+                        inventory,
+                        nextOrderNo,
+                        dark,
+                        workers,
+                        paymentMethods,
+                        inventoryLocked,
+                        inventorySnapshot,
+                        inventoryLockedAt,
+                        adminPins,
+                        orderTypes,
+                        defaultDeliveryFee,
+                        expenses,
+                        dayMeta,
+                        bankTx,
+                      });
+                      await setDoc(stateDocRef, body, { merge: true });
+                      alert("Saved to cloud ✔");
+                    } catch (e) {
+                      alert("Save failed: " + e);
+                    }
+                  }}
+                  style={{
+                    background: "#2e7d32",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 6,
+                    padding: "8px 12px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Save Now (Push)
+                </button>
+              </div>
+
+              <div style={{ marginTop: 8, fontSize: 12, opacity: 0.8 }}>
+                Last load: {cloudStatus.lastLoadAt ? cloudStatus.lastLoadAt.toLocaleString() : "—"} •
+                Last save: {cloudStatus.lastSaveAt ? cloudStatus.lastSaveAt.toLocaleString() : "—"}
+                {cloudStatus.error ? ` • Error: ${cloudStatus.error}` : ""}
+              </div>
+            </div>
+
+            <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 8, padding: 10 }}>
+              <h4 style={{ marginTop: 0 }}>Printing</h4>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={autoPrintOnCheckout}
+                  onChange={(e) => setAutoPrintOnCheckout(!!e.target.checked)}
+                />
+                Auto-print on checkout
+              </label>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <span>Paper width (mm):</span>
+                <input
+                  type="number"
+                  value={preferredPaperWidthMm}
+                  onChange={(e) => setPreferredPaperWidthMm(Number(e.target.value || 80))}
+                  style={{ width: 120 }}
+                />
+              </div>
+
+              <div style={{ marginTop: 8 }}>
+                <div style={{ fontWeight: 600, marginBottom: 6 }}>
+                  JSPrintManager (optional)
+                </div>
+                <div style={{ marginBottom: 6, fontSize: 12 }}>
+                  Status: {jspmReady ? "Connected" : "Not connected"}
+                </div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <select
+                    value={selectedPrinter}
+                    onChange={(e) => {
+                      setSelectedPrinter(e.target.value);
+                      localStorage.setItem("jspmPrinter", e.target.value);
+                    }}
+                    disabled={!jspmReady}
+                    style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 220 }}
+                  >
+                    {!jspmReady && <option value="">(connect JSPrintManager app)</option>}
+                    {jspmReady &&
+                      (jspmPrinters.length ? (
+                        jspmPrinters.map((p) => (
+                          <option key={p} value={p}>
+                            {p}
+                          </option>
+                        ))
+                      ) : (
+                        <option value="">(no printers found)</option>
+                      ))}
+                  </select>
+                  <small style={{ opacity: 0.8 }}>
+                    Saved as default: <b>{selectedPrinter || "—"}</b>
+                  </small>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
     </div>
   );
 }
-
-
-
 
