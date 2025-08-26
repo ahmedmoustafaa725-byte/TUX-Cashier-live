@@ -1,5 +1,4 @@
-
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { initializeApp, getApps, getApp } from "firebase/app";
@@ -613,6 +612,7 @@ export default function App() {
   const [inventoryLockedAt, setInventoryLockedAt] = useState(null);
 
   const [adminPins, setAdminPins] = useState({ ...DEFAULT_ADMIN_PINS });
+  const [adminPinsLocked, setAdminPinsLocked] = useState(true); // <--- NEW: lock & hide admin PINs
   const [pricesUnlocked, setPricesUnlocked] = useState(false);
 
   const [orders, setOrders] = useState([]);
@@ -674,6 +674,9 @@ export default function App() {
   // Printing preferences (kept)
   const [autoPrintOnCheckout, setAutoPrintOnCheckout] = useState(true);
   const [preferredPaperWidthMm, setPreferredPaperWidthMm] = useState(80);
+
+  // Track our own writes to ignore immediate echo from onSnapshot
+  const lastLocalWriteAt = useRef(0);
 
   useEffect(() => {
     try {
@@ -763,6 +766,44 @@ export default function App() {
     })();
   }, [stateDocRef, fbUser, hydrated, dayMeta, realtimeOrders]);
 
+  // NEW: realtime listener for the shared state doc (cross-device sync)
+  useEffect(() => {
+    if (!cloudEnabled || !stateDocRef || !fbUser) return;
+    const unsub = onSnapshot(stateDocRef, (snap) => {
+      if (!snap.exists()) return;
+      // Ignore our own write echoes for ~1.2s
+      if (Date.now() - (lastLocalWriteAt.current || 0) < 1200) return;
+
+      const data = snap.data() || {};
+      const unpacked = unpackStateFromCloud(data, dayMeta);
+
+      // Orders only from cloud if realtimeOrders is OFF
+      if (!realtimeOrders && unpacked.orders) setOrders(unpacked.orders);
+      if (unpacked.menu) setMenu(unpacked.menu);
+      if (unpacked.extraList) setExtraList(unpacked.extraList);
+      if (unpacked.inventory) setInventory(unpacked.inventory);
+      if (unpacked.nextOrderNo != null) setNextOrderNo(unpacked.nextOrderNo);
+      if (unpacked.dark != null) setDark(unpacked.dark);
+      if (unpacked.workers) setWorkers(unpacked.workers);
+      if (unpacked.paymentMethods) setPaymentMethods(unpacked.paymentMethods);
+      if (unpacked.inventoryLocked != null)
+        setInventoryLocked(unpacked.inventoryLocked);
+      if (unpacked.inventorySnapshot)
+        setInventorySnapshot(unpacked.inventorySnapshot);
+      if (unpacked.inventoryLockedAt != null)
+        setInventoryLockedAt(unpacked.inventoryLockedAt);
+      if (unpacked.adminPins)
+        setAdminPins({ ...DEFAULT_ADMIN_PINS, ...unpacked.adminPins });
+      if (unpacked.orderTypes) setOrderTypes(unpacked.orderTypes);
+      if (unpacked.defaultDeliveryFee != null)
+        setDefaultDeliveryFee(unpacked.defaultDeliveryFee);
+      if (unpacked.expenses) setExpenses(unpacked.expenses);
+      if (unpacked.dayMeta) setDayMeta(unpacked.dayMeta);
+      if (unpacked.bankTx) setBankTx(unpacked.bankTx);
+    });
+    return () => unsub();
+  }, [cloudEnabled, stateDocRef, fbUser, realtimeOrders, dayMeta]);
+
   // Manual pull
   const loadFromCloud = async () => {
     if (!stateDocRef || !fbUser) return alert("Firebase not ready.");
@@ -802,6 +843,39 @@ export default function App() {
     }
   };
 
+  // NEW: manual push
+  const syncToCloudNow = async () => {
+    if (!cloudEnabled || !stateDocRef || !fbUser) return alert("Firebase not ready.");
+    try {
+      const body = packStateForCloud({
+        menu,
+        extraList,
+        orders: realtimeOrders ? [] : orders,
+        inventory,
+        nextOrderNo,
+        dark,
+        workers,
+        paymentMethods,
+        inventoryLocked,
+        inventorySnapshot,
+        inventoryLockedAt,
+        adminPins,
+        orderTypes,
+        defaultDeliveryFee,
+        expenses,
+        dayMeta,
+        bankTx,
+      });
+      lastLocalWriteAt.current = Date.now();
+      await setDoc(stateDocRef, body, { merge: true });
+      setCloudStatus((s) => ({ ...s, lastSaveAt: new Date(), error: null }));
+      alert("Synced to cloud ✔");
+    } catch (e) {
+      setCloudStatus((s) => ({ ...s, error: String(e) }));
+      alert("Cloud sync failed: " + e);
+    }
+  };
+
   // Autosave (state doc) – never saves orders when realtime is ON
   useEffect(() => {
     if (!cloudEnabled || !stateDocRef || !fbUser || !hydrated) return;
@@ -826,6 +900,7 @@ export default function App() {
           dayMeta,
           bankTx,
         });
+        lastLocalWriteAt.current = Date.now();
         await setDoc(stateDocRef, body, { merge: true });
         setCloudStatus((s) => ({ ...s, lastSaveAt: new Date(), error: null }));
       } catch (e) {
@@ -1438,7 +1513,7 @@ export default function App() {
       const endedStr = m.endedAt ? new Date(m.endedAt).toLocaleString() : "—";
 
       autoTable(doc, {
-        head: [["Start By", "Start At", "Current Worker", "End At"]],
+        head: [["Start By", "Start At", "Current Worker", "End At"]]],
         body: [[m.startedBy || "—", startedStr, m.currentWorker || "—", endedStr]],
         startY: 18,
         theme: "grid",
@@ -1796,7 +1871,7 @@ export default function App() {
           <div style={{ display: "flex", gap: 24, alignItems: "flex-start", flexWrap: "wrap" }}>
             <div style={{ flex: 1, minWidth: 300 }}>
               <h3>Burgers & Items</h3>
-              {/* TILE GRID (small icon-like cards) */}
+              {/* TILE GRID */}
               <div
                 style={{
                   display: "grid",
@@ -1831,7 +1906,7 @@ export default function App() {
 
             <div style={{ flex: 1, minWidth: 300 }}>
               <h3>Extras (for selected item)</h3>
-              {/* TILE GRID (multi-select) */}
+              {/* TILE GRID */}
               <div
                 style={{
                   display: "grid",
@@ -1991,392 +2066,289 @@ export default function App() {
                     }}
                   >
                     Remove
+                  </                    button>
                   </button>
                 </li>
               );
             })}
           </ul>
 
-          {/* Notes */}
-          <div style={{ margin: "8px 0 12px" }}>
-            <label>
-              <strong>Order notes:</strong>{" "}
-              <input
-                type="text"
-                value={orderNote}
-                placeholder="e.g., no pickles, extra spicy"
-                onChange={(e) => setOrderNote(e.target.value)}
-                style={{
-                  width: 420,
-                  maxWidth: "90%",
-                  padding: "6px 8px",
-                  borderRadius: 6,
-                  border: `1px solid ${btnBorder}`,
-                  background: dark ? "#1e1e1e" : "white",
-                  color: dark ? "#eee" : "#000",
-                }}
-              />
-            </label>
-          </div>
-
-          {/* Selection groups & Checkout */}
-          <div style={{ display: "grid", gap: 12 }}>
-            {/* Button groups row */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr 1fr",
-                gap: 8,
-              }}
-            >
-              {/* Worker group */}
-              <div
-                style={{
-                  border: `1px solid ${btnBorder}`,
-                  borderRadius: 8,
-                  padding: 8,
-                  background: dark ? "#191919" : "#fafafa",
-                }}
+          {/* Order details */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+              gap: 12,
+              marginTop: 12,
+              alignItems: "start",
+            }}
+          >
+            {/* Worker */}
+            <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 6, padding: 10 }}>
+              <div style={{ marginBottom: 6, fontWeight: 700 }}>Worker</div>
+              <select
+                value={worker}
+                onChange={(e) => setWorker(e.target.value)}
+                style={{ width: "100%", padding: 8, borderRadius: 6, border: `1px solid ${btnBorder}` }}
               >
-                <div style={{ fontWeight: 700, marginBottom: 6 }}>Worker</div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {workers.map((w) => (
-                    <button
-                      key={w}
-                      onClick={() => setWorker(w)}
-                      style={{
-                        padding: "8px 10px",
-                        borderRadius: 8,
-                        border: `1px solid ${btnBorder}`,
-                        background: worker === w ? "#c8e6c9" : "#fff",
-                        cursor: "pointer",
-                      }}
-                    >
-                      {w}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Payment group */}
-              <div
-                style={{
-                  border: `1px solid ${btnBorder}`,
-                  borderRadius: 8,
-                  padding: 8,
-                  background: dark ? "#191919" : "#fafafa",
-                }}
-              >
-                <div style={{ fontWeight: 700, marginBottom: 6 }}>Payment</div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {paymentMethods.map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => setPayment(p)}
-                      style={{
-                        padding: "8px 10px",
-                        borderRadius: 8,
-                        border: `1px solid ${btnBorder}`,
-                        background: payment === p ? "#c8e6c9" : "#fff",
-                        cursor: "pointer",
-                      }}
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Cash received */}
-                {payment === "Cash" && (
-                  <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                    <label>
-                      Cash received:&nbsp;
-                      <input
-                        type="number"
-                        value={cashReceived}
-                        onChange={(e) => setCashReceived(Number(e.target.value || 0))}
-                        style={{ width: 140 }}
-                      />
-                    </label>
-                    <small style={{ opacity: 0.8 }}>
-                      Change:{" "}
-                      <b>
-                        E£
-                        {(
-                          Math.max(
-                            0,
-                            Number(cashReceived || 0) -
-                              (cart.reduce((s, b) => {
-                                const ex = (b.extras || []).reduce(
-                                  (t, e) => t + Number(e.price || 0),
-                                  0
-                                );
-                                return (
-                                  s + (Number(b.price || 0) + ex) * Number(b.qty || 1)
-                                );
-                              }, 0) +
-                                (orderType === "Delivery"
-                                  ? Number(deliveryFee || 0)
-                                  : 0))
-                          ) || 0
-                        ).toFixed(2)}
-                      </b>
-                    </small>
-                  </div>
-                )}
-              </div>
-
-              {/* Order type group */}
-              <div
-                style={{
-                  border: `1px solid ${btnBorder}`,
-                  borderRadius: 8,
-                  padding: 8,
-                  background: dark ? "#191919" : "#fafafa",
-                }}
-              >
-                <div style={{ fontWeight: 700, marginBottom: 6 }}>Order Type</div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {orderTypes.map((t) => (
-                    <button
-                      key={t}
-                      onClick={() => {
-                        setOrderType(t);
-                        setDeliveryFee(t === "Delivery" ? (deliveryFee || defaultDeliveryFee) : 0);
-                      }}
-                      style={{
-                        padding: "8px 10px",
-                        borderRadius: 8,
-                        border: `1px solid ${btnBorder}`,
-                        background: orderType === t ? "#c8e6c9" : "#fff",
-                        cursor: "pointer",
-                      }}
-                    >
-                      {t}
-                    </button>
-                  ))}
-                </div>
-
-                {orderType === "Delivery" && (
-                  <div style={{ marginTop: 8 }}>
-                    <label>
-                      Delivery fee:&nbsp;
-                      <input
-                        type="number"
-                        value={deliveryFee}
-                        onChange={(e) => setDeliveryFee(Number(e.target.value || 0))}
-                        style={{ width: 120 }}
-                      />
-                    </label>
-                    <small style={{ opacity: 0.75 }}>
-                      &nbsp;(Default: E£{Number(defaultDeliveryFee || 0).toFixed(2)})
-                    </small>
-                  </div>
-                )}
-              </div>
+                <option value="">— Select —</option>
+                {workers.map((w, i) => (
+                  <option key={i} value={w}>
+                    {w}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            {/* Totals + Checkout row */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                justifyContent: "space-between",
-                flexWrap: "wrap",
-              }}
-            >
-              <div>
-                <strong>Order Total (incl. delivery if any):</strong>{" "}
-                E£
-                {(
-                  cart.reduce((s, b) => {
-                    const ex = (b.extras || []).reduce(
-                      (t, e) => t + Number(e.price || 0),
-                      0
-                    );
-                    return (
-                      s + (Number(b.price || 0) + ex) * Number(b.qty || 1)
-                    );
-                  }, 0) +
-                  (orderType === "Delivery"
-                    ? Number(deliveryFee || 0)
-                    : 0)
-                ).toFixed(2)}
-              </div>
+            {/* Payment */}
+            <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 6, padding: 10 }}>
+              <div style={{ marginBottom: 6, fontWeight: 700 }}>Payment</div>
+              <select
+                value={payment}
+                onChange={(e) => setPayment(e.target.value)}
+                style={{ width: "100%", padding: 8, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+              >
+                <option value="">— Select —</option>
+                {paymentMethods.map((p, i) => (
+                  <option key={i} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
 
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <button
-                  onClick={checkout}
-                  disabled={isCheckingOut}
-                  style={{
-                    background: isCheckingOut ? "#9e9e9e" : "#43a047",
-                    color: "white",
-                    border: "none",
-                    borderRadius: 8,
-                    padding: "10px 14px",
-                    cursor: isCheckingOut ? "not-allowed" : "pointer",
-                    minWidth: 140,
-                  }}
-                >
-                  {isCheckingOut ? "Processing..." : "Checkout"}
-                </button>
-                <small>
-                  Next order #: <b>{nextOrderNo}</b>
-                </small>
+              {payment === "Cash" && (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ marginBottom: 4 }}>Cash received</div>
+                  <input
+                    type="number"
+                    value={cashReceived}
+                    onChange={(e) => setCashReceived(Number(e.target.value || 0))}
+                    style={{ width: "100%", padding: 8, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Order type */}
+            <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 6, padding: 10 }}>
+              <div style={{ marginBottom: 6, fontWeight: 700 }}>Order Type</div>
+              <select
+                value={orderType}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setOrderType(v);
+                  if (v === "Delivery") setDeliveryFee(defaultDeliveryFee || 0);
+                  else setDeliveryFee(0);
+                }}
+                style={{ width: "100%", padding: 8, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+              >
+                {orderTypes.map((t, i) => (
+                  <option key={i} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+
+              {orderType === "Delivery" && (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ marginBottom: 4 }}>Delivery Fee (E£)</div>
+                  <input
+                    type="number"
+                    value={deliveryFee}
+                    onChange={(e) => setDeliveryFee(Number(e.target.value || 0))}
+                    style={{ width: "100%", padding: 8, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Note */}
+            <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 6, padding: 10 }}>
+              <div style={{ marginBottom: 6, fontWeight: 700 }}>Order Note</div>
+              <textarea
+                value={orderNote}
+                onChange={(e) => setOrderNote(e.target.value)}
+                rows={5}
+                style={{ width: "100%", padding: 8, borderRadius: 6, border: `1px solid ${btnBorder}`, resize: "vertical" }}
+              />
+            </div>
+          </div>
+
+          {/* Totals + Checkout */}
+          <div
+            style={{
+              marginTop: 12,
+              display: "flex",
+              gap: 12,
+              flexWrap: "wrap",
+              alignItems: "center",
+              justifyContent: "space-between",
+              borderTop: `1px dashed ${cardBorder}`,
+              paddingTop: 10,
+            }}
+          >
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+              <div>
+                <small style={{ opacity: 0.8 }}>Items Subtotal</small>
+                <div style={{ fontWeight: 800 }}>
+                  E£
+                  {cart
+                    .reduce((s, b) => {
+                      const ex = (b.extras || []).reduce((t, e) => t + Number(e.price || 0), 0);
+                      return s + (Number(b.price || 0) + ex) * Number(b.qty || 1);
+                    }, 0)
+                    .toFixed(2)}
+                </div>
               </div>
+              <div>
+                <small style={{ opacity: 0.8 }}>Delivery Fee</small>
+                <div style={{ fontWeight: 800 }}>E£{(orderType === "Delivery" ? Number(deliveryFee || 0) : 0).toFixed(2)}</div>
+              </div>
+              <div>
+                <small style={{ opacity: 0.8 }}>TOTAL</small>
+                <div style={{ fontWeight: 900, fontSize: 18 }}>
+                  E£
+                  {(() => {
+                    const itemsTotal = cart.reduce((s, b) => {
+                      const ex = (b.extras || []).reduce((t, e) => t + Number(e.price || 0), 0);
+                      return s + (Number(b.price || 0) + ex) * Number(b.qty || 1);
+                    }, 0);
+                    const delFee = orderType === "Delivery" ? Math.max(0, Number(deliveryFee || 0)) : 0;
+                    return (itemsTotal + delFee).toFixed(2);
+                  })()}
+                </div>
+              </div>
+              {payment === "Cash" && (
+                <div>
+                  <small style={{ opacity: 0.8 }}>Change</small>
+                  <div style={{ fontWeight: 800 }}>
+                    E£
+                    {(() => {
+                      const itemsTotal = cart.reduce((s, b) => {
+                        const ex = (b.extras || []).reduce((t, e) => t + Number(e.price || 0), 0);
+                        return s + (Number(b.price || 0) + ex) * Number(b.qty || 1);
+                      }, 0);
+                      const delFee = orderType === "Delivery" ? Math.max(0, Number(deliveryFee || 0)) : 0;
+                      const total = itemsTotal + delFee;
+                      return Math.max(0, Number(cashReceived || 0) - total).toFixed(2);
+                    })()}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <button
+                onClick={checkout}
+                disabled={isCheckingOut}
+                style={{
+                  background: "#2e7d32",
+                  color: "white",
+                  border: "none",
+                  borderRadius: 6,
+                  padding: "10px 16px",
+                  cursor: "pointer",
+                  opacity: isCheckingOut ? 0.7 : 1,
+                }}
+              >
+                {isCheckingOut ? "Processing..." : `Checkout #${nextOrderNo}`}
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ORDERS BOARD */}
+      {/* BOARD */}
       {activeTab === "board" && (
         <div>
-          <h2>Orders Board {realtimeOrders ? "(Live)" : ""}</h2>
-          {orders.length === 0 && <p>No orders yet.</p>}
-          <ul style={{ listStyle: "none", padding: 0 }}>
-            {orders.map((o) => (
-              <li
-                key={`${o.cloudId || "local"}_${o.orderNo}`}
-                style={{
-                  border: `1px solid ${cardBorder}`,
-                  borderRadius: 6,
-                  padding: 10,
-                  marginBottom: 8,
-                  background: o.voided
-                    ? dark
-                      ? "#4a2b2b"
-                      : "#ffebee"
-                    : o.done
-                    ? dark
-                      ? "#14331a"
-                      : "#e8f5e9"
-                    : dark
-                    ? "#333018"
-                    : "#fffde7",
-                }}
-              >
-                <div
+          <h2>Orders Board</h2>
+          {!dayMeta.startedAt ? (
+            <p>Start a shift to see live orders.</p>
+          ) : orders.length === 0 ? (
+            <p>No orders yet.</p>
+          ) : (
+            <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+              {getSortedOrders().map((o) => (
+                <li
+                  key={o.orderNo}
                   style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    flexWrap: "wrap",
+                    border: `1px solid ${cardBorder}`,
+                    borderRadius: 6,
+                    padding: 10,
+                    marginBottom: 8,
+                    background: dark ? "#1a1a1a" : "transparent",
                   }}
                 >
-                  <strong>
-                    Order #{o.orderNo} — E£{o.total.toFixed(2)}{" "}
-                    {o.cloudId ? "☁" : ""}
-                  </strong>
-                  <span>{o.date.toLocaleString()}</span>
-                </div>
-                <div style={{ color: dark ? "#ccc" : "#555", marginTop: 4 }}>
-                  Worker: {o.worker} • Payment: {o.payment} • Type:{" "}
-                  {o.orderType || "-"}
-                  {o.orderType === "Delivery" && (
-                    <> • Delivery: E£{Number(o.deliveryFee || 0).toFixed(2)}</>
-                  )}
-                  {o.payment === "Cash" && o.cashReceived != null && (
-                    <> • Cash: E£{o.cashReceived.toFixed(2)} • Change: E£{(o.changeDue || 0).toFixed(2)}</>
-                  )}
-                  {" "}• Status:{" "}
-                  <strong>
-                    {o.voided ? "Voided & Restocked" : o.done ? "Done" : "Not done"}
-                  </strong>
-                  {o.voided && o.restockedAt && (
-                    <span> • Restocked at: {o.restockedAt.toLocaleString()}</span>
-                  )}
-                </div>
-
-                <ul style={{ marginTop: 8, marginBottom: 8 }}>
-                  {o.cart.map((ci, idx) => (
-                    <li key={idx} style={{ marginLeft: 12 }}>
-                      • {ci.name} × {ci.qty || 1} — E£{ci.price} each
-                      {ci.extras?.length > 0 && (
-                        <ul
-                          style={{
-                            margin: "2px 0 6px 18px",
-                            color: dark ? "#bbb" : "#555",
-                          }}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <div style={{ fontWeight: 700 }}>
+                      #{o.orderNo} • {o.orderType || "—"} • {o.payment} • E£{o.total.toFixed(2)}
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button
+                        onClick={() => printReceiptHTML(o, Number(preferredPaperWidthMm) || 80, "Customer")}
+                        style={{ border: `1px solid ${btnBorder}`, padding: "6px 10px", borderRadius: 6, background: dark ? "#333" : "#eee", cursor: "pointer" }}
+                      >
+                        Print
+                      </button>
+                      {!o.done && !o.voided && (
+                        <button
+                          onClick={() => markOrderDone(o.orderNo)}
+                          style={{ background: "#2e7d32", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
                         >
-                          {ci.extras.map((ex) => (
-                            <li key={ex.id}>
-                              + {ex.name} (E£{ex.price}) × {ci.qty || 1}
-                            </li>
-                          ))}
-                        </ul>
+                          Mark Done
+                        </button>
                       )}
-                    </li>
-                  ))}
-                </ul>
+                      {!o.voided && !o.done && (
+                        <button
+                          onClick={() => voidOrderAndRestock(o.orderNo)}
+                          style={{ background: "#e53935", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
+                        >
+                          Void & Restock
+                        </button>
+                      )}
+                      {o.done && <span style={{ fontWeight: 700, color: "#2e7d32" }}>DONE</span>}
+                      {o.voided && <span style={{ fontWeight: 700, color: "#e53935" }}>VOIDED</span>}
+                    </div>
+                  </div>
 
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {!o.done && !o.voided && (
-                    <button
-                      onClick={() => markOrderDone(o.orderNo)}
+                  <div style={{ opacity: 0.85, marginTop: 4 }}>
+                    {o.date.toLocaleString()} • Worker: {o.worker}
+                    {o.orderType === "Delivery" && o.deliveryFee ? ` • Delivery Fee: E£${o.deliveryFee.toFixed(2)}` : ""}
+                  </div>
+
+                  {o.note && (
+                    <div
                       style={{
-                        background: "#43a047",
-                        color: "white",
-                        border: "none",
+                        marginTop: 6,
+                        padding: 8,
+                        border: `1px dashed ${cardBorder}`,
                         borderRadius: 6,
-                        padding: "6px 10px",
-                        cursor: "pointer",
+                        whiteSpace: "pre-wrap",
+                        background: dark ? "#111" : "#fafafa",
                       }}
                     >
-                      Mark DONE (locks)
-                    </button>
-                  )}
-                  {o.done && (
-                    <button
-                      disabled
-                      style={{
-                        background: "#9e9e9e",
-                        color: "white",
-                        border: "none",
-                        borderRadius: 6,
-                        padding: "6px 10px",
-                        cursor: "not-allowed",
-                      }}
-                    >
-                      DONE (locked)
-                    </button>
+                      <b>Note:</b> {o.note}
+                    </div>
                   )}
 
-                  {/* Single Print button (removed all other print options) */}
-                  <button
-                    onClick={() => printReceiptHTML(o, Number(preferredPaperWidthMm) || 80, "Customer")}
-                    disabled={o.voided}
-                    style={{
-                      background: o.voided ? "#039be588" : "#039be5",
-                      color: "white",
-                      border: "none",
-                      borderRadius: 6,
-                      padding: "6px 10px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Print
-                  </button>
-
-                  <button
-                    onClick={() => voidOrderAndRestock(o.orderNo)}
-                    disabled={o.done || o.voided}
-                    style={{
-                      background: o.done || o.voided ? "#ef9a9a" : "#c62828",
-                      color: "white",
-                      border: "none",
-                      borderRadius: 6,
-                      padding: "6px 10px",
-                      cursor: o.done || o.voided ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    Void & Restock
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
+                  <ul style={{ marginTop: 8 }}>
+                    {(o.cart || []).map((l, i) => (
+                      <li key={i}>
+                        <b>{l.name}</b> × {l.qty || 1} — E£{Number(l.price || 0).toFixed(2)}
+                        {(l.extras || []).length > 0 && (
+                          <ul>
+                            {l.extras.map((e) => (
+                              <li key={e.id}>+ {e.name} (E£{Number(e.price || 0)})</li>
+                            ))}
+                          </ul>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 
@@ -2389,127 +2361,213 @@ export default function App() {
             style={{
               padding: 10,
               borderRadius: 6,
-              background: inventoryLocked
-                ? dark
-                  ? "#2b3a2b"
-                  : "#e8f5e9"
-                : dark
-                ? "#332d1e"
-                : "#fffde7",
+              background: softBg,
               marginBottom: 10,
+              display: "flex",
+              gap: 8,
+              alignItems: "center",
+              flexWrap: "wrap",
             }}
           >
-            {inventoryLocked ? (
-              <div
-                style={{
-                  display: "flex",
-                  gap: 8,
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                }}
-              >
-                <strong>Locked:</strong>
-                <span>
-                  Start-of-day captured{" "}
-                  {inventoryLockedAt
-                    ? `at ${new Date(inventoryLockedAt).toLocaleString()}`
-                    : "" }
-                  . Editing disabled until <b>End the Day</b> or admin unlock.
-                </span>
-                <button
-                  onClick={unlockInventoryWithPin}
-                  style={{
-                    background: "#8e24aa",
-                    color: "white",
-                    border: "none",
-                    borderRadius: 6,
-                    padding: "6px 10px",
-                    cursor: "pointer",
-                  }}
-                >
-                  Unlock Inventory (Admin PIN)
-                </button>
-              </div>
-            ) : (
-              <div
-                style={{
-                  display: "flex",
-                  gap: 8,
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                }}
-              >
-                <span>Set your quantities, then:</span>
-                <button
-                  onClick={lockInventoryForDay}
-                  style={{
-                    background: "#2e7d32",
-                    color: "white",
-                    border: "none",
-                    borderRadius: 6,
-                    padding: "6px 10px",
-                    cursor: "pointer",
-                  }}
-                >
-                  Lock Inventory (start of day)
-                </button>
-              </div>
+            <button
+              onClick={inventoryLocked ? unlockInventoryWithPin : lockInventoryForDay}
+              style={{
+                background: inventoryLocked ? "#ef6c00" : "#1976d2",
+                color: "#fff",
+                border: "none",
+                borderRadius: 6,
+                padding: "6px 10px",
+                cursor: "pointer",
+              }}
+            >
+              {inventoryLocked ? "Unlock Inventory (PIN)" : "Lock Inventory for Day"}
+            </button>
+            {inventoryLockedAt && (
+              <small>
+                Locked at <b>{new Date(inventoryLockedAt).toLocaleString()}</b>
+              </small>
             )}
           </div>
 
-          <div style={{ marginTop: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 10 }}>
+            {inventory.map((it, idx) => (
+              <div key={it.id} style={{ border: `1px solid ${cardBorder}`, borderRadius: 6, padding: 10 }}>
+                <div style={{ fontWeight: 700 }}>{it.name}</div>
+                <div style={{ opacity: 0.85, marginBottom: 6 }}>{it.unit}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <button
+                    disabled={inventoryLocked}
+                    onClick={() =>
+                      setInventory((arr) =>
+                        arr.map((x, i) => (i !== idx ? x : { ...x, qty: Number(x.qty || 0) - 1 }))
+                      )
+                    }
+                    style={{ padding: "4px 8px", borderRadius: 6, border: `1px solid ${btnBorder}`, opacity: inventoryLocked ? 0.6 : 1 }}
+                  >
+                    –
+                  </button>
+                  <input
+                    type="number"
+                    disabled={inventoryLocked}
+                    value={it.qty}
+                    onChange={(e) =>
+                      setInventory((arr) =>
+                        arr.map((x, i) => (i !== idx ? x : { ...x, qty: Number(e.target.value || 0) }))
+                      )
+                    }
+                    style={{ width: 100, textAlign: "center" }}
+                  />
+                  <button
+                    disabled={inventoryLocked}
+                    onClick={() =>
+                      setInventory((arr) =>
+                        arr.map((x, i) => (i !== idx ? x : { ...x, qty: Number(x.qty || 0) + 1 }))
+                      )
+                    }
+                    style={{ padding: "4px 8px", borderRadius: 6, border: `1px solid ${btnBorder}`, opacity: inventoryLocked ? 0.6 : 1 }}
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <h3 style={{ marginTop: 16 }}>Add Inventory Item</h3>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <input
+              placeholder="Name"
+              value={newInvName}
+              onChange={(e) => setNewInvName(e.target.value)}
+              style={{ padding: 8, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+            />
+            <input
+              placeholder="Unit"
+              value={newInvUnit}
+              onChange={(e) => setNewInvUnit(e.target.value)}
+              style={{ padding: 8, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+            />
+            <input
+              type="number"
+              placeholder="Qty"
+              value={newInvQty}
+              onChange={(e) => setNewInvQty(Number(e.target.value || 0))}
+              style={{ padding: 8, width: 120, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+            />
+            <button
+              disabled={inventoryLocked}
+              onClick={() => {
+                if (!newInvName.trim() || !newInvUnit.trim()) return alert("Name and Unit are required.");
+                const id = newInvName.toLowerCase().replace(/\s+/g, "-");
+                if (inventory.find((i) => i.id === id)) return alert("An item with this name already exists.");
+                setInventory((arr) => [...arr, { id, name: newInvName.trim(), unit: newInvUnit.trim(), qty: Number(newInvQty || 0) }]);
+                setNewInvName("");
+                setNewInvUnit("");
+                setNewInvQty(0);
+              }}
+              style={{ background: "#1976d2", color: "#fff", border: "none", borderRadius: 6, padding: "8px 12px", cursor: "pointer", opacity: inventoryLocked ? 0.6 : 1 }}
+            >
+              Add
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* EXPENSES */}
+      {activeTab === "expenses" && (
+        <div>
+          <h2>Expenses</h2>
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+            <input
+              placeholder="Name"
+              value={newExpName}
+              onChange={(e) => setNewExpName(e.target.value)}
+              style={{ padding: 8, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+            />
+            <input
+              placeholder="Unit"
+              value={newExpUnit}
+              onChange={(e) => setNewExpUnit(e.target.value)}
+              style={{ padding: 8, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+            />
+            <input
+              type="number"
+              placeholder="Qty"
+              value={newExpQty}
+              onChange={(e) => setNewExpQty(Number(e.target.value || 0))}
+              style={{ padding: 8, width: 120, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+            />
+            <input
+              type="number"
+              placeholder="Unit Price"
+              value={newExpUnitPrice}
+              onChange={(e) => setNewExpUnitPrice(Number(e.target.value || 0))}
+              style={{ padding: 8, width: 140, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+            />
+            <input
+              placeholder="Note"
+              value={newExpNote}
+              onChange={(e) => setNewExpNote(e.target.value)}
+              style={{ padding: 8, minWidth: 200, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+            />
+            <button
+              onClick={() => {
+                if (!newExpName.trim()) return alert("Name is required.");
+                setExpenses((arr) => [
+                  {
+                    id: `exp_${Date.now()}`,
+                    name: newExpName.trim(),
+                    unit: newExpUnit.trim() || "pcs",
+                    qty: Number(newExpQty || 0),
+                    unitPrice: Number(newExpUnitPrice || 0),
+                    note: newExpNote.trim(),
+                    date: new Date(),
+                  },
+                  ...arr,
+                ]);
+                setNewExpName("");
+                setNewExpUnit("pcs");
+                setNewExpQty(1);
+                setNewExpUnitPrice(0);
+                setNewExpNote("");
+              }}
+              style={{ background: "#1976d2", color: "#fff", border: "none", borderRadius: 6, padding: "8px 12px", cursor: "pointer" }}
+            >
+              Add Expense
+            </button>
+          </div>
+
+          {expenses.length === 0 ? (
+            <p>No expenses recorded.</p>
+          ) : (
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
-                <tr style={{ textAlign: "left" }}>
-                  <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>
-                    Item
-                  </th>
-                  <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>
-                    Unit
-                  </th>
-                  <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>
-                    Qty
-                  </th>
-                  <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>
-                    Actions
-                  </th>
+                <tr>
+                  <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Name</th>
+                  <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit</th>
+                  <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Qty</th>
+                  <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit Price</th>
+                  <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Total</th>
+                  <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Date</th>
+                  <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Note</th>
+                  <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}></th>
                 </tr>
               </thead>
               <tbody>
-                {inventory.map((it) => (
-                  <tr key={it.id}>
-                    <td style={{ padding: 6 }}>{it.name}</td>
-                    <td style={{ padding: 6 }}>{it.unit}</td>
-                    <td style={{ padding: 6 }}>
-                      <input
-                        type="number"
-                        value={it.qty}
-                        disabled={inventoryLocked}
-                        onChange={(e) => {
-                          const v = Math.max(0, Number(e.target.value || 0));
-                          setInventory((inv) =>
-                            inv.map((x) =>
-                              x.id === it.id ? { ...x, qty: v } : x
-                            )
-                          );
-                        }}
-                        style={{ width: 120 }}
-                      />
-                    </td>
-                    <td style={{ padding: 6 }}>
+                {expenses.map((e, i) => (
+                  <tr key={e.id || i}>
+                    <td style={{ padding: 6 }}>{e.name}</td>
+                    <td style={{ padding: 6 }}>{e.unit}</td>
+                    <td style={{ padding: 6, textAlign: "right" }}>{Number(e.qty || 0)}</td>
+                    <td style={{ padding: 6, textAlign: "right" }}>E£{Number(e.unitPrice || 0).toFixed(2)}</td>
+                    <td style={{ padding: 6, textAlign: "right" }}>E£{(Number(e.qty || 0) * Number(e.unitPrice || 0)).toFixed(2)}</td>
+                    <td style={{ padding: 6 }}>{e.date ? new Date(e.date).toLocaleString() : ""}</td>
+                    <td style={{ padding: 6 }}>{e.note || ""}</td>
+                    <td style={{ padding: 6, textAlign: "right" }}>
                       <button
-                        disabled={inventoryLocked}
-                        onClick={() =>
-                          setInventory((inv) => inv.filter((x) => x.id !== it.id))
-                        }
-                        style={{
-                          background: inventoryLocked ? "#9e9e9e" : "#c62828",
-                          color: "#fff",
-                          border: "none",
-                          borderRadius: 6,
-                          padding: "6px 10px",
-                          cursor: inventoryLocked ? "not-allowed" : "pointer",
-                        }}
+                        onClick={() => setExpenses((arr) => arr.filter((x, idx) => idx !== i))}
+                        style={{ background: "#e53935", color: "#fff", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer" }}
                       >
                         Remove
                       </button>
@@ -2518,340 +2576,91 @@ export default function App() {
                 ))}
               </tbody>
             </table>
-
-            {/* Add new inventory item */}
-            {!inventoryLocked && (
-              <div
-                style={{
-                  marginTop: 12,
-                  display: "flex",
-                  gap: 8,
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                }}
-              >
-                <input
-                  type="text"
-                  placeholder="Item name"
-                  value={newInvName}
-                  onChange={(e) => setNewInvName(e.target.value)}
-                  style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-                />
-                <input
-                  type="text"
-                  placeholder="Unit (g, pcs...)"
-                  value={newInvUnit}
-                  onChange={(e) => setNewInvUnit(e.target.value)}
-                  style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 120 }}
-                />
-                <input
-                  type="number"
-                  placeholder="Qty"
-                  value={newInvQty}
-                  onChange={(e) => setNewInvQty(Number(e.target.value || 0))}
-                  style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 120 }}
-                />
-                <button
-                  onClick={() => {
-                    const name = String(newInvName || "").trim();
-                    const unit = String(newInvUnit || "").trim() || "pcs";
-                    const qty = Math.max(0, Number(newInvQty || 0));
-                    if (!name) return alert("Name required.");
-                    const id =
-                      name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$|/g, "") ||
-                      `inv_${Date.now()}`;
-                    if (inventory.some((x) => x.id === id)) {
-                      return alert("Item with same id exists, use a different name.");
-                    }
-                    setInventory((inv) => [...inv, { id, name, unit, qty }]);
-                    setNewInvName("");
-                    setNewInvUnit("");
-                    setNewInvQty(0);
-                  }}
-                  style={{
-                    background: "#1976d2",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: 6,
-                    padding: "8px 12px",
-                    cursor: "pointer",
-                  }}
-                >
-                  Add item
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* EXPENSES */}
-      {activeTab === "expenses" && (
-        <div>
-          <h2>Expenses (Shift)</h2>
-
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-            <input
-              type="text"
-              placeholder="Name"
-              value={newExpName}
-              onChange={(e) => setNewExpName(e.target.value)}
-              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-            />
-            <input
-              type="text"
-              placeholder="Unit"
-              value={newExpUnit}
-              onChange={(e) => setNewExpUnit(e.target.value)}
-              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 120 }}
-            />
-            <input
-              type="number"
-              placeholder="Qty"
-              value={newExpQty}
-              onChange={(e) => setNewExpQty(Number(e.target.value || 0))}
-              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 120 }}
-            />
-            <input
-              type="number"
-              placeholder="Unit Price (E£)"
-              value={newExpUnitPrice}
-              onChange={(e) => setNewExpUnitPrice(Number(e.target.value || 0))}
-              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 160 }}
-            />
-            <input
-              type="text"
-              placeholder="Note"
-              value={newExpNote}
-              onChange={(e) => setNewExpNote(e.target.value)}
-              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 220 }}
-            />
-            <button
-              onClick={() => {
-                const name = String(newExpName || "").trim();
-                if (!name) return alert("Expense name required.");
-                const row = {
-                  id: `exp_${Date.now()}`,
-                  name,
-                  unit: newExpUnit || "pcs",
-                  qty: Math.max(0, Number(newExpQty || 0)),
-                  unitPrice: Math.max(0, Number(newExpUnitPrice || 0)),
-                  note: newExpNote || "",
-                  date: new Date(),
-                };
-                setExpenses((arr) => [row, ...arr]);
-                setNewExpName("");
-                setNewExpUnit("pcs");
-                setNewExpQty(1);
-                setNewExpUnitPrice(0);
-                setNewExpNote("");
-              }}
-              style={{
-                background: "#2e7d32",
-                color: "#fff",
-                border: "none",
-                borderRadius: 6,
-                padding: "8px 12px",
-                cursor: "pointer",
-              }}
-            >
-              Add Expense
-            </button>
-          </div>
-
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Name</th>
-                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit</th>
-                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Qty</th>
-                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit Price</th>
-                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Total</th>
-                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Date</th>
-                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Note</th>
-                <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {expenses.map((e) => (
-                <tr key={e.id}>
-                  <td style={{ padding: 6 }}>{e.name}</td>
-                  <td style={{ padding: 6 }}>{e.unit}</td>
-                  <td style={{ padding: 6, textAlign: "right" }}>{e.qty}</td>
-                  <td style={{ padding: 6, textAlign: "right" }}>E£{Number(e.unitPrice || 0).toFixed(2)}</td>
-                  <td style={{ padding: 6, textAlign: "right" }}>
-                    E£{(Number(e.qty || 0) * Number(e.unitPrice || 0)).toFixed(2)}
-                  </td>
-                  <td style={{ padding: 6 }}>{e.date ? new Date(e.date).toLocaleString() : ""}</td>
-                  <td style={{ padding: 6 }}>{e.note}</td>
-                  <td style={{ padding: 6 }}>
-                    <button
-                      onClick={() => setExpenses((arr) => arr.filter((x) => x.id !== e.id))}
-                      style={{
-                        background: "#c62828",
-                        color: "#fff",
-                        border: "none",
-                        borderRadius: 6,
-                        padding: "6px 10px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Remove
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {expenses.length === 0 && (
-                <tr>
-                  <td colSpan={8} style={{ padding: 8, opacity: 0.8 }}>
-                    No expenses yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+          )}
         </div>
       )}
 
       {/* BANK */}
       {activeTab === "bank" && (
         <div>
-          <h2>Bank / Cashbox</h2>
-          <div
-            style={{
-              marginBottom: 10,
-              padding: 10,
-              borderRadius: 6,
-              background: dark ? "#1b2631" : "#e3f2fd",
-              display: "flex",
-              gap: 12,
-              alignItems: "center",
-              flexWrap: "wrap",
-            }}
-          >
-            <strong>Balance:</strong> <span>E£{bankBalance.toFixed(2)}</span>
+          <h2>Bank</h2>
+          <div style={{ marginBottom: 10 }}>
+            <b>Balance:</b> E£{bankBalance.toFixed(2)}
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              alignItems: "center",
-              flexWrap: "wrap",
-              marginBottom: 12,
-            }}
-          >
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
             <select
               value={bankForm.type}
               onChange={(e) => setBankForm((f) => ({ ...f, type: e.target.value }))}
-              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+              style={{ padding: 8, borderRadius: 6, border: `1px solid ${btnBorder}` }}
             >
-              <option value="deposit">Deposit (+)</option>
-              <option value="withdraw">Withdraw (-)</option>
-              <option value="adjustUp">Adjust Up (+)</option>
-              <option value="adjustDown">Adjust Down (-)</option>
-              <option value="init">Init (set by margin)</option>
+              <option value="deposit">Deposit</option>
+              <option value="withdraw">Withdraw</option>
+              <option value="adjustUp">Adjust Up</option>
+              <option value="adjustDown">Adjust Down</option>
             </select>
             <input
               type="number"
               placeholder="Amount"
               value={bankForm.amount}
               onChange={(e) => setBankForm((f) => ({ ...f, amount: Number(e.target.value || 0) }))}
-              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 160 }}
+              style={{ padding: 8, width: 140, borderRadius: 6, border: `1px solid ${btnBorder}` }}
             />
             <input
-              type="text"
               placeholder="Worker"
-              list="bank-worker-list"
               value={bankForm.worker}
               onChange={(e) => setBankForm((f) => ({ ...f, worker: e.target.value }))}
-              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 180 }}
+              style={{ padding: 8, borderRadius: 6, border: `1px solid ${btnBorder}` }}
             />
-            <datalist id="bank-worker-list">
-              {workers.map((w) => (
-                <option key={w} value={w} />
-              ))}
-            </datalist>
             <input
-              type="text"
               placeholder="Note"
               value={bankForm.note}
               onChange={(e) => setBankForm((f) => ({ ...f, note: e.target.value }))}
-              style={{ padding:                   6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 240 }}
+              style={{ padding: 8, minWidth: 200, borderRadius: 6, border: `1px solid ${btnBorder}` }}
             />
             <button
               onClick={() => {
-                const amt = Number(bankForm.amount || 0);
-                if (!amt) return alert("Amount must be > 0.");
-                const row = {
+                if (!bankForm.amount) return alert("Amount is required.");
+                const tx = {
                   id: `tx_${Date.now()}`,
-                  type: bankForm.type || "deposit",
-                  amount: Math.abs(amt),
-                  worker: bankForm.worker || "",
-                  note: bankForm.note || "",
+                  ...bankForm,
                   date: new Date(),
                 };
-                setBankTx((arr) => [row, ...arr]);
+                setBankTx((arr) => [tx, ...arr]);
                 setBankForm({ type: "deposit", amount: 0, worker: "", note: "" });
               }}
-              style={{
-                background: "#1976d2",
-                color: "#fff",
-                border: "none",
-                borderRadius: 6,
-                padding: "8px 12px",
-                cursor: "pointer",
-              }}
+              style={{ background: "#1976d2", color: "#fff", border: "none", borderRadius: 6, padding: "8px 12px", cursor: "pointer" }}
             >
-              Add Entry
+              Add Transaction
             </button>
           </div>
 
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Type</th>
-                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Amount (E£)</th>
-                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Worker</th>
-                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Date</th>
-                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Note</th>
-                <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {bankTx.map((t) => (
-                <tr key={t.id}>
-                  <td style={{ padding: 6 }}>{t.type}</td>
-                  <td style={{ padding: 6, textAlign: "right" }}>{Number(t.amount || 0).toFixed(2)}</td>
-                  <td style={{ padding: 6 }}>{t.worker}</td>
-                  <td style={{ padding: 6 }}>{t.date ? new Date(t.date).toLocaleString() : ""}</td>
-                  <td style={{ padding: 6 }}>{t.note}</td>
-                  <td style={{ padding: 6 }}>
-                    <button
-                      onClick={() => setBankTx((arr) => arr.filter((x) => x.id !== t.id))}
-                      style={{
-                        background: "#c62828",
-                        color: "#fff",
-                        border: "none",
-                        borderRadius: 6,
-                        padding: "6px 10px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Remove
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {bankTx.length === 0 && (
+          {bankTx.length === 0 ? (
+            <p>No transactions yet.</p>
+          ) : (
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
                 <tr>
-                  <td colSpan={6} style={{ padding: 8, opacity: 0.8 }}>
-                    No bank entries yet.
-                  </td>
+                  <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Type</th>
+                  <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Amount</th>
+                  <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Worker</th>
+                  <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Note</th>
+                  <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Date</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {bankTx.map((t) => (
+                  <tr key={t.id}>
+                    <td style={{ padding: 6 }}>{t.type}</td>
+                    <td style={{ padding: 6, textAlign: "right" }}>E£{Number(t.amount || 0).toFixed(2)}</td>
+                    <td style={{ padding: 6 }}>{t.worker || ""}</td>
+                    <td style={{ padding: 6 }}>{t.note || ""}</td>
+                    <td style={{ padding: 6 }}>{t.date ? new Date(t.date).toLocaleString() : ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       )}
 
@@ -2859,556 +2668,345 @@ export default function App() {
       {activeTab === "reports" && (
         <div>
           <h2>Reports</h2>
-
-          {/* Totals overview */}
-          <div
-            style={{
-              marginBottom: 12,
-              padding: 10,
-              borderRadius: 6,
-              background: dark ? "#1b2631" : "#e3f2fd",
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-              gap: 10,
-            }}
-          >
-            <div><b>Revenue (items only):</b><br/>E£{totals.revenueTotal.toFixed(2)}</div>
-            <div><b>Delivery Fees:</b><br/>E£{totals.deliveryFeesTotal.toFixed(2)}</div>
-            <div><b>Expenses:</b><br/>E£{totals.expensesTotal.toFixed(2)}</div>
-            <div><b>Margin:</b><br/>E£{totals.margin.toFixed(2)}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+            <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 6, padding: 10 }}>
+              <div style={{ opacity: 0.8 }}>Revenue (items only)</div>
+              <div style={{ fontWeight: 900, fontSize: 18 }}>E£{totals.revenueTotal.toFixed(2)}</div>
+            </div>
+            <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 6, padding: 10 }}>
+              <div style={{ opacity: 0.8 }}>Delivery Fees</div>
+              <div style={{ fontWeight: 900, fontSize: 18 }}>E£{totals.deliveryFeesTotal.toFixed(2)}</div>
+            </div>
+            <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 6, padding: 10 }}>
+              <div style={{ opacity: 0.8 }}>Expenses</div>
+              <div style={{ fontWeight: 900, fontSize: 18 }}>E£{totals.expensesTotal.toFixed(2)}</div>
+            </div>
+            <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 6, padding: 10 }}>
+              <div style={{ opacity: 0.8 }}>Margin</div>
+              <div style={{ fontWeight: 900, fontSize: 18 }}>E£{totals.margin.toFixed(2)}</div>
+            </div>
           </div>
 
-          {/* Items summary (old style: name, unit price (avg), qty, total) */}
-          <h3>Items Sold</h3>
-          <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 16 }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Item</th>
-                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Qty</th>
-                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Avg Price (E£)</th>
-                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Total (E£)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {salesStats.items.map((r) => {
-                const avg = r.count ? r.revenue / r.count : 0;
-                return (
-                  <tr key={r.id}>
-                    <td style={{ padding: 6 }}>{r.name}</td>
-                    <td style={{ padding: 6, textAlign: "right" }}>{r.count}</td>
-                    <td style={{ padding: 6, textAlign: "right" }}>{avg.toFixed(2)}</td>
-                    <td style={{ padding: 6, textAlign: "right" }}>{r.revenue.toFixed(2)}</td>
-                  </tr>
-                );
-              })}
-              {salesStats.items.length === 0 && (
-                <tr>
-                  <td colSpan={4} style={{ padding: 8, opacity: 0.8 }}>No items sold in this shift.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+          <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              onClick={() => generatePDF()}
+              style={{ background: "#7e57c2", color: "white", border: "none", borderRadius: 6, padding: "8px 12px", cursor: "pointer" }}
+            >
+              Download PDF Report
+            </button>
+          </div>
 
-          {/* Extras summary */}
-          <h3>Extras Sold</h3>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Extra</th>
-                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Qty</th>
-                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Avg Price (E£)</th>
-                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Total (E£)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {salesStats.extras.map((r) => {
-                const avg = r.count ? r.revenue / r.count : 0;
-                return (
+          <h3 style={{ marginTop: 16 }}>By Payment</h3>
+          <ul>
+            {Object.keys(totals.byPay).map((k) => (
+              <li key={k}>
+                {k}: <b>E£{Number(totals.byPay[k] || 0).toFixed(2)}</b>
+              </li>
+            ))}
+          </ul>
+
+          <h3>By Order Type</h3>
+          <ul>
+            {Object.keys(totals.byType).map((k) => (
+              <li key={k}>
+                {k}: <b>E£{Number(totals.byType[k] || 0).toFixed(2)}</b>
+              </li>
+            ))}
+          </ul>
+
+          <h3>Top Items</h3>
+          {salesStats.items.length === 0 ? (
+            <p>No items yet.</p>
+          ) : (
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Item</th>
+                  <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Times</th>
+                  <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Revenue</th>
+                </tr>
+              </thead>
+              <tbody>
+                {salesStats.items.map((r) => (
                   <tr key={r.id}>
                     <td style={{ padding: 6 }}>{r.name}</td>
                     <td style={{ padding: 6, textAlign: "right" }}>{r.count}</td>
-                    <td style={{ padding: 6, textAlign: "right" }}>{avg.toFixed(2)}</td>
-                    <td style={{ padding: 6, textAlign: "right" }}>{r.revenue.toFixed(2)}</td>
+                    <td style={{ padding: 6, textAlign: "right" }}>E£{r.revenue.toFixed(2)}</td>
                   </tr>
-                );
-              })}
-              {salesStats.extras.length === 0 && (
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          <h3 style={{ marginTop: 16 }}>Top Extras</h3>
+          {salesStats.extras.length === 0 ? (
+            <p>No extras yet.</p>
+          ) : (
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
                 <tr>
-                  <td colSpan={4} style={{ padding: 8, opacity: 0.8 }}>No extras sold in this shift.</td>
+                  <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Extra</th>
+                  <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Times</th>
+                  <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Revenue</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {salesStats.extras.map((r) => (
+                  <tr key={r.id}>
+                    <td style={{ padding: 6 }}>{r.name}</td>
+                    <td style={{ padding: 6, textAlign: "right" }}>{r.count}</td>
+                    <td style={{ padding: 6, textAlign: "right" }}>E£{r.revenue.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       )}
 
-      {/* EDIT (was "Prices") */}
+      {/* EDIT */}
       {activeTab === "edit" && (
         <div>
           <h2>Edit</h2>
+          <div style={{ marginBottom: 12, opacity: 0.85 }}>
+            Prices are protected. You unlocked with the Editor PIN to access this tab.
+          </div>
 
-          {/* Items editor */}
-          <h3>Menu Items</h3>
-          <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 12 }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Name</th>
-                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Price (E£)</th>
-                <th style={{ textAlign: "center", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Color</th>
-                <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Arrange</th>
-                <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {menu.map((it, idx) => (
-                <React.Fragment key={it.id}>
-                  <tr>
-                    <td style={{ padding: 6 }}>
-                      <input
-                        type="text"
-                        value={it.name}
-                        onChange={(e) =>
-                          setMenu((arr) => arr.map((x) => (x.id === it.id ? { ...x, name: e.target.value } : x)))
-                        }
-                        style={{ width: "100%", padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-                      />
-                    </td>
-                    <td style={{ padding: 6, textAlign: "right" }}>
-                      <input
-                        type="number"
-                        value={it.price}
-                        onChange={(e) =>
-                          setMenu((arr) => arr.map((x) => (x.id === it.id ? { ...x, price: Number(e.target.value || 0) } : x)))
-                        }
-                        style={{ width: 120, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, textAlign: "right" }}
-                      />
-                    </td>
-                    <td style={{ padding: 6, textAlign: "center" }}>
-                      <input
-                        type="color"
-                        value={it.color || "#ffffff"}
-                        onChange={(e) =>
-                          setMenu((arr) => arr.map((x) => (x.id === it.id ? { ...x, color: e.target.value } : x)))
-                        }
-                        style={{ width: 40, height: 28, border: "none", background: "none" }}
-                      />
-                    </td>
-                    <td style={{ padding: 6, textAlign: "center" }}>
-                      <button onClick={() => moveMenuUp(it.id)} style={{ marginRight: 6 }}>↑</button>
-                      <button onClick={() => moveMenuDown(it.id)}>↓</button>
-                    </td>
-                    <td style={{ padding: 6 }}>
-                      <button
-                        onClick={() => setOpenMenuConsId((v) => (v === it.id ? null : it.id))}
-                        style={{
-                          background: "#455a64",
-                          color: "#fff",
-                          border: "none",
-                          borderRadius: 6,
-                          padding: "6px 10px",
-                          cursor: "pointer",
-                          marginRight: 6,
-                        }}
-                      >
-                        Edit Consumption
-                      </button>
-                      <button
-                        onClick={() => setMenu((arr) => arr.filter((x) => x.id !== it.id))}
-                        style={{
-                          background: "#c62828",
-                          color: "#fff",
-                          border: "none",
-                          borderRadius: 6,
-                          padding: "6px 10px",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Remove
-                      </button>
-                    </td>
-                  </tr>
-                  {openMenuConsId === it.id && (
-                    <tr>
-                      <td colSpan={5} style={{ padding: 6, background: dark ? "#151515" : "#fafafa" }}>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
-                          {inventory.map((inv) => {
-                            const cur = Number((it.uses || {})[inv.id] || 0);
-                            return (
-                              <label
-                                key={inv.id}
-                                style={{
-                                  display: "flex",
-                                  gap: 6,
-                                  alignItems: "center",
-                                  padding: 6,
-                                  borderRadius: 6,
-                                  border: `1px solid ${btnBorder}`,
-                                  background: dark ? "#1e1e1e" : "#fff",
-                                }}
-                              >
-                                <span style={{ minWidth: 120 }}>{inv.name} ({inv.unit})</span>
-                                <input
-                                  type="number"
-                                  value={cur}
-                                  min={0}
-                                  step="any"
-                                  onChange={(e) => {
-                                    const v = Math.max(0, Number(e.target.value || 0));
-                                    setMenu((arr) =>
-                                      arr.map((x) =>
-                                        x.id === it.id
-                                          ? {
-                                              ...x,
-                                              uses: v > 0
-                                                ? { ...(x.uses || {}), [inv.id]: v }
-                                                : Object.fromEntries(Object.entries(x.uses || {}).filter(([k]) => k !== inv.id)),
-                                            }
-                                          : x
-                                      )
-                                    );
-                                  }}
-                                  style={{ width: 120 }}
-                                />
-                              </label>
-                            );
-                          })}
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              ))}
-              {menu.length === 0 && (
-                <tr>
-                  <td colSpan={5} style={{ padding: 8, opacity: 0.8 }}>No items. Add some below.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+          <h3>Menu</h3>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 10 }}>
+            {menu.map((m) => (
+              <div key={m.id} style={{ border: `1px solid ${cardBorder}`, borderRadius: 6, padding: 10 }}>
+                <div style={{ fontWeight: 700 }}>{m.name}</div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6 }}>
+                  <div>E£</div>
+                  <input
+                    type="number"
+                    value={m.price}
+                    onChange={(e) =>
+                      setMenu((arr) => arr.map((x) => (x.id === m.id ? { ...x, price: Number(e.target.value || 0) } : x)))
+                    }
+                    style={{ width: 120, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+                  />
+                </div>
+                <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <button
+                    onClick={() => moveMenuUp(m.id)}
+                    style={{ border: `1px solid ${btnBorder}`, padding: "4px 8px", borderRadius: 6, background: dark ? "#333" : "#eee", cursor: "pointer" }}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    onClick={() => moveMenuDown(m.id)}
+                    style={{ border: `1px solid ${btnBorder}`, padding: "4px 8px", borderRadius: 6, background: dark ? "#333" : "#eee", cursor: "pointer" }}
+                  >
+                    ↓
+                  </button>
+                  <button
+                    onClick={() => setOpenMenuConsId((id) => (id === m.id ? null : m.id))}
+                    style={{ border: `1px solid ${btnBorder}`, padding: "4px 8px", borderRadius: 6, background: dark ? "#333" : "#eee", cursor: "pointer" }}
+                  >
+                    Consumption
+                  </button>
+                </div>
 
-          {/* Add item */}
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 18 }}>
+                {openMenuConsId === m.id && (
+                  <div style={{ marginTop: 8, padding: 8, border: `1px dashed ${cardBorder}`, borderRadius: 6 }}>
+                    <div style={{ fontWeight: 700, marginBottom: 6 }}>Inventory Usage per 1 item</div>
+                    {inventory.length === 0 ? (
+                      <div style={{ opacity: 0.85 }}>No inventory items yet.</div>
+                    ) : (
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 120px", gap: 6 }}>
+                        {inventory.map((inv) => (
+                          <React.Fragment key={inv.id}>
+                            <div>{inv.name} ({inv.unit})</div>
+                            <input
+                              type="number"
+                              value={(m.uses && m.uses[inv.id]) || 0}
+                              onChange={(e) => {
+                                const val = Number(e.target.value || 0);
+                                setMenu((arr) =>
+                                  arr.map((x) =>
+                                    x.id === m.id
+                                      ? { ...x, uses: { ...(x.uses || {}), [inv.id]: val } }
+                                      : x
+                                  )
+                                );
+                              }}
+                              style={{ width: "100%", padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+                            />
+                          </React.Fragment>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <input
-              type="text"
               placeholder="New item name"
               value={newMenuName}
               onChange={(e) => setNewMenuName(e.target.value)}
-              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 220 }}
+              style={{ padding: 8, borderRadius: 6, border: `1px solid ${btnBorder}` }}
             />
             <input
               type="number"
-              placeholder="Price (E£)"
+              placeholder="Price"
               value={newMenuPrice}
               onChange={(e) => setNewMenuPrice(Number(e.target.value || 0))}
-              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 160 }}
+              style={{ padding: 8, width: 140, borderRadius: 6, border: `1px solid ${btnBorder}` }}
             />
             <button
               onClick={() => {
-                const name = String(newMenuName || "").trim();
-                if (!name) return alert("Name required.");
-                const id = Date.now();
-                setMenu((arr) => [...arr, { id, name, price: Math.max(0, Number(newMenuPrice || 0)), uses: {}, color: "#ffffff" }]);
+                if (!newMenuName.trim()) return alert("Name is required.");
+                const maxId = menu.reduce((mId, it) => Math.max(mId, Number(it.id) || 0), 0);
+                setMenu((arr) => [...arr, { id: maxId + 1, name: newMenuName.trim(), price: Number(newMenuPrice || 0), uses: {} }]);
                 setNewMenuName("");
                 setNewMenuPrice(0);
               }}
-              style={{
-                background: "#2e7d32",
-                color: "#fff",
-                border: "none",
-                borderRadius: 6,
-                padding: "8px 12px",
-                cursor: "pointer",
-              }}
+              style={{ background: "#1976d2", color: "#fff", border: "none", borderRadius: 6, padding: "8px 12px", cursor: "pointer" }}
             >
               Add Item
             </button>
           </div>
 
-          {/* Extras editor */}
-          <h3>Extras</h3>
-          <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 12 }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Name</th>
-                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Price (E£)</th>
-                <th style={{ textAlign: "center", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Color</th>
-                <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Arrange</th>
-                <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {extraList.map((ex, idx) => (
-                <React.Fragment key={ex.id}>
-                  <tr>
-                    <td style={{ padding: 6 }}>
-                      <input
-                        type="text"
-                        value={ex.name}
-                        onChange={(e) =>
-                          setExtraList((arr) => arr.map((x) => (x.id === ex.id ? { ...x, name: e.target.value } : x)))
-                        }
-                        style={{ width: "100%", padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-                      />
-                    </td>
-                    <td style={{ padding: 6, textAlign: "right" }}>
-                      <input
-                        type="number"
-                        value={ex.price}
-                        onChange={(e) =>
-                          setExtraList((arr) => arr.map((x) => (x.id === ex.id ? { ...x, price: Number(e.target.value || 0) } : x)))
-                        }
-                        style={{ width: 120, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, textAlign: "right" }}
-                      />
-                    </td>
-                    <td style={{ padding: 6, textAlign: "center" }}>
-                      <input
-                        type="color"
-                        value={ex.color || "#ffffff"}
-                        onChange={(e) =>
-                          setExtraList((arr) => arr.map((x) => (x.id === ex.id ? { ...x, color: e.target.value } : x)))
-                        }
-                        style={{ width: 40, height: 28, border: "none", background: "none" }}
-                      />
-                    </td>
-                    <td style={{ padding: 6, textAlign: "center" }}>
-                      <button onClick={() => moveExtraUp(ex.id)} style={{ marginRight: 6 }}>↑</button>
-                      <button onClick={() => moveExtraDown(ex.id)}>↓</button>
-                    </td>
-                    <td style={{ padding: 6 }}>
-                      <button
-                        onClick={() => setOpenExtraConsId((v) => (v === ex.id ? null : ex.id))}
-                        style={{
-                          background: "#455a64",
-                          color: "#fff",
-                          border: "none",
-                          borderRadius: 6,
-                          padding: "6px 10px",
-                          cursor: "pointer",
-                          marginRight: 6,
-                        }}
-                      >
-                        Edit Consumption
-                      </button>
-                      <button
-                        onClick={() => setExtraList((arr) => arr.filter((x) => x.id !== ex.id))}
-                        style={{
-                          background: "#c62828",
-                          color: "#fff",
-                          border: "none",
-                          borderRadius: 6,
-                          padding: "6px 10px",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Remove
-                      </button>
-                    </td>
-                  </tr>
-                  {openExtraConsId === ex.id && (
-                    <tr>
-                      <td colSpan={5} style={{ padding: 6, background: dark ? "#151515" : "#fafafa" }}>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
-                          {inventory.map((inv) => {
-                            const cur = Number((ex.uses || {})[inv.id] || 0);
-                            return (
-                              <label
-                                key={inv.id}
-                                style={{
-                                  display: "flex",
-                                  gap: 6,
-                                  alignItems: "center",
-                                  padding: 6,
-                                  borderRadius: 6,
-                                  border: `1px solid ${btnBorder}`,
-                                  background: dark ? "#1e1e1e" : "#fff",
-                                }}
-                              >
-                                <span style={{ minWidth: 120 }}>{inv.name} ({inv.unit})</span>
-                                <input
-                                  type="number"
-                                  value={cur}
-                                  min={0}
-                                  step="any"
-                                  onChange={(e) => {
-                                    const v = Math.max(0, Number(e.target.value || 0));
-                                    setExtraList((arr) =>
-                                      arr.map((x) =>
-                                        x.id === ex.id
-                                          ? {
-                                              ...x,
-                                              uses: v > 0
-                                                ? { ...(x.uses || {}), [inv.id]: v }
-                                                : Object.fromEntries(Object.entries(x.uses || {}).filter(([k]) => k !== inv.id)),
-                                            }
-                                          : x
-                                      )
-                                    );
-                                  }}
-                                  style={{ width: 120 }}
-                                />
-                              </label>
-                            );
-                          })}
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              ))}
-              {extraList.length === 0 && (
-                <tr>
-                  <td colSpan={5} style={{ padding: 8, opacity: 0.8 }}>No extras. Add some below.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+          <h3 style={{ marginTop: 16 }}>Extras</h3>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 10 }}>
+            {extraList.map((m) => (
+              <div key={m.id} style={{ border: `1px solid ${cardBorder}`, borderRadius: 6, padding: 10 }}>
+                <div style={{ fontWeight: 700 }}>{m.name}</div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6 }}>
+                  <div>E£</div>
+                  <input
+                    type="number"
+                    value={m.price}
+                    onChange={(e) =>
+                      setExtraList((arr) => arr.map((x) => (x.id === m.id ? { ...x, price: Number(e.target.value || 0) } : x)))
+                    }
+                    style={{ width: 120, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+                  />
+                </div>
+                <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <button
+                    onClick={() => moveExtraUp(m.id)}
+                    style={{ border: `1px solid ${btnBorder}`, padding: "4px 8px", borderRadius: 6, background: dark ? "#333" : "#eee", cursor: "pointer" }}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    onClick={() => moveExtraDown(m.id)}
+                    style={{ border: `1px solid ${btnBorder}`, padding: "4px 8px", borderRadius: 6, background: dark ? "#333" : "#eee", cursor: "pointer" }}
+                  >
+                    ↓
+                  </button>
+                  <button
+                    onClick={() => setOpenExtraConsId((id) => (id === m.id ? null : m.id))}
+                    style={{ border: `1px solid ${btnBorder}`, padding: "4px 8px", borderRadius: 6, background: dark ? "#333" : "#eee", cursor: "pointer" }}
+                  >
+                    Consumption
+                  </button>
+                </div>
 
-          {/* Add extra */}
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 18 }}>
+                {openExtraConsId === m.id && (
+                  <div style={{ marginTop: 8, padding: 8, border: `1px dashed ${cardBorder}`, borderRadius: 6 }}>
+                    <div style={{ fontWeight: 700, marginBottom: 6 }}>Inventory Usage per 1 extra</div>
+                    {inventory.length === 0 ? (
+                      <div style={{ opacity: 0.85 }}>No inventory items yet.</div>
+                    ) : (
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 120px", gap: 6 }}>
+                        {inventory.map((inv) => (
+                          <React.Fragment key={inv.id}>
+                            <div>{inv.name} ({inv.unit})</div>
+                            <input
+                              type="number"
+                              value={(m.uses && m.uses[inv.id]) || 0}
+                              onChange={(e) => {
+                                const val = Number(e.target.value || 0);
+                                setExtraList((arr) =>
+                                  arr.map((x) =>
+                                    x.id === m.id
+                                      ? { ...x, uses: { ...(x.uses || {}), [inv.id]: val } }
+                                      : x
+                                  )
+                                );
+                              }}
+                              style={{ width: "100%", padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+                            />
+                          </React.Fragment>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <input
-              type="text"
               placeholder="New extra name"
               value={newExtraName}
               onChange={(e) => setNewExtraName(e.target.value)}
-              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 220 }}
+              style={{ padding: 8, borderRadius: 6, border: `1px solid ${btnBorder}` }}
             />
             <input
               type="number"
-              placeholder="Price (E£)"
+              placeholder="Price"
               value={newExtraPrice}
               onChange={(e) => setNewExtraPrice(Number(e.target.value || 0))}
-              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 160 }}
+              style={{ padding: 8, width: 140, borderRadius: 6, border: `1px solid ${btnBorder}` }}
             />
             <button
               onClick={() => {
-                const name = String(newExtraName || "").trim();
-                if (!name) return alert("Name required.");
-                const id = Date.now();
-                setExtraList((arr) => [...arr, { id, name, price: Math.max(0, Number(newExtraPrice || 0)), uses: {}, color: "#ffffff" }]);
+                if (!newExtraName.trim()) return alert("Name is required.");
+                const maxId = extraList.reduce((mId, it) => Math.max(mId, Number(it.id) || 0), 100);
+                setExtraList((arr) => [...arr, { id: maxId + 1, name: newExtraName.trim(), price: Number(newExtraPrice || 0), uses: {} }]);
                 setNewExtraName("");
                 setNewExtraPrice(0);
               }}
-              style={{
-                background: "#2e7d32",
-                color: "#fff",
-                border: "none",
-                borderRadius: 6,
-                padding: "8px 12px",
-                cursor: "pointer",
-              }}
+              style={{ background: "#1976d2", color: "#fff", border: "none", borderRadius: 6, padding: "8px 12px", cursor: "pointer" }}
             >
               Add Extra
             </button>
           </div>
 
-          {/* Workers & Payments (moved back to Edit) */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
-            <div style={{ padding: 10, borderRadius: 6, border: `1px solid ${cardBorder}` }}>
-              <h4 style={{ marginTop: 0 }}>Workers</h4>
-              <ul>
-                {workers.map((w) => (
-                  <li key={w} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                    <input
-                      type="text"
-                      value={w}
-                      onChange={(e) =>
-                        setWorkers((arr) => arr.map((x) => (x === w ? e.target.value : x)))
-                      }
-                      style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-                    />
-                    <button
-                      onClick={() => setWorkers((arr) => arr.filter((x) => x !== w))}
-                      style={{ background: "#c62828", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px" }}
-                    >
-                      Remove
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <div style={{ display: "flex", gap: 8 }}>
+          <h3 style={{ marginTop: 16 }}>Admin PINs</h3>
+          <div style={{ marginBottom: 8 }}>
+            {adminPinsLocked ? (
+              <button
+                onClick={() => {
+                  const ok = !!promptAdminAndPin();
+                  if (!ok) return;
+                  setAdminPinsLocked(false);
+                }}
+                style={{ background: "#1976d2", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
+              >
+                Unlock PINs (Admin PIN)
+              </button>
+            ) : (
+              <button
+                onClick={() => setAdminPinsLocked(true)}
+                style={{ background: "#ef6c00", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
+              >
+                Lock PINs
+              </button>
+            )}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+            {Object.keys(adminPins).map((k) => (
+              <div key={k} style={{ border: `1px solid ${cardBorder}`, borderRadius: 6, padding: 10 }}>
+                <div style={{ marginBottom: 6 }}>Admin {k}</div>
                 <input
-                  type="text"
-                  placeholder="Add worker"
-                  value={newWorker}
-                  onChange={(e) => setNewWorker(e.target.value)}
-                  style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+                  type="password"
+                  disabled={adminPinsLocked}
+                  value={adminPins[k]}
+                  onChange={(e) => setAdminPins((o) => ({ ...o, [k]: e.target.value }))}
+                  style={{ width: "100%", padding: 8, borderRadius: 6, border: `1px solid ${btnBorder}` }}
                 />
-                <button
-                  onClick={() => {
-                    const v = String(newWorker || "").trim();
-                    if (!v) return;
-                    if (workers.includes(v)) return alert("Worker already exists.");
-                    setWorkers((arr) => [...arr, v]);
-                    setNewWorker("");
-                  }}
-                  style={{ background: "#1976d2", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px" }}
-                >
-                  Add
-                </button>
               </div>
-            </div>
-
-            <div style={{ padding: 10, borderRadius: 6, border: `1px solid ${cardBorder}` }}>
-              <h4 style={{ marginTop: 0 }}>Payment Methods</h4>
-              <ul>
-                {paymentMethods.map((p) => (
-                  <li key={p} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                    <input
-                      type="text"
-                      value={p}
-                      onChange={(e) =>
-                        setPaymentMethods((arr) => arr.map((x) => (x === p ? e.target.value : x)))
-                      }
-                      style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-                    />
-                    <button
-                      onClick={() => setPaymentMethods((arr) => arr.filter((x) => x !== p))}
-                      style={{ background: "#c62828", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px" }}
-                    >
-                      Remove
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <div style={{ display: "flex", gap: 8 }}>
-                <input
-                  type="text"
-                  placeholder="Add payment"
-                  value={newPayment}
-                  onChange={(e) => setNewPayment(e.target.value)}
-                  style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-                />
-                <button
-                  onClick={() => {
-                    const v = String(newPayment || "").trim();
-                    if (!v) return;
-                    if (paymentMethods.includes(v)) return alert("Payment method exists.");
-                    setPaymentMethods((arr) => [...arr, v]);
-                    setNewPayment("");
-                  }}
-                  style={{ background: "#1976d2", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px" }}
-                >
-                  Add
-                </button>
-              </div>
-            </div>
-
-            <div style={{ padding: 10, borderRadius: 6, border: `1px solid ${cardBorder}` }}>
-              <h4 style={{ marginTop: 0 }}>Admin PINs (visible)</h4>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8 }}>
-                {[1,2,3,4,5,6].map((n) => (
-                  <label key={n} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <span>Admin {n}</span>
-                    <input
-                      type="text"
-                      value={adminPins[n] || ""}
-                      onChange={(e) => setAdminPins((p) => ({ ...p, [n]: e.target.value }))}
-                      style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-                    />
-                  </label>
-                ))}
-              </div>
-            </div>
+            ))}
           </div>
         </div>
       )}
@@ -3418,72 +3016,203 @@ export default function App() {
         <div>
           <h2>Settings</h2>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
-            <div style={{ padding: 10, borderRadius: 6, border: `1px solid ${cardBorder}` }}>
-              <h4 style={{ marginTop: 0 }}>Printing</h4>
-              <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+              gap: 12,
+              alignItems: "start",
+            }}
+          >
+            {/* Theme */}
+            <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 6, padding: 10 }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Appearance</div>
+              <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input type="checkbox" checked={dark} onChange={(e) => setDark(e.target.checked)} />
+                Dark mode
+              </label>
+            </div>
+
+            {/* Printing */}
+            <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 6, padding: 10 }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Printing</div>
+              <label style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
                 <input
                   type="checkbox"
                   checked={autoPrintOnCheckout}
                   onChange={(e) => setAutoPrintOnCheckout(e.target.checked)}
                 />
-                Auto-print on Checkout
+                Auto-print receipt on checkout
               </label>
-              <div style={{ marginTop: 8 }}>
-                <label>
-                  Paper width (mm):&nbsp;
-                  <input
-                    type="number"
-                    value={preferredPaperWidthMm}
-                    onChange={(e) => setPreferredPaperWidthMm(Math.max(40, Number(e.target.value || 80)))}
-                    style={{ width: 120 }}
-                  />
-                </label>
-                <small style={{ display: "block", opacity: 0.75 }}>
-                  Typical sizes: 80, 58. Your current: {preferredPaperWidthMm} mm.
-                </small>
-              </div>
+              <div>Paper width (mm)</div>
+              <input
+                type="number"
+                value={preferredPaperWidthMm}
+                onChange={(e) => setPreferredPaperWidthMm(Number(e.target.value || 80))}
+                style={{ width: 120, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+              />
             </div>
 
-            <div style={{ padding: 10, borderRadius: 6, border: `1px solid ${cardBorder}` }}>
-              <h4 style={{ marginTop: 0 }}>Display</h4>
-              <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <input type="checkbox" checked={dark} onChange={(e) => setDark(e.target.checked)} />
-                Dark theme
-              </label>
-            </div>
-
-            <div style={{ padding: 10, borderRadius: 6, border: `1px solid ${cardBorder}` }}>
-              <h4 style={{ marginTop: 0 }}>Cloud</h4>
-              <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {/* Cloud sync */}
+            <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 6, padding: 10 }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Cloud</div>
+              <label style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
                 <input
                   type="checkbox"
                   checked={cloudEnabled}
                   onChange={(e) => setCloudEnabled(e.target.checked)}
                 />
-                Enable cloud autosave (state)
+                Enable Firebase sync
               </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+              <label style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
                 <input
                   type="checkbox"
                   checked={realtimeOrders}
                   onChange={(e) => setRealtimeOrders(e.target.checked)}
                 />
-                Live Orders Board (realtime)
+                Realtime orders (live board)
               </label>
-              <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  onClick={syncToCloudNow}
+                  style={{ border: `1px solid ${btnBorder}`, padding: "6px 10px", borderRadius: 6, background: dark ? "#333" : "#eee", cursor: "pointer" }}
+                >
+                  Sync to Cloud
+                </button>
                 <button
                   onClick={loadFromCloud}
-                  style={{ background: "#1976d2", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px" }}
+                  style={{ border: `1px solid ${btnBorder}`, padding: "6px 10px", borderRadius: 6, background: dark ? "#333" : "#eee", cursor: "pointer" }}
                 >
                   Load from Cloud
                 </button>
-                <small style={{ opacity: 0.8 }}>
-                  Last save: {cloudStatus.lastSaveAt ? cloudStatus.lastSaveAt.toLocaleString() : "—"} • Last load: {cloudStatus.lastLoadAt ? cloudStatus.lastLoadAt.toLocaleString() : "—"}
-                </small>
-                {cloudStatus.error && (
-                  <small style={{ color: "#c62828" }}>Error: {String(cloudStatus.error)}</small>
-                )}
+              </div>
+
+              <div style={{ marginTop: 8, fontSize: 12, opacity: 0.8 }}>
+                <div>Last save: {cloudStatus.lastSaveAt ? new Date(cloudStatus.lastSaveAt).toLocaleString() : "—"}</div>
+                <div>Last load: {cloudStatus.lastLoadAt ? new Date(cloudStatus.lastLoadAt).toLocaleString() : "—"}</div>
+                {cloudStatus.error && <div style={{ color: "#e53935" }}>Error: {String(cloudStatus.error)}</div>}
+              </div>
+            </div>
+
+            {/* Workers / Payments / Order Types */}
+            <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 6, padding: 10 }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Workers</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+                <input
+                  placeholder="New worker"
+                  value={newWorker}
+                  onChange={(e) => setNewWorker(e.target.value)}
+                  style={{ padding: 8, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+                />
+                <button
+                  onClick={() => {
+                    const v = newWorker.trim();
+                    if (!v) return;
+                    if (workers.includes(v)) return alert("Worker already exists.");
+                    setWorkers((arr) => [...arr, v]);
+                    setNewWorker("");
+                  }}
+                  style={{ background: "#1976d2", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
+                >
+                  Add
+                </button>
+              </div>
+              <ul>
+                {workers.map((w, i) => (
+                  <li key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                    <span>{w}</span>
+                    <button
+                      onClick={() => setWorkers((arr) => arr.filter((x) => x !== w))}
+                      style={{ border: `1px solid ${btnBorder}`, borderRadius: 6, padding: "2px 8px", background: dark ? "#333" : "#eee", cursor: "pointer" }}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 6, padding: 10 }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Payment Methods</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+                <input
+                  placeholder="New method"
+                  value={newPayment}
+                  onChange={(e) => setNewPayment(e.target.value)}
+                  style={{ padding: 8, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+                />
+                <button
+                  onClick={() => {
+                    const v = newPayment.trim();
+                    if (!v) return;
+                    if (paymentMethods.includes(v)) return alert("Payment method exists.");
+                    setPaymentMethods((arr) => [...arr, v]);
+                    setNewPayment("");
+                  }}
+                  style={{ background: "#1976d2", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
+                >
+                  Add
+                </button>
+              </div>
+              <ul>
+                {paymentMethods.map((p, i) => (
+                  <li key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                    <span>{p}</span>
+                    <button
+                      onClick={() => setPaymentMethods((arr) => arr.filter((x) => x !== p))}
+                      style={{ border: `1px solid ${btnBorder}`, borderRadius: 6, padding: "2px 8px", background: dark ? "#333" : "#eee", cursor: "pointer" }}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 6, padding: 10 }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Order Types</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+                <input
+                  placeholder="Add order type"
+                  value={newMenuName /* reuse a field to avoid adding new ones */}
+                  onChange={(e) => setNewMenuName(e.target.value)}
+                  style={{ padding: 8, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+                />
+                <button
+                  onClick={() => {
+                    const v = (newMenuName || "").trim();
+                    if (!v) return;
+                    if (orderTypes.includes(v)) return alert("Order type exists.");
+                    setOrderTypes((arr) => [...arr, v]);
+                    setNewMenuName("");
+                  }}
+                  style={{ background: "#1976d2", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
+                >
+                  Add
+                </button>
+              </div>
+              <ul>
+                {orderTypes.map((t, i) => (
+                  <li key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                    <span>{t}</span>
+                    <button
+                      onClick={() => setOrderTypes((arr) => arr.filter((x) => x !== t))}
+                      style={{ border: `1px solid ${btnBorder}`, borderRadius: 6, padding: "2px 8px", background: dark ? "#333" : "#eee", cursor: "pointer" }}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div style={{ marginTop: 8 }}>
+                <div>Default Delivery Fee (E£)</div>
+                <input
+                  type="number"
+                  value={defaultDeliveryFee}
+                  onChange={(e) => setDefaultDeliveryFee(Number(e.target.value || 0))}
+                  style={{ width: 140, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+                />
               </div>
             </div>
           </div>
@@ -3492,5 +3221,4 @@ export default function App() {
     </div>
   );
 }
-
 
