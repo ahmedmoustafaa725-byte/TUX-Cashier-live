@@ -548,21 +548,18 @@ See you soon</div>
     </div>
   </div>
 
-  <script>
-    window.onload = function () {
-      window.focus();
-      window.print();
-      setTimeout(() => window.close && window.close(), 200);
-    };
-  </script>
+ 
 </body>
 </html>
 `;
 }
 
 function printReceiptHTML(order, widthMm = 80, copy = "Customer", images) {
-  const imgs =
-    images || { logo: "/tuxlogo.jpg", qr: "/menu-qr.jpg", delivery: "/delivery-logo.jpg" };
+  const imgs = images || {
+    logo: "/tuxlogo.jpg",
+    qr: "/menu-qr.jpg",
+    delivery: "/delivery-logo.jpg",
+  };
   const html = buildReceiptHTML(order, widthMm, copy, imgs);
 
   const ifr = document.createElement("iframe");
@@ -572,12 +569,33 @@ function printReceiptHTML(order, widthMm = 80, copy = "Customer", images) {
   ifr.style.width = "0";
   ifr.style.height = "0";
   ifr.style.border = "0";
-  document.body.appendChild(ifr);
 
+  // Print when the iframe has loaded the HTML
+  ifr.addEventListener("load", () => {
+    try {
+      const w = ifr.contentWindow;
+      if (w) {
+        w.focus();
+        // Calling print from the same user gesture (see change in checkout below)
+        w.print();
+        // Cleanup after printing
+        const cleanup = () => { try { ifr.remove(); } catch {} };
+        w.addEventListener("afterprint", cleanup, { once: true });
+        setTimeout(cleanup, 7000); // safety
+      }
+    } catch (e) {
+      console.warn("Print failed:", e);
+      try { ifr.remove(); } catch {}
+    }
+  });
+
+  document.body.appendChild(ifr);
   const doc = ifr.contentDocument || ifr.contentWindow.document;
   doc.open();
   doc.write(html);
   doc.close();
+}
+
 
   setTimeout(() => {
     try {
@@ -1360,122 +1378,135 @@ setLastAppliedCloudAt(Date.now());
       )
     );
 
-  const checkout = async () => {
-    if (isCheckingOut) return;
-    setIsCheckingOut(true);
+ const checkout = async () => {
+  if (isCheckingOut) return;
+  setIsCheckingOut(true);
 
-    try {
-      if (!dayMeta.startedAt || dayMeta.endedAt)
-        return alert("Start a shift first (Shift → Start Shift).");
-      if (cart.length === 0) return alert("Cart is empty.");
-      if (!worker) return alert("Select worker.");
-      if (!payment) return alert("Select payment.");
-      if (!orderType) return alert("Select order type.");
+  try {
+    if (!dayMeta.startedAt || dayMeta.endedAt)
+      return alert("Start a shift first (Shift → Start Shift).");
+    if (cart.length === 0) return alert("Cart is empty.");
+    if (!worker) return alert("Select worker.");
+    if (!payment) return alert("Select payment.");
+    if (!orderType) return alert("Select order type.");
 
-      // Stock check (respect qty)
-      const required = {};
-      for (const line of cart) {
-        const uses = line.uses || {};
-        for (const k of Object.keys(uses))
-          required[k] = (required[k] || 0) + (uses[k] || 0);
-      }
-      for (const k of Object.keys(required)) {
-        const invItem = invById[k];
-        if (!invItem) continue;
-        if ((invItem.qty || 0) < required[k]) {
-          return alert(
-            `Not enough ${invItem.name} in stock. Need ${required[k]} ${invItem.unit}, have ${invItem.qty} ${invItem.unit}.`
-          );
-        }
-      }
-      // Deduct
-      setInventory((inv) =>
-        inv.map((it) => {
-          const need = required[it.id] || 0;
-          return need ? { ...it, qty: it.qty - need } : it;
-        })
-      );
-
-      // Totals with qty
-      const itemsTotal = cart.reduce((s, b) => {
-        const ex = (b.extras || []).reduce((t, e) => t + Number(e.price || 0), 0);
-        return s + (Number(b.price || 0) + ex) * Number(b.qty || 1);
-      }, 0);
-      const delFee = orderType === "Delivery" ? Math.max(0, Number(deliveryFee || 0)) : 0;
-      const total = itemsTotal + delFee;
-
-      // Cash & change
-      const cashVal = payment === "Cash" ? Number(cashReceived || 0) : null;
-      const changeDue =
-        payment === "Cash" ? Math.max(0, Number((cashVal || 0) - total)) : null;
-
-      // Allocate order number (atomic)
-      let allocatedNo = nextOrderNo;
-      if (cloudEnabled && counterDocRef && fbUser && db) {
-        try {
-          allocatedNo = await allocateOrderNoAtomic(db, counterDocRef);
-        } catch (e) {
-          console.warn(
-            "Atomic order number allocation failed, using local nextOrderNo.",
-            e
-          );
-        }
-      }
-      setNextOrderNo(allocatedNo + 1);
-
-      const order = {
-        orderNo: allocatedNo,
-        date: new Date(),
-        worker,
-        payment,
-        orderType,
-        deliveryFee: delFee,
-        total,
-        itemsTotal,
-        cashReceived: cashVal,
-        changeDue,
-        cart,
-        done: false,
-        voided: false,
-        restockedAt: undefined,
-        note: orderNote.trim(),
-        idemKey: `idk_${fbUser ? fbUser.uid : "anon"}_${Date.now()}_${Math.random()
-          .toString(36)
-          .slice(2)}`,
-      };
-
-      if (!realtimeOrders) setOrders((o) => [order, ...o]);
-
-      if (cloudEnabled && ordersColRef && fbUser) {
-        try {
-          const ref = await addDoc(ordersColRef, normalizeOrderForCloud(order));
-          if (!realtimeOrders) {
-            setOrders((prev) =>
-              prev.map((oo) =>
-                oo.orderNo === order.orderNo ? { ...oo, cloudId: ref.id } : oo
-              )
-            );
-          }
-        } catch (e) {
-          console.warn("Cloud order write failed:", e);
-        }
-      }
-
-      if (autoPrintOnCheckout) {
-        printReceiptHTML(order, Number(preferredPaperWidthMm) || 80, "Customer");
-      }
-
-      setCart([]);
-      setWorker("");
-      setPayment("");
-      setOrderNote("");
-      setOrderType(orderTypes[0] || "Take-Away");
-      setDeliveryFee(orderType === "Delivery" ? defaultDeliveryFee : 0);
-      setCashReceived(0);
-    } finally {
-      setIsCheckingOut(false);
+    // Stock check (respect qty)
+    const required = {};
+    for (const line of cart) {
+      const uses = line.uses || {};
+      for (const k of Object.keys(uses))
+        required[k] = (required[k] || 0) + (uses[k] || 0);
     }
-  };
+    for (const k of Object.keys(required)) {
+      const invItem = invById[k];
+      if (!invItem) continue;
+      if ((invItem.qty || 0) < required[k]) {
+        return alert(
+          `Not enough ${invItem.name} in stock. Need ${required[k]} ${invItem.unit}, have ${invItem.qty} ${invItem.unit}.`
+        );
+      }
+    }
+    // Deduct locally
+    setInventory((inv) =>
+      inv.map((it) => {
+        const need = required[it.id] || 0;
+        return need ? { ...it, qty: it.qty - need } : it;
+      })
+    );
+
+    // Totals
+    const itemsTotal = cart.reduce((s, b) => {
+      const ex = (b.extras || []).reduce((t, e) => t + Number(e.price || 0), 0);
+      return s + (Number(b.price || 0) + ex) * Number(b.qty || 1);
+    }, 0);
+    const delFee =
+      orderType === "Delivery" ? Math.max(0, Number(deliveryFee || 0)) : 0;
+    const total = itemsTotal + delFee;
+
+    const cashVal = payment === "Cash" ? Number(cashReceived || 0) : null;
+    const changeDue =
+      payment === "Cash" ? Math.max(0, Number((cashVal || 0) - total)) : null;
+
+    // Use current local nextOrderNo immediately (to keep print in the click gesture)
+    let optimisticNo = nextOrderNo;
+
+    const order = {
+      orderNo: optimisticNo,
+      date: new Date(),
+      worker,
+      payment,
+      orderType,
+      deliveryFee: delFee,
+      total,
+      itemsTotal,
+      cashReceived: cashVal,
+      changeDue,
+      cart,
+      done: false,
+      voided: false,
+      restockedAt: undefined,
+      note: orderNote.trim(),
+      idemKey: `idk_${fbUser ? fbUser.uid : "anon"}_${Date.now()}_${Math.random()
+        .toString(36)
+        .slice(2)}`,
+    };
+
+    // 🔸 PRINT RIGHT NOW — still inside the user click call stack
+    if (autoPrintOnCheckout) {
+      printReceiptHTML(order, Number(preferredPaperWidthMm) || 80, "Customer");
+    }
+
+    // Optimistically bump local counter so the UI feels instant
+    setNextOrderNo(optimisticNo + 1);
+
+    // Persist to cloud / allocate atomic order number in the background
+    let allocatedNo = optimisticNo;
+    if (cloudEnabled && counterDocRef && fbUser && db) {
+      try {
+        allocatedNo = await allocateOrderNoAtomic(db, counterDocRef);
+        if (allocatedNo !== optimisticNo) {
+          // if the server gave us a different number, fix it for the stored order
+          order.orderNo = allocatedNo;
+          setNextOrderNo(allocatedNo + 1);
+        }
+      } catch (e) {
+        console.warn(
+          "Atomic order number allocation failed, using optimistic number.",
+          e
+        );
+      }
+    }
+
+    if (!realtimeOrders) setOrders((o) => [order, ...o]);
+
+    if (cloudEnabled && ordersColRef && fbUser) {
+      try {
+        const ref = await addDoc(ordersColRef, normalizeOrderForCloud(order));
+        if (!realtimeOrders) {
+          setOrders((prev) =>
+            prev.map((oo) =>
+              oo.orderNo === order.orderNo ? { ...oo, cloudId: ref.id } : oo
+            )
+          );
+        }
+      } catch (e) {
+        console.warn("Cloud order write failed:", e);
+      }
+    }
+
+    // Reset order UI
+    setCart([]);
+    setWorker("");
+    setPayment("");
+    setOrderNote("");
+    const defaultType = orderTypes[0] || "Take-Away";
+    setOrderType(defaultType);
+    setDeliveryFee(defaultType === "Delivery" ? defaultDeliveryFee : 0);
+    setCashReceived(0);
+  } finally {
+    setIsCheckingOut(false);
+  }
+};
 
   // --------- Order actions ----------
   const markOrderDone = async (orderNo) => {
@@ -3772,6 +3803,7 @@ setLastAppliedCloudAt(Date.now());
     </div>
   );
 }
+
 
 
 
