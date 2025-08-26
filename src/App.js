@@ -3128,7 +3128,15 @@ const lockAdminPin = (n) => {
                   {openMenuConsId === it.id && (
                     <tr>
                       <td colSpan={5} style={{ padding: 6, background: dark ? "#151515" : "#fafafa" }}>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
+                       <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                              columnGap: 16,
+                              rowGap: 14,
+                            }}
+                          >
+
                           {inventory.map((inv) => {
                             const cur = Number((it.uses || {})[inv.id] || 0);
                             return (
@@ -3305,7 +3313,15 @@ const lockAdminPin = (n) => {
                   {openExtraConsId === ex.id && (
                     <tr>
                       <td colSpan={5} style={{ padding: 6, background: dark ? "#151515" : "#fafafa" }}>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
+                       <div
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                                columnGap: 16,
+                                rowGap: 14,
+                              }}
+                            >
+
                           {inventory.map((inv) => {
                             const cur = Number((ex.uses || {})[inv.id] || 0);
                             return (
@@ -3613,6 +3629,7 @@ const lockAdminPin = (n) => {
     </div>
   );
 }
+
 
 
 
