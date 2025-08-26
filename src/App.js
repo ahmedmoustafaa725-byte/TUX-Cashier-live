@@ -1449,7 +1449,7 @@ export default function App() {
       const endedStr = m.endedAt ? new Date(m.endedAt).toLocaleString() : "—";
 
       autoTable(doc, {
-        head: [["Start By", "Start At", "Current Worker", "End At"]]],
+        head: [["Start By", "Start At", "Current Worker", "End At"]],
         body: [[m.startedBy || "—", startedStr, m.currentWorker || "—", endedStr]],
         startY: 18,
         theme: "grid",
@@ -3262,3 +3262,4 @@ export default function App() {
     </div>
   );
 }
+
