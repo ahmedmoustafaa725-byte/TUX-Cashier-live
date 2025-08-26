@@ -639,20 +639,11 @@ export default function App() {
   const [nextOrderNo, setNextOrderNo] = useState(1);
 
   const [expenses, setExpenses] = useState([]);
-  const [newExpName, setNewExpName] = useState("");
-  const [newExpUnit, setNewExpUnit] = useState("pcs");
-  const [newExpQty, setNewExpQty] = useState(1);
-  const [newExpUnitPrice, setNewExpUnitPrice] = useState(0);
-  const [newExpNote, setNewExpNote] = useState("");
+
 
   const [bankUnlocked, setBankUnlocked] = useState(false);
   const [bankTx, setBankTx] = useState([]);
-  const [bankForm, setBankForm] = useState({
-    type: "deposit",
-    amount: 0,
-    worker: "",
-    note: "",
-  });
+ 
 
   const [dayMeta, setDayMeta] = useState({
     startedBy: "",
@@ -1663,14 +1654,7 @@ export default function App() {
     setActiveTab(key);
   };
 
-  const bankBalance = useMemo(() => {
-    return bankTx.reduce((sum, t) => {
-      const a = Number(t.amount || 0);
-      if (t.type === "deposit" || t.type === "init" || t.type === "adjustUp") return sum + a;
-      if (t.type === "withdraw" || t.type === "adjustDown") return sum - a;
-      return sum;
-    }, 0);
-  }, [bankTx]);
+  
 
   /* --------------------------- UI --------------------------- */
 
@@ -2853,6 +2837,23 @@ export default function App() {
             }}
           >
             <div style={{ fontWeight: 700, marginBottom: 8 }}>Inventory</div>
+            {inventoryLocked && (
+  <button
+    onClick={unlockInventoryWithPin}
+    style={{
+      marginBottom: 8,
+      background: "#f9a825",
+      color: "#000",
+      border: "none",
+      borderRadius: 6,
+      padding: "6px 10px",
+      cursor: "pointer",
+    }}
+  >
+    Unlock Inventory (Admin PIN)
+  </button>
+)}
+
             <div style={{ display: "grid", gap: 8 }}>
               {inventory.map((it, i) => (
                 <div key={it.id} style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -3047,6 +3048,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
