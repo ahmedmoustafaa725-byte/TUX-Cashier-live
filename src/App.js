@@ -613,14 +613,6 @@ export default function App() {
 
   const [adminPins, setAdminPins] = useState({ ...DEFAULT_ADMIN_PINS });
   const [pricesUnlocked, setPricesUnlocked] = useState(false);
-  const [adminPinsEditUnlocked, setAdminPinsEditUnlocked] = useState({
-    1: false,
-    2: false,
-    3: false,
-    4: false,
-    5: false,
-    6: false,
-  });
 
   const [orders, setOrders] = useState([]);
   const [nextOrderNo, setNextOrderNo] = useState(1);
@@ -653,7 +645,7 @@ export default function App() {
     shiftChanges: [],
   });
 
-  const [sortBy, setSortBy] = useState("date-desc");
+  const sortBy = "date-desc";
 
   const [nowStr, setNowStr] = useState(new Date().toLocaleString());
   useEffect(() => {
@@ -3499,4 +3491,5 @@ export default function App() {
     </div>
   );
 }
+
 
