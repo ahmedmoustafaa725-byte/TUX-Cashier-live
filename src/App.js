@@ -381,6 +381,13 @@ export default function App() {
   const [newMenuPrice, setNewMenuPrice] = useState(0);
   const [newExtraName, setNewExtraName] = useState("");
   const [newExtraPrice, setNewExtraPrice] = useState(0);
+  // JSPrintManager state
+const [jspmReady, setJspmReady] = useState(false);
+const [jspmPrinters, setJspmPrinters] = useState([]);
+const [selectedPrinter, setSelectedPrinter] = useState(
+  localStorage.getItem("jspmPrinter") || ""
+);
+
 
   /* --------------------------- FIREBASE STATE --------------------------- */
   const [fbReady, setFbReady] = useState(false);
@@ -424,6 +431,34 @@ export default function App() {
     () => (db ? fsDoc(db, "shops", SHOP_ID, "state", "counters") : null),
     [db]
   );
+
+  // Start JSPrintManager & fetch printers
+useEffect(() => {
+  if (!window.JSPM) return; // SDK not loaded (checks the <script> tag)
+
+  try {
+    JSPM.JSPrintManager.auto_reconnect = true;
+    JSPM.JSPrintManager.start();
+
+    JSPM.JSPrintManager.WS.onStatusChanged = async () => {
+      const open = JSPM.JSPrintManager.websocket_status === JSPM.WSStatus.Open;
+      setJspmReady(open);
+      if (open) {
+        try {
+          const list = await JSPM.JSPrintManager.getPrinters();
+          setJspmPrinters(list || []);
+          if (!selectedPrinter && list?.length) setSelectedPrinter(list[0]);
+        } catch (e) {
+          console.warn("JSPM getPrinters failed:", e);
+        }
+      }
+    };
+  } catch (e) {
+    console.warn("JSPM init failed:", e);
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
+
 
   // Keep UI's "next order #" in sync with the shared counter
   useEffect(() => {
@@ -1075,6 +1110,23 @@ await printThermalTicket(
     }
   };
 
+  // Send a jsPDF doc to the selected printer via JSPM
+const sendPdfToJspm = async (doc, fileName = "receipt.pdf") => {
+  // Construct a Blob from jsPDF and ship it to JSPM as BLOB
+  const blob = doc.output("blob");
+  const job = new JSPM.ClientPrintJob();
+
+  job.clientPrinter = selectedPrinter
+    ? new JSPM.InstalledPrinter(selectedPrinter)
+    : new JSPM.DefaultPrinter();
+
+  // FileSourceType.BLOB lets us pass the Blob directly
+  const pdf = new JSPM.PrintFilePDF(blob, JSPM.FileSourceType.BLOB, fileName, 1);
+  job.files.push(pdf);
+  return job.sendToClient();
+};
+
+
   // --------------------------- PDF: THERMAL (with auto-print) ---------------------------
   /**
    * Prints ticket as an 80mm/58mm PDF.
@@ -1218,13 +1270,27 @@ await printThermalTicket(
 
       // jsPDF can't change page size after creation easily; but printing trims whitespace automatically.
 
-      if (opts?.autoPrint) {
-        try { doc.autoPrint({ variant: "non-conform" }); } catch {}
-        const url = doc.output("bloburl");
-        window.open(url, "_blank", "noopener,noreferrer");
-      } else {
-        doc.save(`tux_${copy.toLowerCase()}_${Math.round(widthMm)}mm_order_${order.orderNo}.pdf`);
-      }
+     const filename = `tux_${copy.toLowerCase()}_${Math.round(widthMm)}mm_order_${order.orderNo}.pdf`;
+
+// If JSPM is connected, print silently to the selected (or default) printer
+if (opts?.autoPrint && window.JSPM && jspmReady) {
+  try {
+    await sendPdfToJspm(doc, filename);
+    return; // done
+  } catch (e) {
+    console.warn("JSPM print failed, falling back to browser dialog:", e);
+  }
+}
+
+// Fallback: open browser print dialog or just download
+if (opts?.autoPrint) {
+  try { doc.autoPrint({ variant: "non-conform" }); } catch {}
+  const url = doc.output("bloburl");
+  window.open(url, "_blank", "noopener,noreferrer");
+} else {
+  doc.save(filename);
+}
+
     } catch (err) {
       console.error(err);
       alert("Could not print ticket. Ensure pop-ups are allowed and try again.");
@@ -1368,7 +1434,29 @@ await printThermalTicket(
                 <option value="58">58 mm</option>
               </select>
             </label>
-           
+           {/* JSPM status + printer picker */}
+<small style={{ opacity: 0.8 }}>
+  {jspmReady ? "JSPM: connected" : "JSPM: not connected"}
+</small>
+
+{jspmReady && (
+  <>
+    <small>Printer:</small>
+    <select
+      value={selectedPrinter}
+      onChange={(e) => {
+        setSelectedPrinter(e.target.value);
+        localStorage.setItem("jspmPrinter", e.target.value);
+      }}
+    >
+      <option value="">(Default printer)</option>
+      {jspmPrinters.map((p) => (
+        <option key={p} value={p}>{p}</option>
+      ))}
+    </select>
+  </>
+)}
+
 
             <button onClick={() => testPrint(80)} style={{ padding: "4px 8px", borderRadius: 6, border: `1px solid ${btnBorder}`, background: "#fff", cursor: "pointer" }}>
               Test 80mm
@@ -1662,7 +1750,7 @@ await printThermalTicket(
                   )}
 
                   <button
-                    onClick={() => printThermalTicket(o, 58, "Kitchen")}
+                    onClick={() => printThermalTicket(o, 58, "Kitchen", { autoPrint: true })}
                     disabled={o.done || o.voided}
                     style={{
                       background: o.done || o.voided ? "#b39ddb" : "#7e57c2",
@@ -1673,7 +1761,7 @@ await printThermalTicket(
                     Kitchen 58mm
                   </button>
                   <button
-                    onClick={() => printThermalTicket(o, 80, "Kitchen")}
+                    onClick={() => printThermalTicket(o, 80, "Kitchen", { autoPrint: true })}
                     disabled={o.done || o.voided}
                     style={{
                       background: o.done || o.voided ? "#8e24aa88" : "#6a1b9a",
@@ -1684,14 +1772,14 @@ await printThermalTicket(
                     Kitchen 80mm
                   </button>
                   <button
-                    onClick={() => printThermalTicket(o, 58, "Customer")}
+                    onClick={() => printThermalTicket(o, 58, "Customer", { autoPrint: true })}
                     disabled={o.voided}
                     style={{ background: o.voided ? "#26a69a88" : "#00897b", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
                   >
                     Receipt 58mm
                   </button>
                   <button
-                    onClick={() => printThermalTicket(o, 80, "Customer")}
+                    onClick={() => printThermalTicket(o, 80, "Customer", { autoPrint: true })}
                     disabled={o.voided}
                     style={{ background: o.voided ? "#00695c88" : "#00695c", color: "white", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
                   >
@@ -2479,6 +2567,7 @@ await printThermalTicket(
     </div>
   );
 }
+
 
 
 
