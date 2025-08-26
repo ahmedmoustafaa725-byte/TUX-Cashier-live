@@ -1,3 +1,73 @@
+igot this error 
+
+
+1:16:03 PM: Netlify Build                                                 
+1:16:03 PM: ────────────────────────────────────────────────────────────────
+1:16:03 PM: ​
+1:16:03 PM: ❯ Version
+1:16:03 PM:   @netlify/build 35.1.2
+1:16:03 PM: ​
+1:16:03 PM: ❯ Flags
+1:16:03 PM:   accountId: 68a4baad71bba3c5859c394c
+1:16:03 PM:   baseRelDir: true
+1:16:03 PM:   buildId: 68ad8950f2ce1f000850c3f6
+1:16:03 PM:   deployId: 68ad8950f2ce1f000850c3f8
+1:16:03 PM: ​
+1:16:03 PM: ❯ Current directory
+1:16:03 PM:   /opt/build/repo
+1:16:03 PM: ​
+1:16:03 PM: ❯ Config file
+1:16:03 PM:   No config file was defined: using default values.
+1:16:03 PM: ​
+1:16:03 PM: ❯ Context
+1:16:03 PM:   production
+1:16:03 PM: ​
+1:16:03 PM: ❯ Installing extensions
+1:16:03 PM:    - neon
+1:16:04 PM: ​
+1:16:04 PM: ❯ Loading extensions
+1:16:04 PM:    - neon
+1:16:05 PM: ​
+1:16:05 PM: Build command from Netlify app                                
+1:16:05 PM: ────────────────────────────────────────────────────────────────
+1:16:05 PM: ​
+1:16:05 PM: $ npm run build
+1:16:05 PM: > burger-pos@0.1.0 build
+1:16:05 PM: > react-scripts build
+1:16:06 PM: Creating an optimized production build...
+1:16:12 PM: Failed during stage 'building site': Build script returned non-zero exit code: 2 (https://ntl.fyi/exit-code-2)
+1:16:11 PM: Failed to compile.
+1:16:11 PM: 
+1:16:11 PM: SyntaxError: /opt/build/repo/src/App.js: Expected corresponding JSX closing tag for <li>. (2070:18)
+1:16:11 PM:   2068 |                     Remove
+1:16:11 PM:   2069 |                   </                    button>
+1:16:11 PM: > 2070 |                   </button>
+1:16:11 PM:        |                   ^
+1:16:11 PM:   2071 |                 </li>
+1:16:11 PM:   2072 |               );
+1:16:11 PM:   2073 |             })}
+1:16:11 PM: ​
+1:16:11 PM: "build.command" failed                                        
+1:16:11 PM: ────────────────────────────────────────────────────────────────
+1:16:11 PM: ​
+1:16:11 PM:   Error message
+1:16:11 PM:   Command failed with exit code 1: npm run build (https://ntl.fyi/exit-code-1)
+1:16:11 PM: ​
+1:16:11 PM:   Error location
+1:16:11 PM:   In Build command from Netlify app:
+1:16:11 PM:   npm run build
+1:16:11 PM: ​
+1:16:11 PM:   Resolved config
+1:16:11 PM:   build:
+1:16:11 PM:     command: npm run build
+1:16:11 PM:     commandOrigin: ui
+1:16:11 PM:     publish: /opt/build/repo/build
+1:16:11 PM:     publishOrigin: ui
+1:16:12 PM: Build failed due to a user error: Build script returned non-zero exit code: 2
+1:16:12 PM: Failing build: Failed to build site
+1:16:12 PM: Finished processing build request in 25.495s
+here is my code tell me exactly what to change and how to find it  
+
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -612,6 +682,7 @@ export default function App() {
   const [inventoryLockedAt, setInventoryLockedAt] = useState(null);
 
   const [adminPins, setAdminPins] = useState({ ...DEFAULT_ADMIN_PINS });
+  const [unlockedPins, setUnlockedPins] = useState({});
   const [adminPinsLocked, setAdminPinsLocked] = useState(true); // <--- NEW: lock & hide admin PINs
   const [pricesUnlocked, setPricesUnlocked] = useState(false);
 
@@ -985,6 +1056,25 @@ export default function App() {
       alert("Please enter a number from 1 to 6.");
       return null;
     }
+    const verifyAdminPin = (n) => {
+  const entered = window.prompt(`Enter PIN for Admin ${n}:`, "");
+  if (entered == null) return false;
+  if (norm(entered) !== norm(adminPins[n] || "")) {
+    alert("Invalid PIN.");
+    return false;
+  }
+  return true;
+};
+
+const unlockAdminPin = (n) => {
+  if (!verifyAdminPin(n)) return;
+  setUnlockedPins((u) => ({ ...u, [n]: true }));
+};
+
+const lockAdminPin = (n) => {
+  setUnlockedPins((u) => ({ ...u, [n]: false }));
+};
+
     const entered = window.prompt(`Enter PIN for Admin ${n}:`, "");
     if (entered == null) return null;
 
@@ -1513,7 +1603,7 @@ export default function App() {
       const endedStr = m.endedAt ? new Date(m.endedAt).toLocaleString() : "—";
 
       autoTable(doc, {
-        head: [["Start By", "Start At", "Current Worker", "End At"]],
+        head: [["Start By", "Start At", "Current Worker", "End At"]]],
         body: [[m.startedBy || "—", startedStr, m.currentWorker || "—", endedStr]],
         startY: 18,
         theme: "grid",
@@ -2066,7 +2156,7 @@ export default function App() {
                     }}
                   >
                     Remove
-                  
+                  </                    button>
                   </button>
                 </li>
               );
@@ -3221,6 +3311,3 @@ export default function App() {
     </div>
   );
 }
-
-
-
