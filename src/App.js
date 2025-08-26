@@ -1008,25 +1008,6 @@ const lockAdminPin = (n) => {
       return null;
     }
 
-    const verifyAdminPin = (n) => {
-  const entered = window.prompt(`Enter PIN for Admin ${n}:`, "");
-  if (entered == null) return false;
-  if (norm(entered) !== norm(adminPins[n] || "")) {
-    alert("Invalid PIN.");
-    return false;
-  }
-  return true;
-};
-
-const unlockAdminPin = (n) => {
-  if (!verifyAdminPin(n)) return;
-  setUnlockedPins((u) => ({ ...u, [n]: true }));
-};
-
-const lockAdminPin = (n) => {
-  setUnlockedPins((u) => ({ ...u, [n]: false }));
-};
-
     const entered = window.prompt(`Enter PIN for Admin ${n}:`, "");
     if (entered == null) return null;
 
@@ -3632,6 +3613,7 @@ const lockAdminPin = (n) => {
     </div>
   );
 }
+
 
 
 
