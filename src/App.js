@@ -815,22 +815,16 @@ export default function App() {
         }
       }
 
-     // 🔸 AUTO-PRINT via QZ Tray (no dialog) + fallback to PDF if QZ isn’t available
-try {
-  if (autoPrintOnCheckout) {
-    // Customer receipt to your saved Customer printer
-    await printReceiptDirect(order, { widthMm: Number(preferredPaperWidthMm) || 80, copy: "Customer" });
+   // 🔸 Printing without QZ Tray: generate a thermal PDF.
+// If "Auto-print on checkout" is ON, open the browser print dialog.
+// If OFF, just download the PDF.
+await printThermalTicket(
+  order,
+  Number(preferredPaperWidthMm) || 80,
+  "Customer",
+  { autoPrint: !!autoPrintOnCheckout }
+);
 
-    // Optional: also print a kitchen ticket automatically
-    // await printReceiptDirect(order, { widthMm: 58, copy: "Kitchen" });
-  } else {
-    // If auto-print is off, keep your existing PDF flow
-    await printThermalTicket(order, Number(preferredPaperWidthMm) || 80, "Customer", { autoPrint: true });
-  }
-} catch (err) {
-  console.warn("Direct print failed, falling back to PDF:", err);
-  await printThermalTicket(order, Number(preferredPaperWidthMm) || 80, "Customer", { autoPrint: true });
-}
 
 
       setCart([]);
@@ -2485,6 +2479,7 @@ try {
     </div>
   );
 }
+
 
 
 
