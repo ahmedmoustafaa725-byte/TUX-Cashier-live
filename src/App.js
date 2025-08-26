@@ -613,6 +613,25 @@ export default function App() {
 
   const [adminPins, setAdminPins] = useState({ ...DEFAULT_ADMIN_PINS });
   const [unlockedPins, setUnlockedPins] = useState({}); // {1:true, 2:false, ...}
+  const verifyAdminPin = (n) => {
+  const entered = window.prompt(`Enter PIN for Admin ${n}:`, "");
+  if (entered == null) return false;
+  if (norm(entered) !== norm(adminPins[n] || "")) {
+    alert("Invalid PIN.");
+    return false;
+  }
+  return true;
+};
+
+const unlockAdminPin = (n) => {
+  if (!verifyAdminPin(n)) return;
+  setUnlockedPins((u) => ({ ...u, [n]: true }));
+};
+
+const lockAdminPin = (n) => {
+  setUnlockedPins((u) => ({ ...u, [n]: false }));
+};
+
   const [pricesUnlocked, setPricesUnlocked] = useState(false);
 
   const [orders, setOrders] = useState([]);
@@ -3613,6 +3632,7 @@ const lockAdminPin = (n) => {
     </div>
   );
 }
+
 
 
 
