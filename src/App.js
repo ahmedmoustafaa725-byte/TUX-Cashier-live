@@ -1105,42 +1105,68 @@ function escHtml(s) {
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-function buildReceiptHTML(order, widthMm = 80, copy = "Customer", images = {}) {
+// Build 80/58mm receipt HTML — v5.4 (your preferred v5 look + tweaks)
+function buildReceiptHTML(order, widthMm = 80) {
   const m = Math.max(0, Math.min(4, 4)); // padding mm
   const currency = (v) => `E£${Number(v || 0).toFixed(2)}`;
   const dt = new Date(order.date);
+  const orderDateStr = `${dt.getDate()}/${dt.getMonth() + 1}/${dt.getFullYear()}`;
 
-  // JPG defaults
-  const logoSrc         = images.logo      || "/tuxlogo.jpg";
-  const qrSrc           = images.qr        || "/menu-qr.jpg";
-  const deliveryLogoSrc = images.delivery  || images.deliveryLogo || "/delivery-logo.jpg";
+  // compute items subtotal if not provided
+  const itemsSubtotal =
+    order.itemsTotal != null
+      ? Number(order.itemsTotal || 0)
+      : (order.cart || []).reduce((sum, line) => {
+          const base = Number(line.price || 0);
+          const ex = (line.extras || []).reduce((s, e) => s + Number(e.price || 0), 0);
+          return sum + base + ex;
+        }, 0);
 
-  // Sizes tuned per paper width
-  const qrSizeMm = widthMm <= 58 ? 22 : 28;
-  const footLogoMm = widthMm <= 58 ? 16 : 22;   // width for each footer logo
-  const footGapMm  = 2;
+  const deliveryFee =
+    order.orderType === "Delivery" ? Math.max(0, Number(order.deliveryFee || 0)) : 0;
 
-  const itemsHtml = (order.cart || []).map((ci) => {
-    const base = `
-      <div class="row">
-        <div class="name">${escHtml(ci.name)}</div>
-        <div class="price">${currency(ci.price)}</div>
-      </div>`;
-    const extras = (ci.extras || []).map(ex => `
-      <div class="row extra">
-        <div class="name">+ ${escHtml(ex.name)}</div>
-        <div class="price">${currency(ex.price)}</div>
-      </div>`).join("");
-    return base + extras + `<div class="sp1"></div>`;
-  }).join("");
+  const grandTotal =
+    order.total != null ? Number(order.total || 0) : itemsSubtotal + deliveryFee;
 
-  const noteHtml = order.note
-    ? `<div class="note"><div class="lbl">NOTE</div><div>${escHtml(order.note)}</div></div>`
-    : "";
+  // ==== Build items table rows (4 columns: Item | QT | Price | Total) ====
+  const rowsHtml = (order.cart || [])
+    .map((ci) => {
+      // base item row (qty is 1 per added line)
+      const base = `
+        <div class="tr">
+          <div class="td c-item">${escHtml(ci.name)}</div>
+          <div class="td c-qty">1</div>
+          <div class="td c-price">${currency(ci.price)}</div>
+          <div class="td c-total">${currency(ci.price)}</div>
+        </div>
+      `;
+      // extras rows (each extra shown as its own row)
+      const extras = (ci.extras || [])
+        .map(
+          (ex) => `
+          <div class="tr">
+            <div class="td c-item extra">+ ${escHtml(ex.name)}</div>
+            <div class="td c-qty">1</div>
+            <div class="td c-price">${currency(ex.price)}</div>
+            <div class="td c-total">${currency(ex.price)}</div>
+          </div>
+        `
+        )
+        .join("");
+      return base + extras;
+    })
+    .join("");
 
-  const deliveryLine = order.orderType === "Delivery"
-    ? ` • Delivery: ${currency(order.deliveryFee || 0)}`
-    : "";
+  // Optional NOTE block (between header and items)
+  const noteBlock =
+    order.note && String(order.note).trim()
+      ? `
+    <div class="note">
+      <div class="label">NOTE</div>
+      <div class="body">${escHtml(String(order.note).trim())}</div>
+    </div>
+  `
+      : "";
 
   return `
 <!doctype html>
@@ -1152,94 +1178,133 @@ function buildReceiptHTML(order, widthMm = 80, copy = "Customer", images = {}) {
   @page { size: ${widthMm}mm auto; margin: 0; }
   html, body { margin: 0; padding: 0; }
   body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
   .receipt {
     width: ${widthMm}mm;
     padding: ${m}mm ${m}mm ${m/2}mm ${m}mm;
-    font: 11pt/1.3 "Segoe UI", Arial, sans-serif;
+    font: 11pt/1.35 "Segoe UI", Arial, sans-serif;
     color: #000;
+    background: #fff;
   }
-  .title { font-size: 13pt; font-weight: 700; margin-bottom: 1.5mm; text-align:center; }
-  .sub   { font-size: 9pt; opacity: .9; margin-bottom: 1.2mm; text-align:center; }
-  .row   { display: flex; justify-content: space-between; gap: 4mm; }
-  .row .name { flex: 1; }
-  .row .price { min-width: 18mm; text-align: right; }
-  .extra { font-size: 10pt; opacity: .9; }
-  .sep   { border-top: 1px dashed #000; margin: 2mm 0; }
-  .sp1   { height: 1mm; }
-  .small { font-size: 9pt; text-align:center; }
-  .note  { margin: 2mm 0 1mm; }
-  .note .lbl { font-weight: 700; margin-bottom: 1mm; }
-  .totals .row { font-weight: 700; }
-  /* Footer logos at the END */
-  .footer { margin-top: 2mm; }
-  .footer-logos {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: ${footGapMm}mm;
-    flex-wrap: nowrap;
-  }
-  .footer-logos img {
-    width: ${footLogoMm}mm;
+
+  /* Brand (logo centered, normal size) */
+  .brand img {
+    display: block;
+    margin: 0 auto 1mm;
+    width: 100%;
+    max-width: calc((${widthMm}mm - ${m*2}mm) * .68);
     height: auto;
     object-fit: contain;
   }
-  /* Make QR slightly larger than footer logos (placed at end) */
-  .qr { width: ${qrSizeMm}mm; height: ${qrSizeMm}mm; object-fit: contain; display: block; margin: 1mm auto 0; }
-  @media screen {
-    body { background:#f6f6f6; }
-    .receipt { background:#fff; margin: 8px auto; box-shadow: 0 0 6px rgba(0,0,0,.12); }
+
+  /* Title + address centered; other meta left */
+  .title { font-weight: 700; text-align: center; font-size: 13pt; margin: 1mm 0 .5mm; }
+  .meta.address { text-align: center; font-size: 9pt; opacity: .9; }
+  .meta { text-align: left; font-size: 9pt; opacity: .9; }
+
+  .sep { border-top: 1px dashed #000; margin: 2mm 0; }
+
+  /* NOTE block */
+  .note{
+    margin: 1mm 0 2mm;
+    padding: 1.5mm;
+    border: 1px dashed rgba(0,0,0,.6);
+    border-radius: 4px;
+    background: #fff;
   }
+  .note .label{ font-weight:700; font-size:9pt; margin-bottom:1mm; }
+  .note .body{ font-size:10pt; white-space: pre-wrap; }
+
+  /* 4-column items table */
+  .table { display:grid; grid-auto-rows:auto; row-gap:1mm; }
+  .thead, .tr {
+    display:grid;
+    grid-template-columns: 5fr 1fr 2fr 2.5fr; /* Item | QT | Price | Total */
+    column-gap: 2mm; align-items: end;
+  }
+  .thead {
+    font-weight: 700; font-size: 10pt;
+    border-bottom: 1px dashed #000; padding-bottom: 1mm;
+  }
+  .tr { border-bottom: 1px dashed rgba(0,0,0,.6); padding-bottom: 1mm; }
+  .c-qty, .c-price, .c-total { text-align: right; }
+  .c-item { word-break: break-word; }
+  .extra { font-size: 10pt; opacity: .9; }
+
+  /* Totals */
+  .totals { display: grid; gap: 1mm; margin-top: 1mm; }
+  .totals .row { display: flex; justify-content: space-between; gap: 4mm; font-weight: 600; }
+  .total { font-size: 13pt; font-weight: 900; }
+
+  /* Footer (extra gap above logos) */
+  .footer { margin-top: 2mm; }
+  .thanks { text-align: center; font-size: 9pt; margin-bottom: 6mm; white-space: pre-line; }
+  .logos { display: flex; justify-content: space-between; align-items: center; gap: 3mm; }
+  .logos img { display: block; object-fit: contain; height: auto; }
+  .logos img.menu { width: calc((${widthMm}mm - ${m*2}mm) * .40); }     /* QR left */
+  .logos img.delivery { width: calc((${widthMm}mm - ${m*2}mm) * .50); } /* Delivery right */
+
+  @media screen { body { background:#f6f6f6; } .receipt { box-shadow: 0 0 6px rgba(0,0,0,.12); margin: 8px auto; } }
+  @media print { .receipt { box-shadow:none; } }
 </style>
 </head>
 <body>
   <div class="receipt">
-    <!-- TOP: clean text header only -->
+    <div class="brand"><img src="/tuxlogo.jpg" alt="TUX logo"></div>
+
     <div class="title">TUX — Burger Truck</div>
-    <div class="sub">${escHtml(copy)} • Order #${order.orderNo}</div>
-    <div class="sub">${escHtml(dt.toLocaleString())}</div>
-    <div class="sub">Worker: ${escHtml(order.worker)} • Payment: ${escHtml(order.payment)}</div>
-    <div class="sub">Type: ${escHtml(order.orderType || "")}${deliveryLine}</div>
+    <div class="meta address">El-Saada St – Zahraa El-Maadi</div>
 
-    ${noteHtml}
+    <!-- Order rows -->
+    <div class="meta">Order No: <strong>#${escHtml(order.orderNo)}</strong></div>
+    <div class="meta">Order Date: <strong>${escHtml(orderDateStr)}</strong></div>
+    <div class="meta">Worker: ${escHtml(order.worker)} • Payment: ${escHtml(order.payment)} • Type: ${escHtml(order.orderType || "")}</div>
+
+    ${noteBlock}
 
     <div class="sep"></div>
-    ${itemsHtml}
-    <div class="sep"></div>
 
-    <!-- Totals -->
-    <div class="totals">
-      <div class="row"><div class="name">TOTAL</div><div class="price">${currency(order.total)}</div></div>
+    <div class="table">
+      <div class="thead">
+        <div class="th c-item">Item</div>
+        <div class="th c-qty">QT</div>
+        <div class="th c-price">Price</div>
+        <div class="th c-total">Total</div>
+      </div>
+      ${rowsHtml}
     </div>
 
-    <!-- END: Thanks + three logos -->
-    <div class="footer">
-      <div class="sp1"></div>
-      <div class="small">Thank you for your visit! See you soon.</div>
+    <div class="sep"></div>
 
-      <div class="sp1"></div>
-      <div class="footer-logos">
-        <img src="${escHtml(logoSrc)}" alt="TUX" />
-        <img src="${escHtml(qrSrc)}"   alt="QR"  class="qr" />
-        <img src="${escHtml(deliveryLogoSrc)}" alt="Delivery" />
+    <div class="totals">
+      <div class="row"><div>Items Subtotal</div><div>${currency(itemsSubtotal)}</div></div>
+      ${deliveryFee > 0 ? `<div class="row"><div>Delivery Fee</div><div>${currency(deliveryFee)}</div></div>` : ``}
+      <div class="row total"><div>TOTAL</div><div>${currency(grandTotal)}</div></div>
+    </div>
+
+    <div class="footer">
+      <div class="thanks">Thank you for choosing TUX
+See you soon</div>
+      <div class="logos">
+        <img class="menu" src="/menu-qr.jpg" alt="Menu QR">
+        <img class="delivery" src="/delivery-logo.jpg" alt="Delivery">
       </div>
     </div>
   </div>
 
-  <!-- Print ONCE after images load -->
   <script>
-    window.addEventListener("load", function() {
-      const imgs = Array.from(document.images || []);
-      if (!imgs.length) { window.print(); setTimeout(() => window.close && window.close(), 200); return; }
-      let left = imgs.length;
-      const done = () => { if (--left <= 0) { window.print(); setTimeout(() => window.close && window.close(), 200); } };
-      imgs.forEach(img => img.complete ? done() : (img.addEventListener("load", done), img.addEventListener("error", done)));
-    });
+    // Silent when Edge is launched with --kiosk-printing
+    window.onload = function () {
+      window.focus();
+      window.print();
+      setTimeout(() => window.close && window.close(), 200);
+    };
   </script>
 </body>
 </html>
 `;
 }
+
 
 function printReceiptHTML(order, widthMm = 80, copy = "Customer", images) {
   // JPG defaults (now includes delivery logo)
@@ -2535,6 +2600,7 @@ function printReceiptHTML(order, widthMm = 80, copy = "Customer", images) {
     </div>
   );
 }
+
 
 
 
