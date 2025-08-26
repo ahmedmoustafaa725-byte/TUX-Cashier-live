@@ -1098,6 +1098,107 @@ if (autoPrintOnCheckout) {
     }
   };
 
+// ========= HTML thermal printing (silent in Edge kiosk with --kiosk-printing) =========
+function escHtml(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// Build 58/80mm receipt HTML
+function buildReceiptHTML(order, widthMm = 80, copy = "Customer") {
+  const m = Math.max(0, Math.min(4, 4)); // padding mm
+  const currency = (v) => `E£${Number(v || 0).toFixed(2)}`;
+  const dt = new Date(order.date);
+
+  const itemsHtml = (order.cart || []).map((ci) => {
+    const base = `
+      <div class="row">
+        <div class="name">${escHtml(ci.name)}</div>
+        <div class="price">${currency(ci.price)}</div>
+      </div>
+    `;
+    const extras = (ci.extras || []).map(ex => `
+      <div class="row extra">
+        <div class="name">+ ${escHtml(ex.name)}</div>
+        <div class="price">${currency(ex.price)}</div>
+      </div>
+    `).join("");
+    return base + extras + `<div class="sp1"></div>`;
+  }).join("");
+
+  const noteHtml = order.note
+    ? `<div class="note"><div class="lbl">NOTE</div><div>${escHtml(order.note)}</div></div>`
+    : "";
+
+  return `
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Receipt</title>
+<style>
+  @page { size: ${widthMm}mm auto; margin: 0; }
+  html, body { margin: 0; padding: 0; }
+  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .receipt {
+    width: ${widthMm}mm;
+    padding: ${m}mm ${m}mm ${m/2}mm ${m}mm;
+    font: 11pt/1.3 "Segoe UI", Arial, sans-serif;
+    color: #000;
+  }
+  .title { font-size: 13pt; font-weight: 700; margin-bottom: 2mm; }
+  .sub   { font-size: 9pt; opacity: .9; margin-bottom: 2mm; }
+  .row   { display: flex; justify-content: space-between; gap: 4mm; }
+  .row .name { flex: 1; }
+  .row .price { min-width: 18mm; text-align: right; }
+  .extra { font-size: 10pt; opacity: .9; }
+  .sep   { border-top: 1px dashed #000; margin: 2mm 0; }
+  .sp1   { height: 1mm; }
+  .small { font-size: 9pt; }
+  .note  { margin: 2mm 0 1mm; }
+  .note .lbl { font-weight: 700; margin-bottom: 1mm; }
+  .totals .row { font-weight: 700; }
+  @media screen {
+    body { background:#f6f6f6; }
+    .receipt { background:#fff; margin: 8px auto; box-shadow: 0 0 6px rgba(0,0,0,.12); }
+  }
+</style>
+</head>
+<body>
+  <div class="receipt">
+    <div class="title">TUX — Burger Truck</div>
+    <div class="sub">${escHtml(copy)} • Order #${order.orderNo}</div>
+    <div class="sub">${escHtml(dt.toLocaleString())}</div>
+    <div class="sub">Worker: ${escHtml(order.worker)} • Payment: ${escHtml(order.payment)}</div>
+    <div class="sub">Type: ${escHtml(order.orderType || "")}${
+      order.orderType === "Delivery" ? ` • Delivery: ${currency(order.deliveryFee)}` : ""}</div>
+
+    ${noteHtml}
+
+    <div class="sep"></div>
+    ${itemsHtml}
+    <div class="sep"></div>
+
+    <div class="totals">
+      <div class="row"><div class="name">TOTAL</div><div class="price">${currency(order.total)}</div></div>
+    </div>
+
+    <div class="sp1"></div>
+    <div class="small">Thank you for your visit! See you soon.</div>
+  </div>
+  <script>
+    // Silent when Edge is launched with --kiosk-printing
+    window.onload = function () {
+      window.focus();
+      window.print();
+      setTimeout(() => window.close && window.close(), 200);
+    };
+  </script>
+</body>
+</html>
+`;
+}
 
 
 // Inject HTML into a hidden iframe and print
@@ -2398,6 +2499,7 @@ function printReceiptHTML(order, widthMm = 80, copy = "Customer") {
     </div>
   );
 }
+
 
 
 
