@@ -594,15 +594,15 @@ function printReceiptHTML(order, widthMm = 80, copy = "Customer", images) {
   doc.open();
   doc.write(html);
   doc.close();
-}
 
-
+  // Safety: remove iframe if printing didn't trigger
   setTimeout(() => {
     try {
       if (!ifr.contentWindow || ifr.contentWindow.closed) ifr.remove();
     } catch {}
   }, 5000);
 }
+
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("orders");
@@ -3803,6 +3803,7 @@ setLastAppliedCloudAt(Date.now());
     </div>
   );
 }
+
 
 
 
