@@ -1,7 +1,3 @@
-here is my code i want to add sync now and load from cloud in the settings and make the pins of the admin be unvisible with an unlock button and be sure that whenever i do any change from other device it will be syncnorised will all other devices and DONT CHANGE ANYTHING ELSE THAN WHAT I TOLD YOU AND DONT EVER NEVER CHANGE ANYTHING IN THE UI OF ANY TAB OR THE APP
-
-make me the code without canva and write me the whole code so i can copy paste it 
-
 
 import React, { useEffect, useMemo, useState } from "react";
 import jsPDF from "jspdf";
@@ -3496,4 +3492,5 @@ export default function App() {
     </div>
   );
 }
+
 
