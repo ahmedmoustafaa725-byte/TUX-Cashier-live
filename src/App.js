@@ -1105,30 +1105,47 @@ function escHtml(s) {
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-function buildReceiptHTML(order, widthMm = 80, copy = "Customer") {
-  const m = Math.max(0, Math.min(4, 4)); // padding mm
+function buildReceiptHTML(order, widthMm = 80, copy = "Customer", images = {}) {
+  const m = Math.max(0, Math.min(4, 4));
   const currency = (v) => `E£${Number(v || 0).toFixed(2)}`;
   const dt = new Date(order.date);
+
+  // JPG defaults
+  const logoSrc        = images.logo        || "/tuxlogo.jpg";
+  const qrSrc          = images.qr          || "/menu-qr.jpg";
+  const deliveryLogoSrc= images.delivery    || images.deliveryLogo || "/delivery-logo.jpg";
+
+  const qrSizeMm = widthMm <= 58 ? 24 : 30;
+  const deliveryLogoMm = widthMm <= 58 ? 18 : 22;
 
   const itemsHtml = (order.cart || []).map((ci) => {
     const base = `
       <div class="row">
         <div class="name">${escHtml(ci.name)}</div>
         <div class="price">${currency(ci.price)}</div>
-      </div>
-    `;
+      </div>`;
     const extras = (ci.extras || []).map(ex => `
       <div class="row extra">
         <div class="name">+ ${escHtml(ex.name)}</div>
         <div class="price">${currency(ex.price)}</div>
-      </div>
-    `).join("");
+      </div>`).join("");
     return base + extras + `<div class="sp1"></div>`;
   }).join("");
 
   const noteHtml = order.note
     ? `<div class="note"><div class="lbl">NOTE</div><div>${escHtml(order.note)}</div></div>`
     : "";
+
+  const deliveryBox = order.orderType === "Delivery" ? `
+    <div class="delivery">
+      ${deliveryLogoSrc ? `<img src="${deliveryLogoSrc}" alt="Delivery" class="delivery-logo" />` : ""}
+      <div class="delivery-title">DELIVERY</div>
+      <div class="row">
+        <div class="name">Delivery Fee</div>
+        <div class="price">${currency(order.deliveryFee || 0)}</div>
+      </div>
+    </div>
+  ` : "";
 
   return `
 <!doctype html>
@@ -1140,38 +1157,48 @@ function buildReceiptHTML(order, widthMm = 80, copy = "Customer") {
   @page { size: ${widthMm}mm auto; margin: 0; }
   html, body { margin: 0; padding: 0; }
   body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .receipt {
-    width: ${widthMm}mm;
-    padding: ${m}mm ${m}mm ${m/2}mm ${m}mm;
-    font: 11pt/1.3 "Segoe UI", Arial, sans-serif;
-    color: #000;
-  }
-  .title { font-size: 13pt; font-weight: 700; margin-bottom: 2mm; }
-  .sub   { font-size: 9pt; opacity: .9; margin-bottom: 2mm; }
-  .row   { display: flex; justify-content: space-between; gap: 4mm; }
-  .row .name { flex: 1; }
-  .row .price { min-width: 18mm; text-align: right; }
-  .extra { font-size: 10pt; opacity: .9; }
-  .sep   { border-top: 1px dashed #000; margin: 2mm 0; }
-  .sp1   { height: 1mm; }
-  .small { font-size: 9pt; }
-  .note  { margin: 2mm 0 1mm; }
-  .note .lbl { font-weight: 700; margin-bottom: 1mm; }
-  .totals .row { font-weight: 700; }
+  .receipt { width: ${widthMm}mm; padding: ${m}mm ${m}mm ${m/2}mm ${m}mm; font: 11pt/1.3 "Segoe UI", Arial, sans-serif; color:#000; }
+  .center { text-align: center; }
+  .logo { display:block; margin:0 auto 2mm; max-width:${widthMm - 2*m}mm; height:auto; }
+  .qr { display:block; margin:1mm auto 2mm; width:${qrSizeMm}mm; height:${qrSizeMm}mm; object-fit:contain; }
+  .title { font-size:13pt; font-weight:700; margin-bottom:2mm; text-align:center; }
+  .sub { font-size:9pt; opacity:.9; margin-bottom:2mm; text-align:center; }
+  .row { display:flex; justify-content:space-between; gap:4mm; }
+  .row .name { flex:1; }
+  .row .price { min-width:18mm; text-align:right; }
+  .extra { font-size:10pt; opacity:.9; }
+  .sep { border-top:1px dashed #000; margin:2mm 0; }
+  .sp1 { height:1mm; }
+  .small { font-size:9pt; text-align:center; }
+  .note { margin:2mm 0 1mm; }
+  .note .lbl { font-weight:700; margin-bottom:1mm; }
+  .totals .row { font-weight:700; }
+  .delivery { margin-top:2mm; padding:2mm; border:1px dashed #000; }
+  .delivery-title { font-weight:700; margin:1mm 0; text-align:center; }
+  .delivery-logo { display:block; margin:0 auto 1mm; width:${deliveryLogoMm}mm; height:auto; object-fit:contain; }
   @media screen {
     body { background:#f6f6f6; }
-    .receipt { background:#fff; margin: 8px auto; box-shadow: 0 0 6px rgba(0,0,0,.12); }
+    .receipt { background:#fff; margin:8px auto; box-shadow:0 0 6px rgba(0,0,0,.12); }
   }
 </style>
 </head>
 <body>
   <div class="receipt">
+    <!-- 1) TUX logo -->
+    <img src="${logoSrc}" alt="TUX logo" class="logo" />
+
     <div class="title">TUX — Burger Truck</div>
     <div class="sub">${escHtml(copy)} • Order #${order.orderNo}</div>
     <div class="sub">${escHtml(dt.toLocaleString())}</div>
     <div class="sub">Worker: ${escHtml(order.worker)} • Payment: ${escHtml(order.payment)}</div>
     <div class="sub">Type: ${escHtml(order.orderType || "")}${
       order.orderType === "Delivery" ? ` • Delivery: ${currency(order.deliveryFee)}` : ""}</div>
+
+    <!-- 2) QR code -->
+    <img src="${qrSrc}" alt="Menu QR" class="qr" />
+
+    <!-- 3) Delivery logo + box (only for delivery orders) -->
+    ${deliveryBox}
 
     ${noteHtml}
 
@@ -1186,21 +1213,27 @@ function buildReceiptHTML(order, widthMm = 80, copy = "Customer") {
     <div class="sp1"></div>
     <div class="small">Thank you for your visit! See you soon.</div>
   </div>
+
+  <!-- Print ONCE after all images load -->
   <script>
-    // Silent when Edge is launched with --kiosk-printing
-    window.onload = function () {
-      window.focus();
-      window.print();
-      setTimeout(() => window.close && window.close(), 200);
-    };
+    window.addEventListener("load", function() {
+      const imgs = Array.from(document.images || []);
+      if (!imgs.length) { window.print(); setTimeout(() => window.close && window.close(), 200); return; }
+      let left = imgs.length;
+      const done = () => { if (--left <= 0) { window.print(); setTimeout(() => window.close && window.close(), 200); } };
+      imgs.forEach(img => img.complete ? done() : (img.addEventListener("load", done), img.addEventListener("error", done)));
+    });
   </script>
 </body>
 </html>
 `;
 }
 
-function printReceiptHTML(order, widthMm = 80, copy = "Customer") {
-  const html = buildReceiptHTML(order, widthMm, copy);
+function printReceiptHTML(order, widthMm = 80, copy = "Customer", images) {
+  // JPG defaults (now includes delivery logo)
+  const imgs = images || { logo: "/tuxlogo.jpg", qr: "/menu-qr.jpg", delivery: "/delivery-logo.jpg" };
+  const html = buildReceiptHTML(order, widthMm, copy, imgs);
+
   const ifr = document.createElement("iframe");
   ifr.style.position = "fixed";
   ifr.style.right = "0";
@@ -1211,15 +1244,10 @@ function printReceiptHTML(order, widthMm = 80, copy = "Customer") {
   document.body.appendChild(ifr);
 
   const doc = ifr.contentDocument || ifr.contentWindow.document;
-  doc.open();
-  doc.write(html);
-  doc.close();
+  doc.open(); doc.write(html); doc.close();
 
-  setTimeout(() => {
-    try { ifr.contentWindow && ifr.contentWindow.focus(); } catch {}
-    try { ifr.contentWindow && ifr.contentWindow.print(); } catch {}
-    setTimeout(() => ifr.remove(), 3000);
-  }, 50);
+  // Do NOT call print() here; iframe HTML prints once after images load
+  setTimeout(() => { try { if (!ifr.contentWindow || ifr.contentWindow.closed) ifr.remove(); } catch {} }, 5000);
 }
 
 
@@ -2495,6 +2523,7 @@ function printReceiptHTML(order, widthMm = 80, copy = "Customer") {
     </div>
   );
 }
+
 
 
 
