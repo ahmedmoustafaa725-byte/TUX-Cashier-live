@@ -42,6 +42,18 @@ function ensureFirebase() {
 /* --------------------------- APP SETTINGS --------------------------- */
 const SHOP_ID = "tux";
 
+const LS_KEY = "tux_pos_local_state_v1";
+function loadLocal() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY) || "{}"); }
+  catch { return {}; }
+}
+function saveLocalPartial(patch) {
+  try {
+    const cur = loadLocal();
+    localStorage.setItem(LS_KEY, JSON.stringify({ ...cur, ...patch }));
+  } catch {}
+}
+
 function packStateForCloud(state) {
   const {
     menu,
@@ -678,6 +690,9 @@ const lockAdminPin = (n) => {
   const [newExtraName, setNewExtraName] = useState("");
   const [newExtraPrice, setNewExtraPrice] = useState(0);
 
+  const [localHydrated, setLocalHydrated] = useState(false);
+const [lastLocalEditAt, setLastLocalEditAt] = useState(0);
+
   /* --------------------------- FIREBASE STATE --------------------------- */
   const [fbReady, setFbReady] = useState(false);
   const [fbUser, setFbUser] = useState(null);
@@ -716,6 +731,43 @@ const lockAdminPin = (n) => {
       setCloudStatus((s) => ({ ...s, error: String(e) }));
     }
   }, []);
+
+  /* === ADD BELOW THIS LINE (hydrate from local) === */
+useEffect(() => {
+  if (localHydrated) return;
+  const l = loadLocal();
+  if (l.menu) setMenu(l.menu);
+  if (l.extraList) setExtraList(l.extraList);
+  if (l.workers) setWorkers(l.workers);
+  if (l.paymentMethods) setPaymentMethods(l.paymentMethods);
+  if (l.orderTypes) setOrderTypes(l.orderTypes);
+  if (typeof l.defaultDeliveryFee === "number") setDefaultDeliveryFee(l.defaultDeliveryFee);
+  if (l.inventory) setInventory(l.inventory);
+  if (l.adminPins) setAdminPins((prev) => ({ ...prev, ...l.adminPins }));
+  if (typeof l.dark === "boolean") setDark(l.dark);
+  setLocalHydrated(true);
+}, [localHydrated]);
+/* === END ADD === */
+/* === ADD BELOW THIS LINE (mirror to local) === */
+useEffect(() => { saveLocalPartial({ menu }); }, [menu]);
+useEffect(() => { saveLocalPartial({ extraList }); }, [extraList]);
+useEffect(() => { saveLocalPartial({ workers }); }, [workers]);
+useEffect(() => { saveLocalPartial({ paymentMethods }); }, [paymentMethods]);
+useEffect(() => { saveLocalPartial({ orderTypes }); }, [orderTypes]);
+useEffect(() => { saveLocalPartial({ defaultDeliveryFee }); }, [defaultDeliveryFee]);
+useEffect(() => { saveLocalPartial({ inventory }); }, [inventory]);
+useEffect(() => { saveLocalPartial({ adminPins }); }, [adminPins]);
+useEffect(() => { saveLocalPartial({ dark }); }, [dark]);
+/* === END ADD === */
+  /* === ADD BELOW THIS LINE (timestamp local edits) === */
+useEffect(() => {
+  // Anytime edit-related state changes, remember "last local edit" time
+  setLastLocalEditAt(Date.now());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [menu, extraList, workers, paymentMethods, orderTypes, defaultDeliveryFee, inventory, adminPins]);
+/* === END ADD === */
+
+
 
   const db = useMemo(() => (fbReady ? ensureFirebase().db : null), [fbReady]);
   const stateDocRef = useMemo(
@@ -800,6 +852,9 @@ const lockAdminPin = (n) => {
 
       // ignore older/equal updates we've already applied
       if (ts && ts <= (lastAppliedCloudAt || 0)) return;
+      // === ADD THIS LINE (do not overwrite fresher local edits) ===
+if (ts && lastLocalEditAt && ts < lastLocalEditAt) return;
+
 
       const unpacked = unpackStateFromCloud(data, dayMeta);
 
@@ -828,7 +883,8 @@ const lockAdminPin = (n) => {
   });
 
   return () => unsub();
-}, [cloudEnabled, stateDocRef, fbUser, dayMeta, lastAppliedCloudAt]);
+}, [cloudEnabled, stateDocRef, fbUser, dayMeta, lastAppliedCloudAt, lastLocalEditAt]);
+
 
 
   // Manual pull
