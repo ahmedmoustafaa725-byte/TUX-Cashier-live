@@ -745,10 +745,34 @@ useEffect(() => {
   if (l.inventory) setInventory(l.inventory);
   if (l.adminPins) setAdminPins((prev) => ({ ...prev, ...l.adminPins }));
   if (typeof l.dark === "boolean") setDark(l.dark);
+   /* === ADD BELOW THIS LINE (other tabs & settings) === */
+  if (Array.isArray(l.expenses)) setExpenses(l.expenses);
+  if (Array.isArray(l.bankTx)) setBankTx(l.bankTx);
+  if (l.dayMeta) setDayMeta(l.dayMeta);
+  if (typeof l.inventoryLocked === "boolean") setInventoryLocked(l.inventoryLocked);
+  if (Array.isArray(l.inventorySnapshot)) setInventorySnapshot(l.inventorySnapshot);
+  if (l.inventoryLockedAt) setInventoryLockedAt(new Date(l.inventoryLockedAt));
+  if (typeof l.autoPrintOnCheckout === "boolean") setAutoPrintOnCheckout(l.autoPrintOnCheckout);
+  if (typeof l.preferredPaperWidthMm === "number") setPreferredPaperWidthMm(l.preferredPaperWidthMm);
+  if (typeof l.cloudEnabled === "boolean") setCloudEnabled(l.cloudEnabled);
+  if (typeof l.realtimeOrders === "boolean") setRealtimeOrders(l.realtimeOrders);
+  if (typeof l.nextOrderNo === "number") setNextOrderNo(l.nextOrderNo);
+
+  // If you run with realtimeOrders = false and want orders to survive refresh:
+  if (Array.isArray(l.orders)) {
+    setOrders(
+      l.orders.map((o) => ({
+        ...o,
+        date: o.date ? new Date(o.date) : new Date(),
+        restockedAt: o.restockedAt ? new Date(o.restockedAt) : undefined,
+      }))
+    );
+  }
+  /* === END ADD === */
   setLocalHydrated(true);
 }, [localHydrated]);
 /* === END ADD === */
-/* === ADD BELOW THIS LINE (mirror to local) === */
+/* === MIRROR TO LOCAL (all tabs & settings) === */
 useEffect(() => { saveLocalPartial({ menu }); }, [menu]);
 useEffect(() => { saveLocalPartial({ extraList }); }, [extraList]);
 useEffect(() => { saveLocalPartial({ workers }); }, [workers]);
@@ -758,14 +782,42 @@ useEffect(() => { saveLocalPartial({ defaultDeliveryFee }); }, [defaultDeliveryF
 useEffect(() => { saveLocalPartial({ inventory }); }, [inventory]);
 useEffect(() => { saveLocalPartial({ adminPins }); }, [adminPins]);
 useEffect(() => { saveLocalPartial({ dark }); }, [dark]);
-/* === END ADD === */
-  /* === ADD BELOW THIS LINE (timestamp local edits) === */
+
+/* === ADD BELOW THIS LINE (mirror other tabs & settings) === */
+useEffect(() => { saveLocalPartial({ expenses }); }, [expenses]);
+useEffect(() => { saveLocalPartial({ bankTx }); }, [bankTx]);
+useEffect(() => { saveLocalPartial({ dayMeta }); }, [dayMeta]);
+useEffect(() => { saveLocalPartial({ inventoryLocked }); }, [inventoryLocked]);
+useEffect(() => { saveLocalPartial({ inventorySnapshot }); }, [inventorySnapshot]);
+useEffect(() => { saveLocalPartial({ inventoryLockedAt }); }, [inventoryLockedAt]);
+useEffect(() => { saveLocalPartial({ autoPrintOnCheckout }); }, [autoPrintOnCheckout]);
+useEffect(() => { saveLocalPartial({ preferredPaperWidthMm }); }, [preferredPaperWidthMm]);
+useEffect(() => { saveLocalPartial({ cloudEnabled }); }, [cloudEnabled]);
+useEffect(() => { saveLocalPartial({ realtimeOrders }); }, [realtimeOrders]);
+useEffect(() => { saveLocalPartial({ nextOrderNo }); }, [nextOrderNo]);
+
+// Optional: persist orders when NOT using realtime board
 useEffect(() => {
-  // Anytime edit-related state changes, remember "last local edit" time
+  if (!realtimeOrders) saveLocalPartial({ orders });
+}, [orders, realtimeOrders]);
+/* === END MIRROR === */
+
+  /* === ADD BELOW THIS LINE (timestamp local edits) === */
+
+  
+/* === TIMESTAMP LOCAL EDITS (expanded deps) === */
+useEffect(() => {
   setLastLocalEditAt(Date.now());
   // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [menu, extraList, workers, paymentMethods, orderTypes, defaultDeliveryFee, inventory, adminPins]);
-/* === END ADD === */
+}, [
+  menu, extraList, workers, paymentMethods, orderTypes, defaultDeliveryFee,
+  inventory, adminPins, dark,
+  // added:
+  expenses, bankTx, dayMeta, inventoryLocked, inventorySnapshot, inventoryLockedAt,
+  autoPrintOnCheckout, preferredPaperWidthMm, cloudEnabled, realtimeOrders, nextOrderNo
+  // (intentionally NOT including `orders`; realtime listener drives those)
+]);
+
 
 
 
@@ -948,6 +1000,10 @@ if (ts && lastLocalEditAt && ts < lastLocalEditAt) return;
       bankTx,
     });
     await setDoc(stateDocRef, body, { merge: true });
+    // mark latest timestamps so the cloud listener won't re-apply this back onto us
+setLastLocalEditAt(Date.now());
+setLastAppliedCloudAt(Date.now());
+
     alert("Synced to cloud ✔");
   } catch (e) {
     alert("Sync failed: " + e);
@@ -3716,6 +3772,7 @@ if (ts && lastLocalEditAt && ts < lastLocalEditAt) return;
     </div>
   );
 }
+
 
 
 
