@@ -3403,17 +3403,33 @@ export default function App() {
                 ))}
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <input
-                  type="text"
-                  placeholder="Add order type"
-                  value={newExtraNote /* reuse a local var? create inline state */}
-                  onChange={(e) => {
-                    // inline temp state using DOM dataset is messy; instead simple prompt
-                    alert("Use the Edit tab to manage complex structures. To add a one-off type, use the button below.");
-                  }}
-                  style={{ display: "none" }}
-                  readOnly
-                />
+               <input
+  type="text"
+  placeholder="Add order type"
+  value={newOrderType}
+  onChange={(e) => setNewOrderType(e.target.value)}
+  style={{ width: 220 }}
+/>
+<button
+  onClick={() => {
+    const v = norm(newOrderType);
+    if (!v) return;
+    if (orderTypes.includes(v)) return alert("Already exists.");
+    setOrderTypes((arr) => [...arr, v]);
+    setNewOrderType("");
+  }}
+  style={{
+    padding: "8px 12px",
+    borderRadius: 6,
+    border: "none",
+    background: "#1976d2",
+    color: "white",
+    cursor: "pointer",
+  }}
+>
+  Add Order Type
+</button>
+
                 <button
                   onClick={() => {
                     const v = norm(window.prompt("New order type name:", ""));
@@ -3574,4 +3590,5 @@ export default function App() {
     </div>
   );
 }
+
 
