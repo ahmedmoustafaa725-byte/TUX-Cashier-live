@@ -214,9 +214,6 @@ async function loadAsDataURL(path) {
   });
 }
 
-/* --------------------------- HELPERS --------------------------- */
-async function loadAsDataURL(path) { /* ...existing... */ }
-
 // NEW: silent print via hidden iframe (works best with --kiosk-printing)
 function silentPrintPdfBlobUrl(blobUrl) {
   const ifr = document.createElement("iframe");
@@ -2592,6 +2589,7 @@ if (opts?.autoPrint) {
     </div>
   );
 }
+
 
 
 
