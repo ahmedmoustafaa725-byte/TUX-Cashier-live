@@ -555,38 +555,26 @@ See you soon</div>
 }
 
 function printReceiptHTML(order, widthMm = 80, copy = "Customer", images) {
-  const imgs = images || {
-    logo: "/tuxlogo.jpg",
-    qr: "/menu-qr.jpg",
-    delivery: "/delivery-logo.jpg",
-  };
-  const html = buildReceiptHTML(order, widthMm, copy, imgs);
+  const html = buildReceiptHTML(order, widthMm, copy, images);
 
   const ifr = document.createElement("iframe");
-  ifr.style.position = "fixed";
-  ifr.style.right = "0";
-  ifr.style.bottom = "0";
-  ifr.style.width = "0";
-  ifr.style.height = "0";
-  ifr.style.border = "0";
+  Object.assign(ifr.style, { position:"fixed", right:0, bottom:0, width:0, height:0, border:0 });
 
-  // Print when the iframe has loaded the HTML
+  let htmlWritten = false;
   ifr.addEventListener("load", () => {
+    // about:blank load fires first; only print after we've written our HTML
+    if (!htmlWritten) return;
     try {
       const w = ifr.contentWindow;
-      if (w) {
+      if (!w) return;
+      requestAnimationFrame(() => {
         w.focus();
-        // Calling print from the same user gesture (see change in checkout below)
         w.print();
-        // Cleanup after printing
         const cleanup = () => { try { ifr.remove(); } catch {} };
         w.addEventListener("afterprint", cleanup, { once: true });
-        setTimeout(cleanup, 7000); // safety
-      }
-    } catch (e) {
-      console.warn("Print failed:", e);
-      try { ifr.remove(); } catch {}
-    }
+        setTimeout(cleanup, 8000);
+      });
+    } catch {}
   });
 
   document.body.appendChild(ifr);
@@ -594,14 +582,12 @@ function printReceiptHTML(order, widthMm = 80, copy = "Customer", images) {
   doc.open();
   doc.write(html);
   doc.close();
+  htmlWritten = true;
 
-  // Safety: remove iframe if printing didn't trigger
-  setTimeout(() => {
-    try {
-      if (!ifr.contentWindow || ifr.contentWindow.closed) ifr.remove();
-    } catch {}
-  }, 5000);
+  // safety cleanup
+  setTimeout(() => { try { if (document.body.contains(ifr)) ifr.remove(); } catch {} }, 12000);
 }
+
 
 
 export default function App() {
@@ -3803,6 +3789,7 @@ setLastAppliedCloudAt(Date.now());
     </div>
   );
 }
+
 
 
 
