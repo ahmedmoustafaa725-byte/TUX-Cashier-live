@@ -214,6 +214,27 @@ async function loadAsDataURL(path) {
   });
 }
 
+/* --------------------------- HELPERS --------------------------- */
+async function loadAsDataURL(path) { /* ...existing... */ }
+
+// NEW: silent print via hidden iframe (works best with --kiosk-printing)
+function silentPrintPdfBlobUrl(blobUrl) {
+  const ifr = document.createElement("iframe");
+  ifr.style.position = "fixed";
+  ifr.style.right = "0";
+  ifr.style.bottom = "0";
+  ifr.style.width = "0";
+  ifr.style.height = "0";
+  ifr.style.border = "0";
+  ifr.src = blobUrl + "#toolbar=0&navpanes=0&scrollbar=0";
+  document.body.appendChild(ifr);
+  ifr.onload = () => {
+    ifr.contentWindow?.focus();
+    ifr.contentWindow?.print(); // silent if Chrome started with --kiosk-printing
+    setTimeout(() => ifr.remove(), 3000);
+  };
+}
+
 /* --------------------------- BASE DATA --------------------------- */
 const BASE_MENU = [
   { id: 1, name: "Single Smashed Patty", price: 95, uses: {} },
@@ -1285,14 +1306,15 @@ if (opts?.autoPrint && window.JSPM && jspmReady) {
   }
 }
 
-// Fallback: open browser print dialog or just download
+// Fallback: trigger print from hidden iframe (silent in kiosk mode)
 if (opts?.autoPrint) {
   try { doc.autoPrint({ variant: "non-conform" }); } catch {}
   const url = doc.output("bloburl");
-  window.open(url, "_blank", "noopener,noreferrer");
+  silentPrintPdfBlobUrl(url);
 } else {
   doc.save(filename);
 }
+
 
     } catch (err) {
       console.error(err);
@@ -2570,6 +2592,7 @@ if (opts?.autoPrint) {
     </div>
   );
 }
+
 
 
 
