@@ -1105,12 +1105,12 @@ function escHtml(s) {
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-// Build 80/58mm receipt HTML — v5.4 (your preferred v5 look + tweaks)
 function buildReceiptHTML(order, widthMm = 80) {
   const m = Math.max(0, Math.min(4, 4)); // padding mm
   const currency = (v) => `E£${Number(v || 0).toFixed(2)}`;
   const dt = new Date(order.date);
   const orderDateStr = `${dt.getDate()}/${dt.getMonth() + 1}/${dt.getFullYear()}`;
+  const orderTimeStr = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   // compute items subtotal if not provided
   const itemsSubtotal =
@@ -1131,7 +1131,6 @@ function buildReceiptHTML(order, widthMm = 80) {
   // ==== Build items table rows (4 columns: Item | QT | Price | Total) ====
   const rowsHtml = (order.cart || [])
     .map((ci) => {
-      // base item row (qty is 1 per added line)
       const base = `
         <div class="tr">
           <div class="td c-item">${escHtml(ci.name)}</div>
@@ -1140,7 +1139,6 @@ function buildReceiptHTML(order, widthMm = 80) {
           <div class="td c-total">${currency(ci.price)}</div>
         </div>
       `;
-      // extras rows (each extra shown as its own row)
       const extras = (ci.extras || [])
         .map(
           (ex) => `
@@ -1157,12 +1155,11 @@ function buildReceiptHTML(order, widthMm = 80) {
     })
     .join("");
 
-  // Optional NOTE block (between header and items)
   const noteBlock =
     order.note && String(order.note).trim()
       ? `
     <div class="note">
-      <div class="label">NOTE</div>
+      <div class="label">Order Note</div>
       <div class="body">${escHtml(String(order.note).trim())}</div>
     </div>
   `
@@ -1187,7 +1184,6 @@ function buildReceiptHTML(order, widthMm = 80) {
     background: #fff;
   }
 
-  /* Brand (logo centered, normal size) */
   .brand img {
     display: block;
     margin: 0 auto 1mm;
@@ -1197,14 +1193,12 @@ function buildReceiptHTML(order, widthMm = 80) {
     object-fit: contain;
   }
 
-  /* Title + address centered; other meta left */
   .title { font-weight: 700; text-align: center; font-size: 13pt; margin: 1mm 0 .5mm; }
   .meta.address { text-align: center; font-size: 9pt; opacity: .9; }
   .meta { text-align: left; font-size: 9pt; opacity: .9; }
 
   .sep { border-top: 1px dashed #000; margin: 2mm 0; }
 
-  /* NOTE block */
   .note{
     margin: 1mm 0 2mm;
     padding: 1.5mm;
@@ -1215,7 +1209,6 @@ function buildReceiptHTML(order, widthMm = 80) {
   .note .label{ font-weight:700; font-size:9pt; margin-bottom:1mm; }
   .note .body{ font-size:10pt; white-space: pre-wrap; }
 
-  /* 4-column items table */
   .table { display:grid; grid-auto-rows:auto; row-gap:1mm; }
   .thead, .tr {
     display:grid;
@@ -1231,18 +1224,16 @@ function buildReceiptHTML(order, widthMm = 80) {
   .c-item { word-break: break-word; }
   .extra { font-size: 10pt; opacity: .9; }
 
-  /* Totals */
   .totals { display: grid; gap: 1mm; margin-top: 1mm; }
   .totals .row { display: flex; justify-content: space-between; gap: 4mm; font-weight: 600; }
   .total { font-size: 13pt; font-weight: 900; }
 
-  /* Footer (extra gap above logos) */
   .footer { margin-top: 2mm; }
   .thanks { text-align: center; font-size: 9pt; margin-bottom: 6mm; white-space: pre-line; }
   .logos { display: flex; justify-content: space-between; align-items: center; gap: 3mm; }
   .logos img { display: block; object-fit: contain; height: auto; }
-  .logos img.menu { width: calc((${widthMm}mm - ${m*2}mm) * .40); }     /* QR left */
-  .logos img.delivery { width: calc((${widthMm}mm - ${m*2}mm) * .50); } /* Delivery right */
+  .logos img.menu { width: calc((${widthMm}mm - ${m*2}mm) * .42); }     /* a little bigger */
+  .logos img.delivery { width: calc((${widthMm}mm - ${m*2}mm) * .52); } /* a little bigger */
 
   @media screen { body { background:#f6f6f6; } .receipt { box-shadow: 0 0 6px rgba(0,0,0,.12); margin: 8px auto; } }
   @media print { .receipt { box-shadow:none; } }
@@ -1255,9 +1246,9 @@ function buildReceiptHTML(order, widthMm = 80) {
     <div class="title">TUX — Burger Truck</div>
     <div class="meta address">El-Saada St – Zahraa El-Maadi</div>
 
-    <!-- Order rows -->
+    <!-- Order meta -->
     <div class="meta">Order No: <strong>#${escHtml(order.orderNo)}</strong></div>
-    <div class="meta">Order Date: <strong>${escHtml(orderDateStr)}</strong></div>
+    <div class="meta">Order Date: <strong>${escHtml(orderDateStr)}</strong> • Time: <strong>${escHtml(orderTimeStr)}</strong></div>
     <div class="meta">Worker: ${escHtml(order.worker)} • Payment: ${escHtml(order.payment)} • Type: ${escHtml(order.orderType || "")}</div>
 
     ${noteBlock}
@@ -2600,6 +2591,7 @@ function printReceiptHTML(order, widthMm = 80, copy = "Customer", images) {
     </div>
   );
 }
+
 
 
 
