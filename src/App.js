@@ -2066,7 +2066,7 @@ export default function App() {
                     }}
                   >
                     Remove
-                  </                    button>
+                  
                   </button>
                 </li>
               );
@@ -3221,5 +3221,6 @@ export default function App() {
     </div>
   );
 }
+
 
 
