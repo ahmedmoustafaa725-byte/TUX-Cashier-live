@@ -663,8 +663,8 @@ export default function App() {
     return () => clearInterval(t);
   }, []);
 
-  const [usesEditOpenMenu, setUsesEditOpenMenu] = useState({});
-  const [usesEditOpenExtra, setUsesEditOpenExtra] = useState({});
+  
+
   const [newMenuName, setNewMenuName] = useState("");
   const [newMenuPrice, setNewMenuPrice] = useState(0);
   const [newExtraName, setNewExtraName] = useState("");
@@ -1676,7 +1676,7 @@ export default function App() {
   }, [bankTx]);
 
   /* --------------------------- UI --------------------------- */
-  const firebaseConfigured = !!(firebaseConfig && firebaseConfig.apiKey);
+
 
   return (
     <div style={containerStyle}>
@@ -3640,4 +3640,5 @@ export default function App() {
     </div>
   );
 }
+
 
