@@ -3037,6 +3037,37 @@ const lockAdminPin = (n) => {
               )}
             </tbody>
           </table>
+                {/* Inventory — Start vs Now */}
+<h3>Inventory — Start vs Now</h3>
+{(!inventorySnapshot || inventorySnapshot.length === 0) ? (
+  <p style={{ opacity: 0.8 }}>
+    No inventory snapshot yet. Use <b>Inventory → Lock Inventory (start of day)</b> to capture start quantities.
+  </p>
+) : (
+  <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 16 }}>
+    <thead>
+      <tr>
+        <th style={{ textAlign: "left",  borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Item</th>
+        <th style={{ textAlign: "left",  borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit</th>
+        <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Start Qty</th>
+        <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Current Qty</th>
+        <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Used</th>
+      </tr>
+    </thead>
+    <tbody>
+      {inventoryReportRows.map((r) => (
+        <tr key={r.name}>
+          <td style={{ padding: 6 }}>{r.name}</td>
+          <td style={{ padding: 6 }}>{r.unit}</td>
+          <td style={{ padding: 6, textAlign: "right" }}>{r.start}</td>
+          <td style={{ padding: 6, textAlign: "right" }}>{r.now}</td>
+          <td style={{ padding: 6, textAlign: "right" }}>{r.used}</td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+)}
+
         </div>
       )}
 
@@ -3629,6 +3660,7 @@ const lockAdminPin = (n) => {
     </div>
   );
 }
+
 
 
 
