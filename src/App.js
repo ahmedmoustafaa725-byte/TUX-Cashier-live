@@ -577,6 +577,7 @@ function printReceiptHTML(order, widthMm = 80, copy = "Customer", images) {
 export default function App() {
   const [activeTab, setActiveTab] = useState("orders");
   const [dark, setDark] = useState(false);
+  const [newOrderType, setNewOrderType] = useState("");
 
   const [menu, setMenu] = useState(BASE_MENU);
   const [extraList, setExtraList] = useState(BASE_EXTRAS);
@@ -3590,5 +3591,6 @@ export default function App() {
     </div>
   );
 }
+
 
 
