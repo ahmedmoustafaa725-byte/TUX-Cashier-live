@@ -432,9 +432,10 @@ const [selectedPrinter, setSelectedPrinter] = useState(
     [db]
   );
 
-  // Start JSPrintManager & fetch printers
+ // Start JSPrintManager & fetch printers
 useEffect(() => {
-  if (!window.JSPM) return; // SDK not loaded (checks the <script> tag)
+  const JSPM = window.JSPM;
+  if (!JSPM) return; // SDK script not loaded yet
 
   try {
     JSPM.JSPrintManager.auto_reconnect = true;
@@ -1110,9 +1111,11 @@ await printThermalTicket(
     }
   };
 
-  // Send a jsPDF doc to the selected printer via JSPM
+ // Send a jsPDF doc to the selected printer via JSPM
 const sendPdfToJspm = async (doc, fileName = "receipt.pdf") => {
-  // Construct a Blob from jsPDF and ship it to JSPM as BLOB
+  const JSPM = window.JSPM;
+  if (!JSPM) throw new Error("JSPM not available");
+
   const blob = doc.output("blob");
   const job = new JSPM.ClientPrintJob();
 
@@ -1120,11 +1123,11 @@ const sendPdfToJspm = async (doc, fileName = "receipt.pdf") => {
     ? new JSPM.InstalledPrinter(selectedPrinter)
     : new JSPM.DefaultPrinter();
 
-  // FileSourceType.BLOB lets us pass the Blob directly
   const pdf = new JSPM.PrintFilePDF(blob, JSPM.FileSourceType.BLOB, fileName, 1);
   job.files.push(pdf);
   return job.sendToClient();
 };
+
 
 
   // --------------------------- PDF: THERMAL (with auto-print) ---------------------------
@@ -2567,6 +2570,7 @@ if (opts?.autoPrint) {
     </div>
   );
 }
+
 
 
 
