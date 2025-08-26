@@ -1,8 +1,3 @@
-Here is my code from app.js tell me how can i make the pins of the admins be unvisible and has un unlock buttom for every admin pin and the admin need the admin pin to unlock the pin and make whenever i change anything from any other device it be syncnorised to every other device 
-
-tell me what should i add or change in the code and where to find it exactly or to put it
-
-
 import React, { useEffect, useMemo, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -3620,4 +3615,5 @@ const lockAdminPin = (n) => {
     </div>
   );
 }
+
 
