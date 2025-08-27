@@ -209,6 +209,7 @@ deliveryAddress: order.deliveryAddress || "",
   changeDue: order.changeDue ?? null,
   done: !!order.done,
   voided: !!order.voided,
+  voidReason: order.voidReason || "",
   note: order.note || "",
   date: order.date ? order.date.toISOString() : new Date().toISOString(),
   restockedAt: order.restockedAt ? order.restockedAt.toISOString() : null,
@@ -243,6 +244,7 @@ deliveryAddress: d.deliveryAddress || "",
     changeDue: d.changeDue != null ? Number(d.changeDue) : null,
     done: !!d.done,
     voided: !!d.voided,
+    voidReason: d.voidReason || "",
     note: d.note || "",
     date: asDate(d.date || d.createdAt),
     restockedAt: d.restockedAt ? asDate(d.restockedAt) : undefined,
@@ -1688,6 +1690,11 @@ const voidOrderAndRestock = async (orderNo) => {
   if (ord.done) return alert("This order is DONE and cannot be cancelled.");
   if (ord.voided) return alert("This order is already cancelled/returned.");
   if (!window.confirm(`Cancel order #${orderNo} and restock inventory?`)) return;
+   /** NEW: require reason */
+  const reasonRaw = window.prompt(
+    `Reason for CANCEL (restock) — order #${orderNo}:`,
+    ""
+  );
 
   // Compute items to give back
   const giveBack = {};
@@ -1949,6 +1956,7 @@ for (const o of validOrders) {
      (o.deliveryFee || 0).toFixed(2),
      o.total.toFixed(2),
      o.voided ? (o.restockedAt ? "Cancelled" : "Returned") : (o.done ? "Done" : "Not done"),
+      o.voided ? (o.voidReason || "") : "",
    ]),
    startY: y + 4,
    styles: { fontSize: 9 },
@@ -2877,6 +2885,11 @@ for (const o of validOrders) {
                              {o.voided && o.restockedAt && (
                                <span> • Cancelled at: {o.restockedAt.toLocaleString()}</span>
                              )}
+                          {/* NEW: show reason */}
+                            {o.voided && o.voidReason && (
+                              <span> • Reason: {o.voidReason}</span>
+                            )}
+                          </span>
                 </div>
 
                 <ul style={{ marginTop: 8, marginBottom: 8 }}>
@@ -4354,6 +4367,7 @@ for (const o of validOrders) {
     </div>
   );
 }
+
 
 
 
