@@ -3713,8 +3713,7 @@ for (const o of validOrders) {
             </tbody>
           </table>
 
-   {/* Add extra */}
-<div
+  <div
   style={{
     display: "flex",
     gap: 8,
@@ -3777,10 +3776,8 @@ for (const o of validOrders) {
     Add Extra
   </button>
 </div>
-</div> {/* end Edit wrapper */}
-)} {/* end Edit tab conditional */}
-
-/* SETTINGS */
+</div>
+)}
 {activeTab === "settings" && (
   <div>
     <h2>Settings</h2>
@@ -3793,7 +3790,6 @@ for (const o of validOrders) {
         gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
       }}
     >
-      {/* Theme */}
       <div
         style={{
           border: `1px solid ${btnBorder}`,
@@ -3813,7 +3809,6 @@ for (const o of validOrders) {
         </label>
       </div>
 
-      {/* Printing */}
       <div
         style={{
           border: `1px solid ${btnBorder}`,
@@ -3844,7 +3839,6 @@ for (const o of validOrders) {
         </label>
       </div>
 
-      {/* Cloud */}
       <div
         style={{
           border: `1px solid ${btnBorder}`,
@@ -3905,7 +3899,9 @@ for (const o of validOrders) {
             {cloudStatus.lastLoadAt && (
               <>Last load: {cloudStatus.lastLoadAt.toLocaleString()} • </>
             )}
-            {cloudStatus.error && <span style={{ color: "#c62828" }}>Error: {cloudStatus.error}</span>}
+            {cloudStatus.error && (
+              <span style={{ color: "#c62828" }}>Error: {cloudStatus.error}</span>
+            )}
           </div>
         </div>
       </div>
@@ -3913,22 +3909,6 @@ for (const o of validOrders) {
   </div>
 )}
 
-</div> {/* end containerStyle wrapper */}
-); /* end return */
-} /* end App component */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+</div>
+);
+}
