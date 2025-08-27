@@ -3085,22 +3085,25 @@ for (const o of validOrders) {
                     setNewInvUnit("");
                     setNewInvQty(0);
                   }}
-                  style={{
-                    background: "#1976d2",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: 6,
-                    padding: "8px 12px",
-                    cursor: "pointer",
-                  }}
-                >
-                  Add item
-                </button>
-              </div>
-            )}
+                                style={{
+                background: "#1976d2",
+                color: "#fff",
+                border: "none",
+                borderRadius: 6,
+                padding: "8px 12px",
+                cursor: "pointer",
+              }}
+            >
+              Add item
+            </button>
           </div>
         </div>
       )}
+
+    </div>
+  );
+}
+
 
       {/* EXPENSES */}
       {activeTab === "expenses" && (
@@ -4290,6 +4293,7 @@ for (const o of validOrders) {
     </div>
   );
 }
+
 
 
 
