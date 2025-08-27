@@ -3537,16 +3537,20 @@ for (const o of validOrders) {
                         style={{ width: 120, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, textAlign: "right" }}
                       />
                     </td>
-                    <td style={{ padding: 6, textAlign: "center" }}>
-                      <input
-                        type="color"
-                        value={it.color || "#ffffff"}
-                        onChange={(e) =>
-                          setMenu((arr) => arr.map((x) => (x.id === it.id ? { ...x, color: e.target.value } : x)))
-                        }
-                        style={{ width: 40, height: 28, border: "none", background: "none" }}
-                      />
-                    </td>
+                   <td style={{ padding: 6, textAlign: "center" }}>
+  <input
+    type="color"
+    value={ex.color || "#ffffff"}
+    onChange={(e) =>
+      setExtraList((arr) =>
+        arr.map((x) =>
+          x.id === ex.id ? { ...x, color: e.target.value } : x
+        )
+      )
+    }
+    style={{ width: 40, height: 28, border: "none", background: "none" }}
+  />
+</td>
                     <td style={{ padding: 6, textAlign: "center" }}>
                       <button onClick={() => moveMenuUp(it.id)} style={{ marginRight: 6 }}>↑</button>
                       <button onClick={() => moveMenuDown(it.id)}>↓</button>
@@ -4138,6 +4142,7 @@ for (const o of validOrders) {
     </div>
   );
 }
+
 
 
 
