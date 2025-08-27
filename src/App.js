@@ -3744,7 +3744,7 @@ const movePayDown    = (idx) => setPaymentMethods((arr) => moveByIndex(arr, idx,
 </td>
 
 </tr>
-                  {openMenuConsId === it.id && (
+      {openMenuConsId === it.id && (
   <tr>
     <td
       colSpan={5}
@@ -3779,8 +3779,10 @@ const movePayDown    = (idx) => setPaymentMethods((arr) => moveByIndex(arr, idx,
               <input
                 type="number"
                 value={cur}
+                min={0}
+                step="any"
                 onChange={(e) => {
-                  const v = Math.max(0, Number(e.target.value || 0));
+                  const v = Number(e.target.value || 0);
                   setMenu((arr) =>
                     arr.map((x) => {
                       if (x.id !== it.id) return x;
@@ -3791,12 +3793,19 @@ const movePayDown    = (idx) => setPaymentMethods((arr) => moveByIndex(arr, idx,
                     })
                   );
                 }}
-                style={{ width: 120 }}
+                style={{ width: 120, marginLeft: 8 }}
               />
-              <small style={{ opacity: 0.7, marginLeft: 6 }}>per item</small>
+              <span style={{ marginLeft: 6 }}>
+                {inv.unit} / one {it.name}
+              </span>
             </label>
           );
         })}
+      </div>
+    </td>
+  </tr>
+)}
+
       </div>
 
       <div
@@ -4296,6 +4305,7 @@ const movePayDown    = (idx) => setPaymentMethods((arr) => moveByIndex(arr, idx,
     </div>
   );
 }
+
 
 
 
