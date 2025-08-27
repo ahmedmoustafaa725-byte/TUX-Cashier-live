@@ -629,8 +629,7 @@ export default function App() {
   const [newWorker, setNewWorker] = useState("");
   const [paymentMethods, setPaymentMethods] = useState(DEFAULT_PAYMENT_METHODS);
   const [newPayment, setNewPayment] = useState("");
-  const [newOrderType, setNewOrderType] = useState("");
-
+  const [newOrderTypeName, setNewOrderTypeName] = useState("");
 
   const [orderTypes, setOrderTypes] = useState(DEFAULT_ORDER_TYPES);
   const [defaultDeliveryFee, setDefaultDeliveryFee] = useState(DEFAULT_DELIVERY_FEE);
@@ -3815,14 +3814,14 @@ for (const o of validOrders) {
                   );
                 }}
                 style={{ width: 120 }}
-                                />
-                              </label>
-                            );
-                          })}
-                        </div>
-                      </td>
-                    </tr>
-                  )}
+              />
+            </label>
+          );
+        })}
+      </div>
+    </td>
+  </tr>
+)}
 
                 </React.Fragment>
               ))}
@@ -3872,268 +3871,344 @@ for (const o of validOrders) {
             </button>
           </div>
 
-        {/* === Workers | Payment Methods | Order Types (side-by-side) === */}
+         {/* === THREE EDIT BLOCKS: Workers • Payment Methods • Order Types === */}
 <div
   style={{
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-    gap: 12,
-    alignItems: "start",
-    marginBottom: 16,
+    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+    gap: 10,
+    marginBottom: 12,
   }}
 >
   {/* Workers */}
   <div
     style={{
-      border: `1px solid ${cardBorder}`,
+      border: `1px solid ${btnBorder}`,
       borderRadius: 8,
-      padding: 10,
+      padding: 8,
       background: dark ? "#191919" : "#fafafa",
     }}
   >
-    <h3 style={{ marginTop: 0 }}>Workers</h3>
-    <div style={{ display: "grid", gap: 8 }}>
-      {workers.map((w, idx) => (
-        <div key={`${w}_${idx}`} style={{ display: "flex", gap: 8 }}>
-          <input
-            type="text"
-            value={w}
-            onChange={(e) =>
-              setWorkers((arr) =>
-                arr.map((v, i) => (i === idx ? e.target.value : v))
-              )
-            }
-            style={{
-              flex: 1,
-              padding: 6,
-              borderRadius: 6,
-              border: `1px solid ${btnBorder}`,
-            }}
-          />
-          <button
-            onClick={() =>
-              setWorkers((arr) => arr.filter((_, i) => i !== idx))
-            }
-            style={{
-              background: "#c62828",
-              color: "#fff",
-              border: "none",
-              borderRadius: 6,
-              padding: "6px 10px",
-              cursor: "pointer",
-            }}
-          >
-            Remove
-          </button>
-        </div>
-      ))}
-
-      <div style={{ display: "flex", gap: 8 }}>
+    <div style={{ fontWeight: 700, marginBottom: 6 }}>Workers</div>
+    {workers.map((w, idx) => (
+      <div key={idx} style={{ display: "flex", gap: 6, marginBottom: 6 }}>
         <input
           type="text"
-          placeholder="Add worker"
-          value={newWorker}
-          onChange={(e) => setNewWorker(e.target.value)}
+          value={w}
+          onChange={(e) =>
+            setWorkers((arr) => arr.map((x, i) => (i === idx ? e.target.value : x)))
+          }
           style={{
             flex: 1,
             padding: 6,
             borderRadius: 6,
             border: `1px solid ${btnBorder}`,
+            background: dark ? "#1e1e1e" : "#fff",
+            color: dark ? "#eee" : "#000",
           }}
         />
         <button
-          onClick={() => {
-            const name = String(newWorker || "").trim();
-            if (!name) return alert("Worker name required.");
-            if (workers.includes(name)) return alert("Worker already exists.");
-            setWorkers((arr) => [...arr, name]);
-            setNewWorker("");
-          }}
+          onClick={() => setWorkers((arr) => arr.filter((_, i) => i !== idx))}
           style={{
-            background: "#1976d2",
+            background: "#c62828",
             color: "#fff",
             border: "none",
             borderRadius: 6,
-            padding: "8px 12px",
+            padding: "6px 10px",
             cursor: "pointer",
           }}
         >
-          Add
+          Remove
         </button>
       </div>
+    ))}
+    <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+      <input
+        type="text"
+        placeholder="New worker"
+        value={newWorker}
+        onChange={(e) => setNewWorker(e.target.value)}
+        style={{
+          flex: 1,
+          padding: 6,
+          borderRadius: 6,
+          border: `1px solid ${btnBorder}`,
+          background: dark ? "#1e1e1e" : "#fff",
+          color: dark ? "#eee" : "#000",
+        }}
+      />
+      <button
+        onClick={() => {
+          const v = String(newWorker || "").trim();
+          if (!v) return alert("Enter name.");
+          setWorkers((arr) => [...arr, v]);
+          setNewWorker("");
+        }}
+        style={{
+          background: "#2e7d32",
+          color: "#fff",
+          border: "none",
+          borderRadius: 6,
+          padding: "6px 10px",
+          cursor: "pointer",
+        }}
+      >
+        Add
+      </button>
     </div>
   </div>
 
   {/* Payment Methods */}
   <div
     style={{
-      border: `1px solid ${cardBorder}`,
+      border: `1px solid ${btnBorder}`,
       borderRadius: 8,
-      padding: 10,
+      padding: 8,
       background: dark ? "#191919" : "#fafafa",
     }}
   >
-    <h3 style={{ marginTop: 0 }}>Payment Methods</h3>
-    <div style={{ display: "grid", gap: 8 }}>
-      {paymentMethods.map((p, idx) => (
-        <div key={`${p}_${idx}`} style={{ display: "flex", gap: 8 }}>
-          <input
-            type="text"
-            value={p}
-            onChange={(e) =>
-              setPaymentMethods((arr) =>
-                arr.map((v, i) => (i === idx ? e.target.value : v))
-              )
-            }
-            style={{
-              flex: 1,
-              padding: 6,
-              borderRadius: 6,
-              border: `1px solid ${btnBorder}`,
-            }}
-          />
-          <button
-            onClick={() =>
-              setPaymentMethods((arr) => arr.filter((_, i) => i !== idx))
-            }
-            style={{
-              background: "#c62828",
-              color: "#fff",
-              border: "none",
-              borderRadius: 6,
-              padding: "6px 10px",
-              cursor: "pointer",
-            }}
-          >
-            Remove
-          </button>
-        </div>
-      ))}
-
-      <div style={{ display: "flex", gap: 8 }}>
+    <div style={{ fontWeight: 700, marginBottom: 6 }}>Payment Methods</div>
+    {paymentMethods.map((p, idx) => (
+      <div key={idx} style={{ display: "flex", gap: 6, marginBottom: 6 }}>
         <input
           type="text"
-          placeholder="Add payment"
-          value={newPayment}
-          onChange={(e) => setNewPayment(e.target.value)}
+          value={p}
+          onChange={(e) =>
+            setPaymentMethods((arr) => arr.map((x, i) => (i === idx ? e.target.value : x)))
+          }
           style={{
             flex: 1,
             padding: 6,
             borderRadius: 6,
             border: `1px solid ${btnBorder}`,
+            background: dark ? "#1e1e1e" : "#fff",
+            color: dark ? "#eee" : "#000",
           }}
         />
         <button
-          onClick={() => {
-            const name = String(newPayment || "").trim();
-            if (!name) return alert("Payment method required.");
-            if (paymentMethods.includes(name))
-              return alert("Payment method already exists.");
-            setPaymentMethods((arr) => [...arr, name]);
-            setNewPayment("");
-          }}
+          onClick={() =>
+            setPaymentMethods((arr) => arr.filter((_, i) => i !== idx))
+          }
           style={{
-            background: "#1976d2",
+            background: "#c62828",
             color: "#fff",
             border: "none",
             borderRadius: 6,
-            padding: "8px 12px",
+            padding: "6px 10px",
             cursor: "pointer",
           }}
         >
-          Add
+          Remove
         </button>
       </div>
+    ))}
+    <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+      <input
+        type="text"
+        placeholder="New method"
+        value={newPayment}
+        onChange={(e) => setNewPayment(e.target.value)}
+        style={{
+          flex: 1,
+          padding: 6,
+          borderRadius: 6,
+          border: `1px solid ${btnBorder}`,
+          background: dark ? "#1e1e1e" : "#fff",
+          color: dark ? "#eee" : "#000",
+        }}
+      />
+      <button
+        onClick={() => {
+          const v = String(newPayment || "").trim();
+          if (!v) return alert("Enter method.");
+          setPaymentMethods((arr) => [...arr, v]);
+          setNewPayment("");
+        }}
+        style={{
+          background: "#2e7d32",
+          color: "#fff",
+          border: "none",
+          borderRadius: 6,
+          padding: "6px 10px",
+          cursor: "pointer",
+        }}
+      >
+        Add
+      </button>
     </div>
   </div>
 
-  {/* Order Types */}
+  {/* Order Types (no examples/notes/arrows) */}
   <div
     style={{
-      border: `1px solid ${cardBorder}`,
+      border: `1px solid ${btnBorder}`,
       borderRadius: 8,
-      padding: 10,
+      padding: 8,
       background: dark ? "#191919" : "#fafafa",
     }}
   >
-    <h3 style={{ marginTop: 0 }}>Order Types</h3>
-    <div style={{ display: "grid", gap: 8 }}>
-      {orderTypes.map((t, idx) => (
-        <div key={`${t}_${idx}`} style={{ display: "flex", gap: 8 }}>
-          <input
-            type="text"
-            value={t}
-            onChange={(e) =>
-              setOrderTypes((arr) =>
-                arr.map((v, i) => (i === idx ? e.target.value : v))
-              )
-            }
-            style={{
-              flex: 1,
-              padding: 6,
-              borderRadius: 6,
-              border: `1px solid ${btnBorder}`,
-            }}
-          />
-          <div style={{ display: "flex", gap: 6 }}>
-            <button onClick={() => setOrderTypes((arr) => moveByIndex(arr, idx, -1))}>↑</button>
-            <button onClick={() => setOrderTypes((arr) => moveByIndex(arr, idx, +1))}>↓</button>
-          </div>
-          <button
-            onClick={() =>
-              setOrderTypes((arr) => arr.filter((_, i) => i !== idx))
-            }
-            style={{
-              background: "#c62828",
-              color: "#fff",
-              border: "none",
-              borderRadius: 6,
-              padding: "6px 10px",
-              cursor: "pointer",
-            }}
-          >
-            Remove
-          </button>
-        </div>
-      ))}
-
-      <div style={{ display: "flex", gap: 8 }}>
+    <div style={{ fontWeight: 700, marginBottom: 6 }}>Order Types</div>
+    {orderTypes.map((t, idx) => (
+      <div key={idx} style={{ display: "flex", gap: 6, marginBottom: 6 }}>
         <input
           type="text"
-          placeholder='New type (e.g., "Take-Away")'
-          value={newOrderType}
-          onChange={(e) => setNewOrderType(e.target.value)}
+          value={t}
+          onChange={(e) =>
+            setOrderTypes((arr) => arr.map((x, i) => (i === idx ? e.target.value : x)))
+          }
           style={{
             flex: 1,
             padding: 6,
             borderRadius: 6,
             border: `1px solid ${btnBorder}`,
+            background: dark ? "#1e1e1e" : "#fff",
+            color: dark ? "#eee" : "#000",
           }}
         />
         <button
-          onClick={() => {
-            const name = String(newOrderType || "").trim();
-            if (!name) return alert("Type name required.");
-            if (orderTypes.includes(name)) return alert("Type already exists.");
-            setOrderTypes((arr) => [...arr, name]);
-            setNewOrderType("");
-          }}
+          onClick={() => setOrderTypes((arr) => arr.filter((_, i) => i !== idx))}
           style={{
-            background: "#2e7d32",
+            background: "#c62828",
             color: "#fff",
             border: "none",
             borderRadius: 6,
-            padding: "8px 12px",
+            padding: "6px 10px",
             cursor: "pointer",
           }}
         >
-          Add Type
+          Remove
         </button>
       </div>
+    ))}
+    <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+      <input
+        type="text"
+        placeholder="New order type"
+        value={newOrderTypeName}
+        onChange={(e) => setNewOrderTypeName(e.target.value)}
+        style={{
+          flex: 1,
+          padding: 6,
+          borderRadius: 6,
+          border: `1px solid ${btnBorder}`,
+          background: dark ? "#1e1e1e" : "#fff",
+          color: dark ? "#eee" : "#000",
+        }}
+      />
+      <button
+        onClick={() => {
+          const v = String(newOrderTypeName || "").trim();
+          if (!v) return alert("Enter order type.");
+          setOrderTypes((arr) => [...arr, v]);
+          setNewOrderTypeName("");
+        }}
+        style={{
+          background: "#2e7d32",
+          color: "#fff",
+          border: "none",
+          borderRadius: 6,
+          padding: "6px 10px",
+          cursor: "pointer",
+        }}
+      >
+        Add
+      </button>
     </div>
   </div>
 </div>
-{/* === Admin PINs section should come BELOW this block === */}
+{/* === ADMIN SECTION (under the three blocks) === */}
+<div
+  style={{
+    border: `1px solid ${btnBorder}`,
+    borderRadius: 8,
+    padding: 8,
+    background: dark ? "#151515" : "#f7f7f7",
+    marginBottom: 14,
+  }}
+>
+  <div style={{ fontWeight: 700, marginBottom: 6 }}>Admin PINs</div>
+  <div
+    style={{
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+      gap: 8,
+    }}
+  >
+    {Array.from({ length: 6 }, (_, i) => i + 1).map((n) => (
+      <div
+        key={n}
+        style={{
+          border: `1px solid ${btnBorder}`,
+          borderRadius: 8,
+          padding: 8,
+          background: dark ? "#191919" : "#fafafa",
+        }}
+      >
+        <div style={{ fontWeight: 600, marginBottom: 6 }}>Admin {n}</div>
+        {unlockedPins[n] ? (
+          <div style={{ display: "flex", gap: 6 }}>
+            <input
+              type="text"
+              value={adminPins[n] || ""}
+              onChange={(e) => setAdminPins((p) => ({ ...p, [n]: e.target.value }))}
+              style={{
+                flex: 1,
+                padding: 6,
+                borderRadius: 6,
+                border: `1px solid ${btnBorder}`,
+                background: dark ? "#1e1e1e" : "#fff",
+                color: dark ? "#eee" : "#000",
+              }}
+            />
+            <button
+              onClick={() => lockAdminPin(n)}
+              style={{
+                background: "#455a64",
+                color: "#fff",
+                border: "none",
+                borderRadius: 6,
+                padding: "6px 10px",
+                cursor: "pointer",
+              }}
+            >
+              Lock
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: "flex", gap: 6 }}>
+            <input
+              type="password"
+              value="••••"
+              disabled
+              style={{
+                flex: 1,
+                padding: 6,
+                borderRadius: 6,
+                border: `1px solid ${btnBorder}`,
+                background: dark ? "#1e1e1e" : "#fff",
+                color: dark ? "#eee" : "#000",
+              }}
+            />
+            <button
+              onClick={() => unlockAdminPin(n)}
+              style={{
+                background: "#7e57c2",
+                color: "#fff",
+                border: "none",
+                borderRadius: 6,
+                padding: "6px 10px",
+                cursor: "pointer",
+              }}
+            >
+              Unlock (PIN)
+            </button>
+          </div>
+        )}
+      </div>
+    ))}
+  </div>
+</div>
+
 
       {/* SETTINGS */}
       {activeTab === "settings" && (
@@ -4215,7 +4290,6 @@ for (const o of validOrders) {
     </div>
   );
 }
-
 
 
 
