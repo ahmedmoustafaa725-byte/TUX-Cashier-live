@@ -1,7 +1,3 @@
-the code works fine now i want t be able to edit the order type in the edit tab
-
-here is my app.js code tell me what to add or change
-
 import React, { useEffect, useMemo, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -4088,6 +4084,7 @@ for (const o of validOrders) {
     </div>
   );
 }
+
 
 
 
