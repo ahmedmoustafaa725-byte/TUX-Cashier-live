@@ -2902,13 +2902,17 @@ for (const o of validOrders) {
                                  ? (o.restockedAt ? "Cancelled" : "Returned")
                                  : (o.done ? "Done" : "Not done")}
                              </strong>
-                             {o.voided && o.restockedAt && (
-                               <span> • Cancelled at: {o.restockedAt.toLocaleString()}</span>
-                              {o.voided && o.voidReason && (
-                            <span> • Reason: {o.voidReason}</span>
-                              )}
+                             {o.voided && (
+  <>
+    {o.restockedAt && (
+      <span> • Cancelled at: {o.restockedAt.toLocaleString()}</span>
+    )}
+    {o.voidReason && (
+      <span> • Reason: {o.voidReason}</span>
+    )}
+  </>
+)}
 
-                             )}
                 </div>
 
                 <ul style={{ marginTop: 8, marginBottom: 8 }}>
@@ -4386,6 +4390,7 @@ for (const o of validOrders) {
     </div>
   );
 }
+
 
 
 
