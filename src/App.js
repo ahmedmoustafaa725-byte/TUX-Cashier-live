@@ -3812,7 +3812,9 @@ for (const o of validOrders) {
                               v > 0
                                 ? { ...(x.uses || {}), [inv.id]: v }
                                 : Object.fromEntries(
-                                    Object.entries(x.uses || {}).filter(([k]) => k !== inv.id)
+                                    Object.entries(x.uses || {}).filter(
+                                      ([k]) => k !== inv.id
+                                    )
                                   ),
                           }
                         : x
@@ -3828,6 +3830,7 @@ for (const o of validOrders) {
     </td>
   </tr>
 )}
+
 
                 </React.Fragment>
               ))}
@@ -4197,6 +4200,7 @@ for (const o of validOrders) {
     </div>
   );
 }
+
 
 
 
