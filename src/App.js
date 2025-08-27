@@ -1743,43 +1743,6 @@ const voidOrderToExpense = async (orderNo) => {
 
 
 
-    const giveBack = {};
-    for (const line of ord.cart) {
-      const uses = line.uses || {};
-      for (const k of Object.keys(uses))
-        giveBack[k] = (giveBack[k] || 0) + (uses[k] || 0);
-    }
-    setInventory((inv) =>
-      inv.map((it) => {
-        const back = giveBack[it.id] || 0;
-        return back ? { ...it, qty: it.qty + back } : it;
-      })
-    );
-    setOrders((o) =>
-      o.map((x) =>
-        x.orderNo === orderNo ? { ...x, voided: true, restockedAt: new Date() } : x
-      )
-    );
-
-    try {
-      if (!cloudEnabled || !ordersColRef || !fbUser) return;
-      let targetId = ord.cloudId;
-      if (!targetId) {
-        const qy = query(ordersColRef, where("orderNo", "==", orderNo));
-        const ss = await getDocs(qy);
-        if (!ss.empty) targetId = ss.docs[0].id;
-      }
-      if (targetId) {
-        await updateDoc(fsDoc(db, "shops", SHOP_ID, "orders", targetId), {
-          voided: true,
-          restockedAt: new Date().toISOString(),
-          updatedAt: serverTimestamp(),
-        });
-      }
-    } catch (e) {
-      console.warn("Cloud update (void) failed:", e);
-    }
-  };
 
   // --------------------------- REPORT TOTALS ---------------------------
   const getSortedOrders = () => {
@@ -3111,8 +3074,8 @@ for (const o of validOrders) {
                     const qty = Math.max(0, Number(newInvQty || 0));
                     if (!name) return alert("Name required.");
                     const id =
-                      name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$|/g, "") ||
-                      `inv_${Date.now()}`;
+                            name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-+|-+$)/g, "") ||
+                             `inv_${Date.now()}`;
                     if (inventory.some((x) => x.id === id)) {
                       return alert("Item with same id exists, use a different name.");
                     }
@@ -3781,6 +3744,7 @@ for (const o of validOrders) {
                       >
                         Edit Consumption
                       </button>
+                          
                       <button
                         onClick={() => setExtraList((arr) => arr.filter((x) => x.id !== ex.id))}
                         style={{
@@ -3797,62 +3761,67 @@ for (const o of validOrders) {
                     </td>
                   </tr>
                   {openExtraConsId === ex.id && (
-                    <tr>
-                      <td colSpan={5} style={{ padding: 6, background: dark ? "#151515" : "#fafafa" }}>
-                       <div
-                              style={{
-                                display: "grid",
-                                gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-                                columnGap: 16,
-                                rowGap: 14,
-                              }}
-                            >
+  <tr>
+    <td colSpan={5} style={{ padding: 6, background: dark ? "#151515" : "#fafafa" }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+          columnGap: 16,
+          rowGap: 14,
+        }}
+      >
+        {inventory.map((inv) => {
+          const cur = Number((ex.uses || {})[inv.id] || 0);
+          return (
+            <label
+              key={inv.id}
+              style={{
+                display: "flex",
+                gap: 6,
+                alignItems: "center",
+                padding: 6,
+                borderRadius: 6,
+                border: `1px solid ${btnBorder}`,
+                background: dark ? "#1e1e1e" : "#fff",
+              }}
+            >
+              <span style={{ minWidth: 120 }}>
+                {inv.name} ({inv.unit})
+              </span>
+              <input
+                type="number"
+                value={cur}
+                min={0}
+                step="any"
+                onChange={(e) => {
+                  const v = Math.max(0, Number(e.target.value || 0));
+                  setExtraList((arr) =>
+                    arr.map((x) =>
+                      x.id === ex.id
+                        ? {
+                            ...x,
+                            uses:
+                              v > 0
+                                ? { ...(x.uses || {}), [inv.id]: v }
+                                : Object.fromEntries(
+                                    Object.entries(x.uses || {}).filter(([k]) => k !== inv.id)
+                                  ),
+                          }
+                        : x
+                    )
+                  );
+                }}
+                style={{ width: 120 }}
+              />
+            </label>
+          );
+        })}
+      </div>
+    </td>
+  </tr>
+)}
 
-                          {inventory.map((inv) => {
-                            const cur = Number((ex.uses || {})[inv.id] || 0);
-                            return (
-                              <label
-                                key={inv.id}
-                                style={{
-                                  display: "flex",
-                                  gap: 6,
-                                  alignItems: "center",
-                                  padding: 6,
-                                  borderRadius: 6,
-                                  border: `1px solid ${btnBorder}`,
-                                  background: dark ? "#1e1e1e" : "#fff",
-                                }}
-                              >
-                                <span style={{ minWidth: 120 }}>{inv.name} ({inv.unit})</span>
-                                <input
-                                  type="number"
-                                  value={cur}
-                                  min={0}
-                                  step="any"
-                                  onChange={(e) => {
-                                    const v = Math.max(0, Number(e.target.value || 0));
-                                    setExtraList((arr) =>
-                                      arr.map((x) =>
-                                        x.id === ex.id
-                                          ? {
-                                              ...x,
-                                              uses: v > 0
-                                                ? { ...(x.uses || {}), [inv.id]: v }
-                                                : Object.fromEntries(Object.entries(x.uses || {}).filter(([k]) => k !== inv.id)),
-                                            }
-                                          : x
-                                      )
-                                    );
-                                  }}
-                                  style={{ width: 120 }}
-                                />
-                              </label>
-                            );
-                          })}
-                        </div>
-                      </td>
-                    </tr>
-                  )}
                 </React.Fragment>
               ))}
               {extraList.length === 0 && (
@@ -4115,6 +4084,7 @@ for (const o of validOrders) {
     </div>
   );
 }
+
 
 
 
