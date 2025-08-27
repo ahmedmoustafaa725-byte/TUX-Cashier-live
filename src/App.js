@@ -3877,7 +3877,7 @@ for (const o of validOrders) {
             </button>
           </div>
 
-         {/* Workers • Payments • Order Types — side by side */}
+        {/* Workers • Payments • Order Types — side by side */}
 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, alignItems: "start" }}>
   {/* Workers */}
   <div style={{ padding: 10, borderRadius: 6, border: `1px solid ${cardBorder}` }}>
@@ -3888,9 +3888,7 @@ for (const o of validOrders) {
           <input
             type="text"
             value={w}
-            onChange={(e) =>
-              setWorkers((arr) => arr.map((x) => (x === w ? e.target.value : x)))
-            }
+            onChange={(e) => setWorkers((arr) => arr.map((x) => (x === w ? e.target.value : x)))}
             style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
           />
           <button
@@ -3934,9 +3932,7 @@ for (const o of validOrders) {
           <input
             type="text"
             value={p}
-            onChange={(e) =>
-              setPaymentMethods((arr) => arr.map((x) => (x === p ? e.target.value : x)))
-            }
+            onChange={(e) => setPaymentMethods((arr) => arr.map((x) => (x === p ? e.target.value : x)))}
             style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
           />
           <button
@@ -3971,7 +3967,7 @@ for (const o of validOrders) {
     </div>
   </div>
 
-  {/* Order Types (no arrows / no tip / no example text) */}
+  {/* Order Types (no arrange arrows, no tip, simple placeholder) */}
   <div style={{ padding: 10, borderRadius: 6, border: `1px solid ${cardBorder}` }}>
     <h4 style={{ marginTop: 0 }}>Order Types</h4>
     <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
@@ -3980,18 +3976,14 @@ for (const o of validOrders) {
           <input
             type="text"
             value={t}
-            onChange={(e) =>
-              setOrderTypes((arr) => arr.map((x, i) => (i === idx ? e.target.value : x)))
-            }
+            onChange={(e) => setOrderTypes((arr) => arr.map((x, i) => (i === idx ? e.target.value : x)))}
             style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
           />
           <button
             onClick={() => {
               const name = t || "";
               const isDelivery = (name || "").trim().toLowerCase() === "delivery";
-              if (isDelivery && !window.confirm(
-                "You are removing 'Delivery'. Delivery fee logic relies on this exact name. Continue?"
-              )) return;
+              if (isDelivery && !window.confirm("You are removing 'Delivery'. Continue?")) return;
               setOrderTypes((arr) => arr.filter((_, i) => i !== idx));
             }}
             style={{ background: "#c62828", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px" }}
@@ -4065,8 +4057,6 @@ for (const o of validOrders) {
     );
   })}
 </div>
-
-
 
       {/* SETTINGS */}
       {activeTab === "settings" && (
@@ -4148,6 +4138,7 @@ for (const o of validOrders) {
     </div>
   );
 }
+
 
 
 
