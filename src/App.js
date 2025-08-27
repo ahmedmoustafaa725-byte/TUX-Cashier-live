@@ -4148,7 +4148,7 @@ for (const o of validOrders) {
 
 
 
-         <h4 style={{ marginTop: 0 }}>Admin PINs</h4>
+        
 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8 }}>
   {[1,2,3,4,5,6].map((n) => {
     const isUnlocked = !!unlockedPins[n];
@@ -4270,6 +4270,7 @@ for (const o of validOrders) {
     </div>
   );
 }
+
 
 
 
