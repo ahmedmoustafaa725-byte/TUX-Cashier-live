@@ -3971,7 +3971,7 @@ for (const o of validOrders) {
     </div>
   </div>
 
-  {/* Order Types (no arrows, no tip, no example text) */}
+  {/* Order Types (no arrows / no tip / no example text) */}
   <div style={{ padding: 10, borderRadius: 6, border: `1px solid ${cardBorder}` }}>
     <h4 style={{ marginTop: 0 }}>Order Types</h4>
     <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
@@ -4027,7 +4027,8 @@ for (const o of validOrders) {
   </div>
 </div>
 
-<h4 style={{ marginTop: 0 }}>Admin PINs (locked)</h4>
+{/* Admin PINs */}
+<h4 style={{ marginTop: 16 }}>Admin PINs (locked)</h4>
 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8 }}>
   {[1,2,3,4,5,6].map((n) => {
     const isUnlocked = !!unlockedPins[n];
@@ -4064,6 +4065,7 @@ for (const o of validOrders) {
     );
   })}
 </div>
+
 
 
       {/* SETTINGS */}
@@ -4146,6 +4148,7 @@ for (const o of validOrders) {
     </div>
   );
 }
+
 
 
 
