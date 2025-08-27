@@ -1319,6 +1319,13 @@ setLastAppliedCloudAt(Date.now());
 
   // --------- Cart / Checkout ----------
   const [isCheckingOut, setIsCheckingOut] = useState(false);
+  // scale a uses map by a factor
+const multiplyUses = (uses = {}, factor = 1) => {
+  const out = {};
+  for (const k of Object.keys(uses)) out[k] = Number(uses[k] || 0) * factor;
+  return out;
+};
+
 
   const addToCart = () => {
     if (!selectedBurger) return alert("Select a burger/item first.");
@@ -1348,21 +1355,37 @@ setLastAppliedCloudAt(Date.now());
   const removeFromCart = (i) =>
     setCart((c) => c.filter((_, idx) => idx !== i));
 
-  const changeQty = (i, delta) =>
-    setCart((c) =>
-      c.map((line, idx) =>
-        idx !== i
-          ? line
-          : { ...line, qty: Math.max(1, Number(line.qty || 1) + delta) }
-      )
-    );
+ const changeQty = (i, delta) =>
+  setCart((c) =>
+    c.map((line, idx) => {
+      if (idx !== i) return line;
+      const oldQty = Math.max(1, Number(line.qty || 1));
+      const newQty = Math.max(1, oldQty + delta);
+      if (newQty === oldQty) return line;
+      return {
+        ...line,
+        qty: newQty,
+        // keep per-line consumption proportional to qty
+        uses: multiplyUses(line.uses || {}, newQty / oldQty),
+      };
+    })
+  );
 
   const setQty = (i, v) =>
-    setCart((c) =>
-      c.map((line, idx) =>
-        idx !== i ? line : { ...line, qty: Math.max(1, Number(v || 1)) }
-      )
-    );
+  setCart((c) =>
+    c.map((line, idx) => {
+      if (idx !== i) return line;
+      const oldQty = Math.max(1, Number(line.qty || 1));
+      const newQty = Math.max(1, Number(v || 1));
+      if (newQty === oldQty) return line;
+      return {
+        ...line,
+        qty: newQty,
+        uses: multiplyUses(line.uses || {}, newQty / oldQty),
+      };
+    })
+  );
+
 
  const checkout = async () => {
   if (isCheckingOut) return;
@@ -1376,32 +1399,52 @@ setLastAppliedCloudAt(Date.now());
     if (!payment) return alert("Select payment.");
     if (!orderType) return alert("Select order type.");
 
-    // Stock check (respect qty)
-    const required = {};
-    for (const line of cart) {
-      const uses = line.uses || {};
-      for (const k of Object.keys(uses))
-        required[k] = (required[k] || 0) + (uses[k] || 0);
+   // Rebuild per-unit uses from current menu/extras, then multiply by qty
+const cartWithUses = cart.map((line) => {
+  const baseItem = menu.find((m) => m.id === line.id);
+  const unitUses = { ...(baseItem?.uses || {}) };
+
+  for (const ex of line.extras || []) {
+    const exDef = extraList.find((e) => e.id === ex.id) || ex;
+    const exUses = exDef.uses || {};
+    for (const k of Object.keys(exUses)) {
+      unitUses[k] = (unitUses[k] || 0) + Number(exUses[k] || 0);
     }
-    for (const k of Object.keys(required)) {
-      const invItem = invById[k];
-      if (!invItem) continue;
-      if ((invItem.qty || 0) < required[k]) {
-        return alert(
-          `Not enough ${invItem.name} in stock. Need ${required[k]} ${invItem.unit}, have ${invItem.qty} ${invItem.unit}.`
-        );
-      }
-    }
-    // Deduct locally
-    setInventory((inv) =>
-      inv.map((it) => {
-        const need = required[it.id] || 0;
-        return need ? { ...it, qty: it.qty - need } : it;
-      })
+  }
+
+  const qty = Math.max(1, Number(line.qty || 1));
+  return { ...line, uses: multiplyUses(unitUses, qty) };
+});
+
+// Stock check using rebuilt uses
+const required = {};
+for (const line of cartWithUses) {
+  for (const k of Object.keys(line.uses || {})) {
+    required[k] = (required[k] || 0) + Number(line.uses[k] || 0);
+  }
+}
+for (const k of Object.keys(required)) {
+  const invItem = invById[k];
+  if (!invItem) continue;
+  if ((invItem.qty || 0) < required[k]) {
+    return alert(
+      `Not enough ${invItem.name} in stock. Need ${required[k]} ${invItem.unit}, have ${invItem.qty} ${invItem.unit}.`
     );
+  }
+}
+// Deduct locally
+setInventory((inv) =>
+  inv.map((it) => {
+    const need = Number(required[it.id] || 0);
+    return need ? { ...it, qty: it.qty - need } : it;
+  })
+);
+
 
     // Totals
-    const itemsTotal = cart.reduce((s, b) => {
+    
+const itemsTotal = cartWithUses.reduce((s, b) => {
+
       const ex = (b.extras || []).reduce((t, e) => t + Number(e.price || 0), 0);
       return s + (Number(b.price || 0) + ex) * Number(b.qty || 1);
     }, 0);
@@ -1427,7 +1470,7 @@ setLastAppliedCloudAt(Date.now());
       itemsTotal,
       cashReceived: cashVal,
       changeDue,
-      cart,
+        cart: cartWithUses,
       done: false,
       voided: false,
       restockedAt: undefined,
@@ -3789,6 +3832,7 @@ setLastAppliedCloudAt(Date.now());
     </div>
   );
 }
+
 
 
 
