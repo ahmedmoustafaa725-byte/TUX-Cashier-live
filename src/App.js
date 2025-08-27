@@ -3099,7 +3099,9 @@ for (const o of validOrders) {
           </div>
         </div>
       )}
-
+</div>
+  );
+}
 
       {/* EXPENSES */}
       {activeTab === "expenses" && (
@@ -4289,6 +4291,7 @@ for (const o of validOrders) {
     </div>
   );
 }
+
 
 
 
