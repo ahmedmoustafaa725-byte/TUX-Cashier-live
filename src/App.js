@@ -2902,13 +2902,7 @@ for (const o of validOrders) {
                                <span> • Cancelled at: {o.restockedAt.toLocaleString()}</span>
                              )}
                 </div>
-                  {o.orderType === "Delivery" && (
-  <div style={{ marginTop: 4, color: dark ? "#ccc" : "#555" }}>
-    Customer: <b>{o.deliveryName || "-"}</b> • Phone: {o.deliveryPhone || "-"}
-    <br/>
-    Address: {o.deliveryAddress || "-"}
-  </div>
-)}
+                 
 
 
                 <ul style={{ marginTop: 8, marginBottom: 8 }}>
@@ -4385,6 +4379,7 @@ for (const o of validOrders) {
     </div>
   );
 }
+
 
 
 
