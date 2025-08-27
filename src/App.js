@@ -190,28 +190,29 @@ function unpackStateFromCloud(data, fallbackDayMeta = {}) {
 }
 
 function normalizeOrderForCloud(order) {
-  return {
-    orderNo: order.orderNo,
-    worker: order.worker,
-    payment: order.payment,
-    paymentBreakdown: Array.isArray(order.paymentBreakdown) ? order.paymentBreakdown : null,
-
-    orderType: order.orderType,
-    deliveryFee: order.deliveryFee,
-    total: order.total,
-    itemsTotal: order.itemsTotal,
-    cashReceived: order.cashReceived ?? null,
-    changeDue: order.changeDue ?? null,
-    done: !!order.done,
-    voided: !!order.voided,
-    note: order.note || "",
-    date: order.date ? order.date.toISOString() : new Date().toISOString(),
-    restockedAt: order.restockedAt ? order.restockedAt.toISOString() : null,
-    cart: order.cart || [],
-    idemKey: order.idemKey || "",
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  };
+return {
+  orderNo: order.orderNo,
+  worker: order.worker,
+  payment: order.payment,
+  paymentParts: Array.isArray(order.paymentParts)
+    ? order.paymentParts.map((p) => ({ method: p.method, amount: Number(p.amount || 0) }))
+    : [],
+  orderType: order.orderType,
+  deliveryFee: order.deliveryFee,
+  total: order.total,
+  itemsTotal: order.itemsTotal,
+  cashReceived: order.cashReceived ?? null,
+  changeDue: order.changeDue ?? null,
+  done: !!order.done,
+  voided: !!order.voided,
+  note: order.note || "",
+  date: order.date ? order.date.toISOString() : new Date().toISOString(),
+  restockedAt: order.restockedAt ? order.restockedAt.toISOString() : null,
+  cart: order.cart || [],
+  idemKey: order.idemKey || "",
+  createdAt: serverTimestamp(),
+  updatedAt: serverTimestamp(),
+};
 }
 
 function orderFromCloudDoc(id, d) {
@@ -222,7 +223,9 @@ function orderFromCloudDoc(id, d) {
     orderNo: d.orderNo,
     worker: d.worker,
     payment: d.payment,
-    paymentBreakdown: Array.isArray(d.paymentBreakdown) ? d.paymentBreakdown : [],
+    paymentParts: Array.isArray(d.paymentParts)
+  ? d.paymentParts.map((p) => ({ method: p.method, amount: Number(p.amount || 0) }))
+  : [],
 
     orderType: d.orderType,
     deliveryFee: Number(d.deliveryFee || 0),
@@ -387,6 +390,17 @@ function buildReceiptHTML(order, widthMm = 80) {
 
   const grandTotal =
     order.total != null ? Number(order.total || 0) : itemsSubtotal + deliveryFee;
+  const paymentBreakdownHtml =
+  Array.isArray(order.paymentParts) && order.paymentParts.length
+    ? order.paymentParts
+        .map(
+          (pp) => `
+      <div class="row"><div>${escHtml(pp.method)}</div><div>${currency(pp.amount)}</div></div>
+    `
+        )
+        .join("")
+    : "";
+
 
   const rowsHtml = (order.cart || [])
     .map((ci) => {
@@ -425,25 +439,13 @@ function buildReceiptHTML(order, widthMm = 80) {
   `
       : "";
 
-  const paymentBreakdownBlock =
-  Array.isArray(order.paymentBreakdown) && order.paymentBreakdown.length > 0
-    ? order.paymentBreakdown
-        .map((p) => `
-          <div class="row"><div>Paid via ${escHtml(p.method)}</div><div>${currency(Number(p.amount || 0))}</div></div>
-        `)
-        .join("")
-    : "";
-
-const cashBlock =
-  ((Array.isArray(order.paymentBreakdown)
-      ? order.paymentBreakdown.some((p) => p.method === "Cash")
-      : order.payment === "Cash") &&
-    order.cashReceived != null)
-    ? `
-      <div class="row"><div>Cash Received</div><div>${currency(order.cashReceived)}</div></div>
-      <div class="row"><div>Change</div><div>${currency(order.changeDue || 0)}</div></div>
-    `
-    : "";
+ const cashBlock = (() => {
+  if (order.cashReceived == null) return "";
+  return `
+    <div class="row"><div>Cash Received</div><div>${currency(order.cashReceived)}</div></div>
+    <div class="row"><div>Change</div><div>${currency(order.changeDue || 0)}</div></div>
+  `;
+})();
 
 
   return `
@@ -549,13 +551,14 @@ const cashBlock =
     <div class="sep"></div>
 
     <div class="totals">
-      <div class="row"><div>Items Subtotal</div><div>${currency(itemsSubtotal)}</div></div>
-      ${deliveryFee > 0 ? `<div class="row"><div>Delivery Fee</div><div>${currency(deliveryFee)}</div></div>` : ``}
-      <div class="row total"><div>TOTAL</div><div>${currency(grandTotal)}</div></div>
-      ${paymentBreakdownBlock}
-${cashBlock}
+  <div class="row"><div>Items Subtotal</div><div>${currency(itemsSubtotal)}</div></div>
+  ${deliveryFee > 0 ? `<div class="row"><div>Delivery Fee</div><div>${currency(deliveryFee)}</div></div>` : ``}
+  <div class="row total"><div>TOTAL</div><div>${currency(grandTotal)}</div></div>
+  ${paymentBreakdownHtml ? `<div class="row"><div style="font-weight:700">Paid by</div><div></div></div>` : ``}
+  ${paymentBreakdownHtml}
+  ${cashBlock}
+</div>
 
-    </div>
 
     <div class="footer">
       <div class="thanks">Thank you for choosing TUX
@@ -631,9 +634,13 @@ export default function App() {
 
   const [worker, setWorker] = useState("");
   const [payment, setPayment] = useState("");
-  const [useSecondPay, setUseSecondPay] = useState(false);
-const [payment2, setPayment2] = useState("");
-const [secondAmount, setSecondAmount] = useState(0);
+  // Split payment support
+const [splitPay, setSplitPay] = useState(false);
+const [payA, setPayA] = useState("");
+const [payB, setPayB] = useState("");
+const [amtA, setAmtA] = useState(0);
+const [amtB, setAmtB] = useState(0);
+const [cashReceivedSplit, setCashReceivedSplit] = useState(0);
 
   const [orderNote, setOrderNote] = useState("");
   const [orderType, setOrderType] = useState(orderTypes[0] || "Take-Away");
@@ -1419,55 +1426,54 @@ const multiplyUses = (uses = {}, factor = 1) => {
       return alert("Start a shift first (Shift → Start Shift).");
     if (cart.length === 0) return alert("Cart is empty.");
     if (!worker) return alert("Select worker.");
-    if (!payment) return alert("Select payment.");
     if (!orderType) return alert("Select order type.");
 
-   // Rebuild per-unit uses from current menu/extras, then multiply by qty
-const cartWithUses = cart.map((line) => {
-  const baseItem = menu.find((m) => m.id === line.id);
-  const unitUses = { ...(baseItem?.uses || {}) };
+    // When NOT split, a single payment is required
+    if (!splitPay && !payment) return alert("Select payment.");
 
-  for (const ex of line.extras || []) {
-    const exDef = extraList.find((e) => e.id === ex.id) || ex;
-    const exUses = exDef.uses || {};
-    for (const k of Object.keys(exUses)) {
-      unitUses[k] = (unitUses[k] || 0) + Number(exUses[k] || 0);
+    // Rebuild per-unit uses from current menu/extras, then multiply by qty
+    const cartWithUses = cart.map((line) => {
+      const baseItem = menu.find((m) => m.id === line.id);
+      const unitUses = { ...(baseItem?.uses || {}) };
+
+      for (const ex of line.extras || []) {
+        const exDef = extraList.find((e) => e.id === ex.id) || ex;
+        const exUses = exDef.uses || {};
+        for (const k of Object.keys(exUses)) {
+          unitUses[k] = (unitUses[k] || 0) + Number(exUses[k] || 0);
+        }
+      }
+
+      const qty = Math.max(1, Number(line.qty || 1));
+      return { ...line, uses: multiplyUses(unitUses, qty) };
+    });
+
+    // Stock check using rebuilt uses
+    const required = {};
+    for (const line of cartWithUses) {
+      for (const k of Object.keys(line.uses || {})) {
+        required[k] = (required[k] || 0) + Number(line.uses[k] || 0);
+      }
     }
-  }
-
-  const qty = Math.max(1, Number(line.qty || 1));
-  return { ...line, uses: multiplyUses(unitUses, qty) };
-});
-
-// Stock check using rebuilt uses
-const required = {};
-for (const line of cartWithUses) {
-  for (const k of Object.keys(line.uses || {})) {
-    required[k] = (required[k] || 0) + Number(line.uses[k] || 0);
-  }
-}
-for (const k of Object.keys(required)) {
-  const invItem = invById[k];
-  if (!invItem) continue;
-  if ((invItem.qty || 0) < required[k]) {
-    return alert(
-      `Not enough ${invItem.name} in stock. Need ${required[k]} ${invItem.unit}, have ${invItem.qty} ${invItem.unit}.`
+    for (const k of Object.keys(required)) {
+      const invItem = invById[k];
+      if (!invItem) continue;
+      if ((invItem.qty || 0) < required[k]) {
+        return alert(
+          `Not enough ${invItem.name} in stock. Need ${required[k]} ${invItem.unit}, have ${invItem.qty} ${invItem.unit}.`
+        );
+      }
+    }
+    // Deduct locally
+    setInventory((inv) =>
+      inv.map((it) => {
+        const need = Number(required[it.id] || 0);
+        return need ? { ...it, qty: it.qty - need } : it;
+      })
     );
-  }
-}
-// Deduct locally
-setInventory((inv) =>
-  inv.map((it) => {
-    const need = Number(required[it.id] || 0);
-    return need ? { ...it, qty: it.qty - need } : it;
-  })
-);
-
 
     // Totals
-    
-const itemsTotal = cartWithUses.reduce((s, b) => {
-
+    const itemsTotal = cartWithUses.reduce((s, b) => {
       const ex = (b.extras || []).reduce((t, e) => t + Number(e.price || 0), 0);
       return s + (Number(b.price || 0) + ex) * Number(b.qty || 1);
     }, 0);
@@ -1475,31 +1481,38 @@ const itemsTotal = cartWithUses.reduce((s, b) => {
       orderType === "Delivery" ? Math.max(0, Number(deliveryFee || 0)) : 0;
     const total = itemsTotal + delFee;
 
-    // Split payment (optional)
-const secAmt = useSecondPay ? Math.max(0, Math.min(Number(secondAmount || 0), total)) : 0;
-if (useSecondPay) {
-  if (!payment2) return alert("Select second payment method.");
-  if (payment2 === payment) return alert("Second payment method must be different.");
-  if (!(secAmt > 0 && secAmt < total))
-    return alert("Second method amount must be between 0 and TOTAL.");
-}
-const firstAmt = total - secAmt;
-const paymentBreakdown = useSecondPay
-  ? [{ method: payment, amount: firstAmt }, { method: payment2, amount: secAmt }]
-  : [{ method: payment, amount: total }];
-const paymentLabel = useSecondPay ? `${payment} + ${payment2}` : payment;
+    // Build payment label & parts
+    let paymentLabel = payment;
+    let paymentParts = [];
 
-// Cash portion/change (only for the cash part of the split)
-const cashPortion =
-  payment === "Cash" ? firstAmt :
-  (useSecondPay && payment2 === "Cash" ? secAmt : 0);
-const cashVal =
-  payment === "Cash" || (useSecondPay && payment2 === "Cash")
-    ? Number(cashReceived || 0)
-    : null;
-const changeDue =
-  cashVal != null ? Math.max(0, Number(cashVal - cashPortion)) : null;
+    if (splitPay) {
+      if (!payA || !payB) return alert("Choose two payment methods.");
+      if (payA === payB) return alert("Choose two different methods for split.");
+      const a = Math.max(0, Number(amtA || 0));
+      const b = Math.max(0, Number(amtB || 0));
+      const sum = Number((a + b).toFixed(2));
+      if (sum !== Number(total.toFixed(2))) {
+        return alert(`Split amounts must equal total (E£${total.toFixed(2)}).`);
+      }
+      paymentLabel = `${payA}+${payB}`;
+      paymentParts = [{ method: payA, amount: a }, { method: payB, amount: b }];
+    } else {
+      paymentParts = [{ method: payment || "Unknown", amount: total }];
+    }
 
+    // Cash handling (single or split)
+    let cashVal = null;
+    let changeDue = null;
+    if (splitPay) {
+      const cashPart = paymentParts.find((p) => p.method === "Cash");
+      if (cashPart) {
+        cashVal = Number(cashReceivedSplit || 0);
+        changeDue = Math.max(0, cashVal - Number(cashPart.amount || 0));
+      }
+    } else if (payment === "Cash") {
+      cashVal = Number(cashReceived || 0);
+      changeDue = Math.max(0, cashVal - total);
+    }
 
     // Use current local nextOrderNo immediately (to keep print in the click gesture)
     let optimisticNo = nextOrderNo;
@@ -1508,16 +1521,15 @@ const changeDue =
       orderNo: optimisticNo,
       date: new Date(),
       worker,
-     payment: paymentLabel,
-paymentBreakdown,
-
+      payment: paymentLabel,
+      paymentParts,
       orderType,
       deliveryFee: delFee,
       total,
       itemsTotal,
       cashReceived: cashVal,
       changeDue,
-        cart: cartWithUses,
+      cart: cartWithUses,
       done: false,
       voided: false,
       restockedAt: undefined,
@@ -1527,29 +1539,25 @@ paymentBreakdown,
         .slice(2)}`,
     };
 
-    // 🔸 PRINT RIGHT NOW — still inside the user click call stack
+    // PRINT now
     if (autoPrintOnCheckout) {
       printReceiptHTML(order, Number(preferredPaperWidthMm) || 80, "Customer");
     }
 
-    // Optimistically bump local counter so the UI feels instant
+    // Optimistic counter
     setNextOrderNo(optimisticNo + 1);
 
-    // Persist to cloud / allocate atomic order number in the background
+    // Persist to cloud / allocate atomic order number
     let allocatedNo = optimisticNo;
     if (cloudEnabled && counterDocRef && fbUser && db) {
       try {
         allocatedNo = await allocateOrderNoAtomic(db, counterDocRef);
         if (allocatedNo !== optimisticNo) {
-          // if the server gave us a different number, fix it for the stored order
           order.orderNo = allocatedNo;
           setNextOrderNo(allocatedNo + 1);
         }
       } catch (e) {
-        console.warn(
-          "Atomic order number allocation failed, using optimistic number.",
-          e
-        );
+        console.warn("Atomic order number allocation failed, using optimistic number.", e);
       }
     }
 
@@ -1579,10 +1587,17 @@ paymentBreakdown,
     setOrderType(defaultType);
     setDeliveryFee(defaultType === "Delivery" ? defaultDeliveryFee : 0);
     setCashReceived(0);
+    // reset split
+    setSplitPay(false);
+    setPayA(""); setPayB("");
+    setAmtA(0); setAmtB(0);
+    setCashReceivedSplit(0);
   } finally {
     setIsCheckingOut(false);
   }
 };
+
+  
 
   // --------- Order actions ----------
   const markOrderDone = async (orderNo) => {
@@ -1674,24 +1689,28 @@ paymentBreakdown,
       0
     );
    const byPay = {};
+// seed known methods (optional)
 for (const p of paymentMethods) byPay[p] = 0;
+
 for (const o of validOrders) {
   const itemsOnly = Number(
     o.itemsTotal != null ? o.itemsTotal : o.total - (o.deliveryFee || 0)
   );
-  if (Array.isArray(o.paymentBreakdown) && o.paymentBreakdown.length > 0 && o.total > 0) {
-    for (const pb of o.paymentBreakdown) {
-      const m = pb.method;
-      const share = Number(pb.amount || 0) / Number(o.total || 1);
+
+  if (Array.isArray(o.paymentParts) && o.paymentParts.length) {
+    const sumParts = o.paymentParts.reduce((s, p) => s + Number(p.amount || 0), 0) || o.total || itemsOnly;
+    for (const part of o.paymentParts) {
+      const m = part.method || "Unknown";
+      const share = sumParts ? (Number(part.amount || 0) / sumParts) : 0;
       if (byPay[m] == null) byPay[m] = 0;
-      byPay[m] += itemsOnly * Math.max(0, Math.min(1, share));
+      byPay[m] += itemsOnly * share;
     }
   } else {
-    if (byPay[o.payment] == null) byPay[o.payment] = 0;
-    byPay[o.payment] += itemsOnly;
+    const m = o.payment || "Unknown";
+    if (byPay[m] == null) byPay[m] = 0;
+    byPay[m] += itemsOnly;
   }
 }
-
     const byType = {};
     for (const t of orderTypes) byType[t] = 0;
     for (const o of validOrders) {
@@ -2399,12 +2418,12 @@ for (const o of validOrders) {
   {paymentMethods.map((p) => (
     <button
       key={p}
-      onClick={() => setPayment(p)}
+      onClick={() => { setPayment(p); setSplitPay(false); }}
       style={{
         padding: "8px 10px",
         borderRadius: 8,
         border: `1px solid ${btnBorder}`,
-        background: payment === p ? "#c8e6c9" : "#fff",
+        background: !splitPay && payment === p ? "#c8e6c9" : "#fff",
         cursor: "pointer",
       }}
     >
@@ -2413,68 +2432,66 @@ for (const o of validOrders) {
   ))}
 </div>
 
-{/* Toggle second method */}
-<div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
+{/* Split toggle */}
+<div style={{ marginTop: 8 }}>
   <label>
     <input
       type="checkbox"
-      checked={useSecondPay}
+      checked={splitPay}
       onChange={(e) => {
-        setUseSecondPay(e.target.checked);
-        if (!e.target.checked) {
-          setPayment2("");
-          setSecondAmount(0);
-        }
+        const on = e.target.checked;
+        setSplitPay(on);
+        if (on) setPayment(""); // ignore single payment when split
       }}
     />{" "}
-    Add second method
+    Split into two methods
   </label>
 </div>
 
-{/* Second method + amount */}
-{useSecondPay && (
-  <div style={{ marginTop: 8 }}>
-    <div style={{ marginBottom: 6, fontWeight: 600 }}>Second method & amount</div>
-    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {paymentMethods
-          .filter((m) => m !== payment)
-          .map((m) => (
-            <button
-              key={m}
-              onClick={() => setPayment2(m)}
-              style={{
-                padding: "8px 10px",
-                borderRadius: 8,
-                border: `1px solid ${btnBorder}`,
-                background: payment2 === m ? "#c8e6c9" : "#fff",
-                cursor: "pointer",
-              }}
-            >
-              {m}
-            </button>
-          ))}
-      </div>
-      <label>
-        Amount on 2nd:&nbsp;
-        <input
-          type="number"
-          value={secondAmount}
-          onChange={(e) =>
-            setSecondAmount(Math.max(0, Number(e.target.value || 0)))
-          }
-          style={{ width: 140 }}
-        />
-      </label>
-      <small style={{ opacity: 0.8 }}>
-        (Set the part paid with the second method)
-      </small>
+{/* Split UI */}
+{splitPay && (
+  <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+    <div>
+      <div style={{ marginBottom: 4 }}><b>Method A</b></div>
+      <select
+        value={payA}
+        onChange={(e) => setPayA(e.target.value)}
+        style={{ width: "100%", padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+      >
+        <option value="">Select method</option>
+        {paymentMethods.map((m) => <option key={m} value={m}>{m}</option>)}
+      </select>
+      <input
+        type="number"
+        placeholder="Amount"
+        value={amtA}
+        onChange={(e) => setAmtA(Number(e.target.value || 0))}
+        style={{ width: "100%", marginTop: 6 }}
+      />
+    </div>
+    <div>
+      <div style={{ marginBottom: 4 }}><b>Method B</b></div>
+      <select
+        value={payB}
+        onChange={(e) => setPayB(e.target.value)}
+        style={{ width: "100%", padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+      >
+        <option value="">Select method</option>
+        {paymentMethods.map((m) => <option key={m} value={m}>{m}</option>)}
+      </select>
+      <input
+        type="number"
+        placeholder="Amount"
+        value={amtB}
+        onChange={(e) => setAmtB(Number(e.target.value || 0))}
+        style={{ width: "100%", marginTop: 6 }}
+      />
     </div>
   </div>
 )}
 
-{/* Cash received (for whichever method is Cash) */}
-{(payment === "Cash" || (useSecondPay && payment2 === "Cash")) && (
+{/* Cash inputs */}
+{!splitPay && payment === "Cash" && (
   <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
     <label>
       Cash received:&nbsp;
@@ -2485,39 +2502,50 @@ for (const o of validOrders) {
         style={{ width: 140 }}
       />
     </label>
-    {(() => {
-      const itemsTotalPreview = cart.reduce((s, b) => {
-        const ex = (b.extras || []).reduce(
-          (t, e) => t + Number(e.price || 0),
-          0
-        );
-        return s + (Number(b.price || 0) + ex) * Number(b.qty || 1);
-      }, 0);
-      const orderTotalPreview =
-        itemsTotalPreview +
-        (orderType === "Delivery" ? Number(deliveryFee || 0) : 0);
-      const secondAmt = useSecondPay
-        ? Math.max(0, Number(secondAmount || 0))
-        : 0;
-      const cashPortion =
-        payment === "Cash"
-          ? orderTotalPreview - secondAmt
-          : useSecondPay && payment2 === "Cash"
-          ? secondAmt
-          : 0;
-      const change = Math.max(
-        0,
-        Number(cashReceived || 0) - Math.max(0, cashPortion)
-      );
-      return (
-        <small style={{ opacity: 0.8 }}>
-          Change: <b>E£{change.toFixed(2)}</b>
-        </small>
-      );
-    })()}
+    <small style={{ opacity: 0.8 }}>
+      Change:{" "}
+      <b>
+        E£
+        {(
+          Math.max(
+            0,
+            Number(cashReceived || 0) -
+              (cart.reduce((s, b) => {
+                const ex = (b.extras || []).reduce((t, e) => t + Number(e.price || 0), 0);
+                return s + (Number(b.price || 0) + ex) * Number(b.qty || 1);
+              }, 0) + (orderType === "Delivery" ? Number(deliveryFee || 0) : 0))
+          ) || 0
+        ).toFixed(2)}
+      </b>
+    </small>
   </div>
 )}
 
+{splitPay && (payA === "Cash" || payB === "Cash") && (
+  <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+    <label>
+      Cash received (for cash part):&nbsp;
+      <input
+        type="number"
+        value={cashReceivedSplit}
+        onChange={(e) => setCashReceivedSplit(Number(e.target.value || 0))}
+        style={{ width: 180 }}
+      />
+    </label>
+    <small style={{ opacity: 0.8 }}>
+      Change on cash part:{" "}
+      <b>
+        E£
+        {(() => {
+          const cashAmt = (payA === "Cash" ? amtA : 0) + (payB === "Cash" ? amtB : 0);
+          return Math.max(0, Number(cashReceivedSplit || 0) - Number(cashAmt || 0)).toFixed(2);
+        })()}
+      </b>
+    </small>
+  </div>
+)}
+
+              </div>
 
               {/* Order type group */}
               <div
@@ -2665,24 +2693,17 @@ for (const o of validOrders) {
                   <span>{o.date.toLocaleString()}</span>
                 </div>
                 <div style={{ color: dark ? "#ccc" : "#555", marginTop: 4 }}>
-                  Worker: {o.worker} • Payment: {o.payment} • Type:{" "}
-                  {o.orderType || "-"}
+                  Worker: {o.worker} • Payment: {o.payment}
+                      {Array.isArray(o.paymentParts) && o.paymentParts.length ? (
+                        <> ({o.paymentParts.map(p => `${p.method}: E£${Number(p.amount||0).toFixed(2)}`).join(" + ")})</>
+                      ) : null}
+                       • Type: {o.orderType || "-"}
                   {o.orderType === "Delivery" && (
                     <> • Delivery: E£{Number(o.deliveryFee || 0).toFixed(2)}</>
                   )}
-                  {((o.payment === "Cash") ||
-  (Array.isArray(o.paymentBreakdown) && o.paymentBreakdown.some((pb) => pb.method === "Cash"))) &&
-  o.cashReceived != null && (
-    <> • Cash: E£{o.cashReceived.toFixed(2)} • Change: E£{(o.changeDue || 0).toFixed(2)}</>
-)}
-{Array.isArray(o.paymentBreakdown) && o.paymentBreakdown.length > 0 && (
-  <> • Breakdown: {
-    o.paymentBreakdown.map((pb) =>
-      `${pb.method} E£${Number(pb.amount || 0).toFixed(2)}`
-    ).join(" + ")
-  }</>
-)}
-
+                  {o.payment === "Cash" && o.cashReceived != null && (
+                    <> • Cash: E£{o.cashReceived.toFixed(2)} • Change: E£{(o.changeDue || 0).toFixed(2)}</>
+                  )}
                   {" "}• Status:{" "}
                   <strong>
                     {o.voided ? "Voided & Restocked" : o.done ? "Done" : "Not done"}
@@ -3528,206 +3549,451 @@ for (const o of validOrders) {
             </tbody>
           </table>
 
-          <div
-  style={{
-    display: "flex",
-    gap: 8,
-    alignItems: "center",
-    flexWrap: "wrap",
-    marginBottom: 18,
-  }}
->
-  <input
-    type="text"
-    placeholder="New extra name"
-    value={newExtraName}
-    onChange={(e) => setNewExtraName(e.target.value)}
-    style={{
-      padding: 6,
-      borderRadius: 6,
-      border: `1px solid ${btnBorder}`,
-      minWidth: 220,
-    }}
-  />
-  <input
-    type="number"
-    placeholder="Price (E£)"
-    value={newExtraPrice}
-    onChange={(e) => setNewExtraPrice(Number(e.target.value || 0))}
-    style={{
-      padding: 6,
-      borderRadius: 6,
-      border: `1px solid ${btnBorder}`,
-      width: 160,
-    }}
-  />
-  <button
-    onClick={() => {
-      const name = String(newExtraName || "").trim();
-      if (!name) return alert("Name required.");
-      const id = Date.now();
-      setExtraList((arr) => [
-        ...arr,
-        {
-          id,
-          name,
-          price: Math.max(0, Number(newExtraPrice || 0)),
-          uses: {},
-          color: "#ffffff",
-        },
-      ]);
-      setNewExtraName("");
-      setNewExtraPrice(0);
-    }}
-    style={{
-      background: "#2e7d32",
-      color: "#fff",
-      border: "none",
-      borderRadius: 6,
-      padding: "8px 12px",
-      cursor: "pointer",
-    }}
-  >
-    Add Extra
-  </button>
-</div>
-</div>
-)}
+          {/* Add item */}
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 18 }}>
+            <input
+              type="text"
+              placeholder="New item name"
+              value={newMenuName}
+              onChange={(e) => setNewMenuName(e.target.value)}
+              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 220 }}
+            />
+            <input
+              type="number"
+              placeholder="Price (E£)"
+              value={newMenuPrice}
+              onChange={(e) => setNewMenuPrice(Number(e.target.value || 0))}
+              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 160 }}
+            />
+            <button
+              onClick={() => {
+                const name = String(newMenuName || "").trim();
+                if (!name) return alert("Name required.");
+                const id = Date.now();
+                setMenu((arr) => [...arr, { id, name, price: Math.max(0, Number(newMenuPrice || 0)), uses: {}, color: "#ffffff" }]);
+                setNewMenuName("");
+                setNewMenuPrice(0);
+              }}
+              style={{
+                background: "#2e7d32",
+                color: "#fff",
+                border: "none",
+                borderRadius: 6,
+                padding: "8px 12px",
+                cursor: "pointer",
+              }}
+            >
+              Add Item
+            </button>
+          </div>
 
-{activeTab === "settings" && (
-  <div>
-    <h2>Settings</h2>
+          {/* Extras editor */}
+          <h3>Extras</h3>
+          <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 12 }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Name</th>
+                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Price (E£)</th>
+                <th style={{ textAlign: "center", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Color</th>
+                <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Arrange</th>
+                <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {extraList.map((ex, idx) => (
+                <React.Fragment key={ex.id}>
+                  <tr>
+                    <td style={{ padding: 6 }}>
+                      <input
+                        type="text"
+                        value={ex.name}
+                        onChange={(e) =>
+                          setExtraList((arr) => arr.map((x) => (x.id === ex.id ? { ...x, name: e.target.value } : x)))
+                        }
+                        style={{ width: "100%", padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+                      />
+                    </td>
+                    <td style={{ padding: 6, textAlign: "right" }}>
+                      <input
+                        type="number"
+                        value={ex.price}
+                        onChange={(e) =>
+                          setExtraList((arr) => arr.map((x) => (x.id === ex.id ? { ...x, price: Number(e.target.value || 0) } : x)))
+                        }
+                        style={{ width: 120, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, textAlign: "right" }}
+                      />
+                    </td>
+                    <td style={{ padding: 6, textAlign: "center" }}>
+                      <input
+                        type="color"
+                        value={ex.color || "#ffffff"}
+                        onChange={(e) =>
+                          setExtraList((arr) => arr.map((x) => (x.id === ex.id ? { ...x, color: e.target.value } : x)))
+                        }
+                        style={{ width: 40, height: 28, border: "none", background: "none" }}
+                      />
+                    </td>
+                    <td style={{ padding: 6, textAlign: "center" }}>
+                      <button onClick={() => moveExtraUp(ex.id)} style={{ marginRight: 6 }}>↑</button>
+                      <button onClick={() => moveExtraDown(ex.id)}>↓</button>
+                    </td>
+                    <td style={{ padding: 6 }}>
+                      <button
+                        onClick={() => setOpenExtraConsId((v) => (v === ex.id ? null : ex.id))}
+                        style={{
+                          background: "#455a64",
+                          color: "#fff",
+                          border: "none",
+                          borderRadius: 6,
+                          padding: "6px 10px",
+                          cursor: "pointer",
+                          marginRight: 6,
+                        }}
+                      >
+                        Edit Consumption
+                      </button>
+                      <button
+                        onClick={() => setExtraList((arr) => arr.filter((x) => x.id !== ex.id))}
+                        style={{
+                          background: "#c62828",
+                          color: "#fff",
+                          border: "none",
+                          borderRadius: 6,
+                          padding: "6px 10px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                  {openExtraConsId === ex.id && (
+                    <tr>
+                      <td colSpan={5} style={{ padding: 6, background: dark ? "#151515" : "#fafafa" }}>
+                       <div
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                                columnGap: 16,
+                                rowGap: 14,
+                              }}
+                            >
 
-    <div
-      style={{
-        display: "grid",
-        gap: 12,
-        marginTop: 10,
-        gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-      }}
-    >
-      {/* THEME */}
-      <div
-        style={{
-          border: `1px solid ${btnBorder}`,
-          borderRadius: 8,
-          padding: 10,
-          background: dark ? "#191919" : "#fafafa",
-        }}
-      >
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>Theme</div>
-        <label>
-          <input
-            type="checkbox"
-            checked={dark}
-            onChange={(e) => setDark(e.target.checked)}
-          />{" "}
-          Dark mode
-        </label>
-      </div>
+                          {inventory.map((inv) => {
+                            const cur = Number((ex.uses || {})[inv.id] || 0);
+                            return (
+                              <label
+                                key={inv.id}
+                                style={{
+                                  display: "flex",
+                                  gap: 6,
+                                  alignItems: "center",
+                                  padding: 6,
+                                  borderRadius: 6,
+                                  border: `1px solid ${btnBorder}`,
+                                  background: dark ? "#1e1e1e" : "#fff",
+                                }}
+                              >
+                                <span style={{ minWidth: 120 }}>{inv.name} ({inv.unit})</span>
+                                <input
+                                  type="number"
+                                  value={cur}
+                                  min={0}
+                                  step="any"
+                                  onChange={(e) => {
+                                    const v = Math.max(0, Number(e.target.value || 0));
+                                    setExtraList((arr) =>
+                                      arr.map((x) =>
+                                        x.id === ex.id
+                                          ? {
+                                              ...x,
+                                              uses: v > 0
+                                                ? { ...(x.uses || {}), [inv.id]: v }
+                                                : Object.fromEntries(Object.entries(x.uses || {}).filter(([k]) => k !== inv.id)),
+                                            }
+                                          : x
+                                      )
+                                    );
+                                  }}
+                                  style={{ width: 120 }}
+                                />
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              ))}
+              {extraList.length === 0 && (
+                <tr>
+                  <td colSpan={5} style={{ padding: 8, opacity: 0.8 }}>No extras. Add some below.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
 
-      {/* PRINTING */}
-      <div
-        style={{
-          border: `1px solid ${btnBorder}`,
-          borderRadius: 8,
-          padding: 10,
-          background: dark ? "#191919" : "#fafafa",
-        }}
-      >
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>Printing</div>
-        <label style={{ display: "block", marginBottom: 8 }}>
-          <input
-            type="checkbox"
-            checked={autoPrintOnCheckout}
-            onChange={(e) => setAutoPrintOnCheckout(e.target.checked)}
-          />{" "}
-          Auto-print on checkout
-        </label>
-        <label>
-          Paper width (mm):{" "}
-          <input
-            type="number"
-            value={preferredPaperWidthMm}
-            onChange={(e) =>
-              setPreferredPaperWidthMm(Math.max(58, Number(e.target.value || 80)))
-            }
-            style={{ width: 120 }}
-          />
-        </label>
-      </div>
+          {/* Add extra */}
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 18 }}>
+            <input
+              type="text"
+              placeholder="New extra name"
+              value={newExtraName}
+              onChange={(e) => setNewExtraName(e.target.value)}
+              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 220 }}
+            />
+            <input
+              type="number"
+              placeholder="Price (E£)"
+              value={newExtraPrice}
+              onChange={(e) => setNewExtraPrice(Number(e.target.value || 0))}
+              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 160 }}
+            />
+            <button
+              onClick={() => {
+                const name = String(newExtraName || "").trim();
+                if (!name) return alert("Name required.");
+                const id = Date.now();
+                setExtraList((arr) => [...arr, { id, name, price: Math.max(0, Number(newExtraPrice || 0)), uses: {}, color: "#ffffff" }]);
+                setNewExtraName("");
+                setNewExtraPrice(0);
+              }}
+              style={{
+                background: "#2e7d32",
+                color: "#fff",
+                border: "none",
+                borderRadius: 6,
+                padding: "8px 12px",
+                cursor: "pointer",
+              }}
+            >
+              Add Extra
+            </button>
+          </div>
 
-      {/* CLOUD */}
-      <div
-        style={{
-          border: `1px solid ${btnBorder}`,
-          borderRadius: 8,
-          padding: 10,
-          background: dark ? "#191919" : "#fafafa",
-        }}
-      >
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>Cloud</div>
-        <label style={{ display: "block", marginBottom: 8 }}>
-          <input
-            type="checkbox"
-            checked={cloudEnabled}
-            onChange={(e) => setCloudEnabled(e.target.checked)}
-          />{" "}
-          Enable Firebase sync
-        </label>
-        <label style={{ display: "block", marginBottom: 8 }}>
-          <input
-            type="checkbox"
-            checked={realtimeOrders}
-            onChange={(e) => setRealtimeOrders(e.target.checked)}
-          />{" "}
-          Realtime Orders Board
-        </label>
+          {/* Workers & Payments (moved back to Edit) */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
+            <div style={{ padding: 10, borderRadius: 6, border: `1px solid ${cardBorder}` }}>
+              <h4 style={{ marginTop: 0 }}>Workers</h4>
+              <ul>
+                {workers.map((w) => (
+                  <li key={w} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                    <input
+                      type="text"
+                      value={w}
+                      onChange={(e) =>
+                        setWorkers((arr) => arr.map((x) => (x === w ? e.target.value : x)))
+                      }
+                      style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+                    />
+                    <button
+                      onClick={() => setWorkers((arr) => arr.filter((x) => x !== w))}
+                      style={{ background: "#c62828", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px" }}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  type="text"
+                  placeholder="Add worker"
+                  value={newWorker}
+                  onChange={(e) => setNewWorker(e.target.value)}
+                  style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+                />
+                <button
+                  onClick={() => {
+                    const v = String(newWorker || "").trim();
+                    if (!v) return;
+                    if (workers.includes(v)) return alert("Worker already exists.");
+                    setWorkers((arr) => [...arr, v]);
+                    setNewWorker("");
+                  }}
+                  style={{ background: "#1976d2", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px" }}
+                >
+                  Add
+                </button>
+              </div>
+            </div>
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div style={{ padding: 10, borderRadius: 6, border: `1px solid ${cardBorder}` }}>
+              <h4 style={{ marginTop: 0 }}>Payment Methods</h4>
+              <ul>
+                {paymentMethods.map((p) => (
+                  <li key={p} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                    <input
+                      type="text"
+                      value={p}
+                      onChange={(e) =>
+                        setPaymentMethods((arr) => arr.map((x) => (x === p ? e.target.value : x)))
+                      }
+                      style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+                    />
+                    <button
+                      onClick={() => setPaymentMethods((arr) => arr.filter((x) => x !== p))}
+                      style={{ background: "#c62828", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px" }}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  type="text"
+                  placeholder="Add payment"
+                  value={newPayment}
+                  onChange={(e) => setNewPayment(e.target.value)}
+                  style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+                />
+                <button
+                  onClick={() => {
+                    const v = String(newPayment || "").trim();
+                    if (!v) return;
+                    if (paymentMethods.includes(v)) return alert("Payment method exists.");
+                    setPaymentMethods((arr) => [...arr, v]);
+                    setNewPayment("");
+                  }}
+                  style={{ background: "#1976d2", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px" }}
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+
+         <h4 style={{ marginTop: 0 }}>Admin PINs (locked)</h4>
+<div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8 }}>
+  {[1,2,3,4,5,6].map((n) => {
+    const isUnlocked = !!unlockedPins[n];
+    return (
+      <div key={n} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <span style={{ minWidth: 80 }}>Admin {n}</span>
+        <input
+          type="password"
+          value={isUnlocked ? (adminPins[n] || "") : ""}
+          placeholder="••••"
+          disabled={!isUnlocked}
+          onChange={(e) => {
+            // digits only, up to 6 chars
+            const v = (e.target.value || "").replace(/\D/g, "").slice(0, 6);
+            setAdminPins((p) => ({ ...p, [n]: v }));
+          }}
+          style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+        />
+        {isUnlocked ? (
           <button
-            onClick={saveToCloudNow}
-            style={{
-              background: "#1976d2",
-              color: "#fff",
-              border: "none",
-              borderRadius: 6,
-              padding: "8px 12px",
-              cursor: "pointer",
-            }}
+            onClick={() => lockAdminPin(n)}
+            style={{ background: "#6d4c41", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
           >
-            Save to cloud now
+            Lock
           </button>
+        ) : (
           <button
-            onClick={loadFromCloud}
-            style={{
-              background: "#455a64",
-              color: "#fff",
-              border: "none",
-              borderRadius: 6,
-              padding: "8px 12px",
-              cursor: "pointer",
-            }}
+            onClick={() => unlockAdminPin(n)}
+            style={{ background: "#1976d2", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
           >
-            Load from cloud
+            Unlock
           </button>
-          <div style={{ fontSize: 12, opacity: 0.8, alignSelf: "center" }}>
-            {cloudStatus.lastSaveAt && (
-              <>Last save: {cloudStatus.lastSaveAt.toLocaleString()} • </>
-            )}
-            {cloudStatus.lastLoadAt && (
-              <>Last load: {cloudStatus.lastLoadAt.toLocaleString()} • </>
-            )}
-            {cloudStatus.error && (
-              <span style={{ color: "#c62828" }}>Error: {cloudStatus.error}</span>
-            )}
+        )}
+      </div>
+    );
+  })}
+            </div>
           </div>
         </div>
-      </div>
-    </div>
-  </div>
-)}
+      )}
 
+      {/* SETTINGS */}
+      {activeTab === "settings" && (
+        <div>
+          <h2>Settings</h2>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
+            <div style={{ padding: 10, borderRadius: 6, border: `1px solid ${cardBorder}` }}>
+              <h4 style={{ marginTop: 0 }}>Printing</h4>
+              <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={autoPrintOnCheckout}
+                  onChange={(e) => setAutoPrintOnCheckout(e.target.checked)}
+                />
+                Auto-print on Checkout
+              </label>
+              <div style={{ marginTop: 8 }}>
+                <label>
+                  Paper width (mm):&nbsp;
+                  <input
+                    type="number"
+                    value={preferredPaperWidthMm}
+                    onChange={(e) => setPreferredPaperWidthMm(Math.max(40, Number(e.target.value || 80)))}
+                    style={{ width: 120 }}
+                  />
+                </label>
+                <small style={{ display: "block", opacity: 0.75 }}>
+                  Typical sizes: 80, 58. Your current: {preferredPaperWidthMm} mm.
+                </small>
+              </div>
+            </div>
+
+            <div style={{ padding: 10, borderRadius: 6, border: `1px solid ${cardBorder}` }}>
+              <h4 style={{ marginTop: 0 }}>Display</h4>
+              <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input type="checkbox" checked={dark} onChange={(e) => setDark(e.target.checked)} />
+                Dark theme
+              </label>
+            </div>
+
+            <div style={{ padding: 10, borderRadius: 6, border: `1px solid ${cardBorder}` }}>
+              <h4 style={{ marginTop: 0 }}>Cloud</h4>
+              <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={cloudEnabled}
+                  onChange={(e) => setCloudEnabled(e.target.checked)}
+                />
+                Enable cloud autosave (state)
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={realtimeOrders}
+                  onChange={(e) => setRealtimeOrders(e.target.checked)}
+                />
+                Live Orders Board (realtime)
+              </label>
+             <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+  <button onClick={saveToCloudNow} style={{ background: "#2e7d32", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px" }}>
+    Sync to Cloud
+  </button>
+  <button onClick={loadFromCloud} style={{ background: "#1976d2", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px" }}>
+    Load from Cloud
+  </button>
+  <small style={{ opacity: 0.8 }}>
+    Last save: {cloudStatus.lastSaveAt ? cloudStatus.lastSaveAt.toLocaleString() : "—"} • Last load: {cloudStatus.lastLoadAt ? cloudStatus.lastLoadAt.toLocaleString() : "—"}
+  </small>
+  {cloudStatus.error && (
+    <small style={{ color: "#c62828" }}>Error: {String(cloudStatus.error)}</small>
+  )}
 </div>
-);
+
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
+
+
+
+
+
+
+
+
+
+
+
