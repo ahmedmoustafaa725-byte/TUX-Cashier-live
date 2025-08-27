@@ -2730,58 +2730,58 @@ for (const o of validOrders) {
                       &nbsp;(Default: E£{Number(defaultDeliveryFee || 0).toFixed(2)})
                     </small>
                   </div>
- <div
-    style={{
-      marginTop: 8,
-      display: "grid",
-      gap: 6,
-      maxWidth: 520,
-    }}
-  >
-    <input
-      type="text"
-      placeholder="Customer name"
-      value={deliveryName}
-      onChange={(e) => setDeliveryName(e.target.value)}
-      style={{
-        padding: 6,
-        borderRadius: 6,
-        border: `1px solid ${btnBorder}`,
-        background: dark ? "#1e1e1e" : "white",
-        color: dark ? "#eee" : "#000",
-      }}
-    />
-    <input
-      type="text"
-      placeholder="Phone number"
-      value={deliveryPhone}
-      onChange={(e) => setDeliveryPhone(e.target.value)}
-      style={{
-        padding: 6,
-        borderRadius: 6,
-        border: `1px solid ${btnBorder}`,
-        background: dark ? "#1e1e1e" : "white",
-        color: dark ? "#eee" : "#000",
-      }}
-    />
-    <input
-      type="text"
-      placeholder="Address"
-      value={deliveryAddress}
-      onChange={(e) => setDeliveryAddress(e.target.value)}
-      style={{
-        padding: 6,
-        borderRadius: 6,
-        border: `1px solid ${btnBorder}`,
-        background: dark ? "#1e1e1e" : "white",
-        color: dark ? "#eee" : "#000",
-      }}
-    />
-  </div>
-                )}
-
-              </div>
-            </div>
+                   <div
+                      style={{
+                        marginTop: 8,
+                        display: "grid",
+                        gap: 6,
+                        maxWidth: 520,
+                      }}
+                    >
+                      <input
+                        type="text"
+                        placeholder="Customer name"
+                        value={deliveryName}
+                        onChange={(e) => setDeliveryName(e.target.value)}
+                        style={{
+                          padding: 6,
+                          borderRadius: 6,
+                          border: `1px solid ${btnBorder}`,
+                          background: dark ? "#1e1e1e" : "white",
+                          color: dark ? "#eee" : "#000",
+                        }}
+                      />
+                      <input
+                        type="text"
+                        placeholder="Phone number"
+                        value={deliveryPhone}
+                        onChange={(e) => setDeliveryPhone(e.target.value)}
+                        style={{
+                          padding: 6,
+                          borderRadius: 6,
+                          border: `1px solid ${btnBorder}`,
+                          background: dark ? "#1e1e1e" : "white",
+                          color: dark ? "#eee" : "#000",
+                        }}
+                      />
+                      <input
+                        type="text"
+                        placeholder="Address"
+                        value={deliveryAddress}
+                        onChange={(e) => setDeliveryAddress(e.target.value)}
+                        style={{
+                          padding: 6,
+                          borderRadius: 6,
+                          border: `1px solid ${btnBorder}`,
+                          background: dark ? "#1e1e1e" : "white",
+                          color: dark ? "#eee" : "#000",
+                          }}
+                          />
+                          </div>
+                           )}
+                  
+                                </div>
+                              </div>
 
             {/* Totals + Checkout row */}
             <div
@@ -4383,6 +4383,7 @@ for (const o of validOrders) {
     </div>
   );
 }
+
 
 
 
