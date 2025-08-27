@@ -1478,7 +1478,7 @@ if (orderType === "Delivery") {
   const a = String(deliveryAddress || "").trim();
 
   if (!n || !/^\d{11}$/.test(p) || !a) {
-    return alert("Please enter customer name, phone (11 digits), and address for Delivery.");
+    return alert("Please enter customer name, phone Number (11 digits), and address for Delivery.");
   }
 }
 
@@ -2762,7 +2762,7 @@ for (const o of validOrders) {
   inputMode="numeric"
   pattern="\d{11}"
   maxLength={11}
-  placeholder="Phone (11 digits)"
+  placeholder="Phone Number"
   value={deliveryPhone}
   onChange={(e) => {
     const digits = e.target.value.replace(/\D/g, "").slice(0, 11);
@@ -4390,6 +4390,7 @@ for (const o of validOrders) {
     </div>
   );
 }
+
 
 
 
