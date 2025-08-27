@@ -308,6 +308,12 @@ const DEFAULT_ADMIN_PINS = {
   6: "6666",
 };
 const norm = (v) => String(v ?? "").trim();
+// Orders eligible for "Void → Expense" are any type other than dine-in or take-away
+const isExpenseVoidEligible = (t) => {
+  const k = norm(t).toLowerCase();
+  return !!k && k !== "take-away" && k !== "take away" && k !== "dine-in" && k !== "dine in";
+};
+
 
 // Bulk delete helper (used at endDay)
 async function purgeOrdersInCloud(db, ordersColRef, startDate, endDate) {
@@ -1600,6 +1606,16 @@ const multiplyUses = (uses = {}, factor = 1) => {
   
 
   // --------- Order actions ----------
+  const voidOrderToExpense = async (orderNo) => {
+  const ord = orders.find((o) => o.orderNo === orderNo);
+  if (!ord) return;
+  if (ord.done) return alert("This order is DONE and cannot be voided.");
+  if (ord.voided) return alert("This order is already voided.");
+  if (!isExpenseVoidEligible(ord.orderType)) {
+    return alert("This action is only for non Dine-in / Take-Away orders.");
+  }
+
+  
   const markOrderDone = async (orderNo) => {
     setOrders((o) =>
       o.map((ord) => (ord.orderNo !== orderNo || ord.done ? ord : { ...ord, done: true }))
@@ -1624,11 +1640,110 @@ const multiplyUses = (uses = {}, factor = 1) => {
   };
 
   const voidOrderAndRestock = async (orderNo) => {
-    const ord = orders.find((o) => o.orderNo === orderNo);
-    if (!ord) return;
-    if (ord.done) return alert("This order is DONE and cannot be voided.");
-    if (ord.voided) return alert("This order is already voided & restocked.");
-    if (!window.confirm(`Void order #${orderNo} and restock inventory?`)) return;
+  const ord = orders.find((o) => o.orderNo === orderNo);
+  if (!ord) return;
+  if (ord.done) return alert("This order is DONE and cannot be cancelled.");
+  if (ord.voided) return alert("This order is already cancelled/returned.");
+
+  if (!window.confirm(`Cancel order #${orderNo} and restock inventory?`)) return;
+
+  // Compute items to give back
+  const giveBack = {};
+  for (const line of ord.cart) {
+    const uses = line.uses || {};
+    for (const k of Object.keys(uses)) {
+      giveBack[k] = (giveBack[k] || 0) + (uses[k] || 0);
+    }
+  }
+
+  // Restock locally
+  setInventory((inv) =>
+    inv.map((it) => {
+      const back = giveBack[it.id] || 0;
+      return back ? { ...it, qty: it.qty + back } : it;
+    })
+  );
+
+  // Mark cancelled with restock timestamp
+  const when = new Date();
+  setOrders((o) =>
+    o.map((x) =>
+      x.orderNo === orderNo ? { ...x, voided: true, restockedAt: when } : x
+    )
+  );
+
+  // Cloud update
+  try {
+    if (!cloudEnabled || !ordersColRef || !fbUser) return;
+    let targetId = ord.cloudId;
+    if (!targetId) {
+      const qy = query(ordersColRef, where("orderNo", "==", orderNo));
+      const ss = await getDocs(qy);
+      if (!ss.empty) targetId = ss.docs[0].id;
+    }
+    if (targetId) {
+      await updateDoc(fsDoc(db, "shops", SHOP_ID, "orders", targetId), {
+        voided: true,
+        restockedAt: when.toISOString(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+  } catch (e) {
+    console.warn("Cloud update (cancel/restock) failed:", e);
+  }
+};
+
+   
+  // Use items-only total as the waste amount (delivery fee is not part of items cost)
+  const itemsOnly = ord.itemsTotal != null
+    ? Number(ord.itemsTotal || 0)
+    : Math.max(0, Number(ord.total || 0) - Number(ord.deliveryFee || 0));
+
+  const ok = window.confirm(
+    `Void order #${orderNo} WITHOUT restock and add expense for wasted items (E£${itemsOnly.toFixed(2)})?`
+  );
+  if (!ok) return;
+
+  // 1) Mark voided (no restock)
+  setOrders((o) =>
+    o.map((x) =>
+      x.orderNo === orderNo ? { ...x, voided: true, restockedAt: undefined } : x
+    )
+  );
+
+  // 2) Push an expense row at the top
+  const expRow = {
+    id: `exp_${Date.now()}`,
+    name: `Voided order #${orderNo} — ${ord.orderType || "-"}`,
+    unit: "order",
+    qty: 1,
+    unitPrice: itemsOnly,
+    note: "Customer refused; waste (no restock).",
+    date: new Date(),
+  };
+  setExpenses((arr) => [expRow, ...arr]);
+
+  // 3) Cloud: mark order as voided (no restock timestamp)
+  try {
+    if (cloudEnabled && ordersColRef && fbUser) {
+      let targetId = ord.cloudId;
+      if (!targetId) {
+        const qy = query(ordersColRef, where("orderNo", "==", orderNo));
+        const ss = await getDocs(qy);
+        if (!ss.empty) targetId = ss.docs[0].id;
+      }
+      if (targetId) {
+        await updateDoc(fsDoc(db, "shops", SHOP_ID, "orders", targetId), {
+          voided: true,
+          updatedAt: serverTimestamp(),
+        });
+      }
+    }
+  } catch (e) {
+    console.warn("Cloud update (void→expense) failed:", e);
+  }
+};
+
 
     const giveBack = {};
     for (const line of ord.cart) {
@@ -1810,26 +1925,23 @@ for (const o of validOrders) {
       y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : 28;
       doc.text("Orders", 14, y);
       autoTable(doc, {
-        head: [
-          ["#", "Date", "Worker", "Payment", "Type", "Delivery (E£)", "Total (E£)", "Done", "Voided"],
-        ],
-        body: getSortedOrders().map((o) => [
-          o.orderNo,
-          o.date.toLocaleString(),
-          o.worker,
-          o.payment,
-          o.orderType || "",
-          (o.deliveryFee || 0).toFixed(2),
-          o.total.toFixed(2),
-          o.done ? "Yes" : "No",
-          o.voided ? "Yes" : "No",
-        ]),
-        startY: y + 4,
-        styles: { fontSize: 9 },
-      });
+   head: [["#", "Date", "Worker", "Payment", "Type", "Delivery (E£)", "Total (E£)", "Status"]],
+   body: getSortedOrders().map((o) => [
+     o.orderNo,
+     o.date.toLocaleString(),
+     o.worker,
+     o.payment,
+     o.orderType || "",
+     (o.deliveryFee || 0).toFixed(2),
+     o.total.toFixed(2),
+     o.voided ? (o.restockedAt ? "Cancelled" : "Returned") : (o.done ? "Done" : "Not done"),
+   ]),
+   startY: y + 4,
+   styles: { fontSize: 9 },
+ });
 
       y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : y + 40;
-      doc.text("Totals (excluding voided)", 14, y);
+      doc.text("Totals (excluding canceled/returned)", 14, y);
 
       const totalsBody = [
         ["Revenue (Shift, excl. delivery)", totals.revenueTotal.toFixed(2)],
@@ -2705,12 +2817,14 @@ for (const o of validOrders) {
                     <> • Cash: E£{o.cashReceived.toFixed(2)} • Change: E£{(o.changeDue || 0).toFixed(2)}</>
                   )}
                   {" "}• Status:{" "}
-                  <strong>
-                    {o.voided ? "Voided & Restocked" : o.done ? "Done" : "Not done"}
-                  </strong>
-                  {o.voided && o.restockedAt && (
-                    <span> • Restocked at: {o.restockedAt.toLocaleString()}</span>
-                  )}
+                             <strong>
+                               {o.voided
+                                 ? (o.restockedAt ? "Cancelled" : "Returned")
+                                 : (o.done ? "Done" : "Not done")}
+                             </strong>
+                             {o.voided && o.restockedAt && (
+                               <span> • Cancelled at: {o.restockedAt.toLocaleString()}</span>
+                             )}
                 </div>
 
                 <ul style={{ marginTop: 8, marginBottom: 8 }}>
@@ -2784,8 +2898,8 @@ for (const o of validOrders) {
                   </button>
 
                   <button
-                    onClick={() => voidOrderAndRestock(o.orderNo)}
-                    disabled={o.done || o.voided}
+                   onClick={() => voidOrderAndRestock(o.orderNo)}
+                   disabled={o.done || o.voided}
                     style={{
                       background: o.done || o.voided ? "#ef9a9a" : "#c62828",
                       color: "white",
@@ -2795,8 +2909,25 @@ for (const o of validOrders) {
                       cursor: o.done || o.voided ? "not-allowed" : "pointer",
                     }}
                   >
-                    Void & Restock
+                     Cancel (restock)
                   </button>
+
+                      {!o.done && !o.voided && isExpenseVoidEligible(o.orderType) && (
+                 <button
+                   onClick={() => voidOrderToExpense(o.orderNo)}
+                  style={{
+                    background: "#fb8c00",        // orange
+                    color: "white",
+                    border: "none",
+                    borderRadius: 6,
+                    padding: "6px 10px",
+                    cursor: "pointer",
+                  }}
+  >
+    Returned
+  </button>
+)}
+
                 </div>
               </li>
             ))}
@@ -3986,6 +4117,7 @@ for (const o of validOrders) {
     </div>
   );
 }
+
 
 
 
