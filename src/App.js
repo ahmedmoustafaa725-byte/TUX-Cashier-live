@@ -1,3 +1,7 @@
+the code works fine now i want t be able to edit the order type in the edit tab
+
+here is my app.js code tell me what to add or change
+
 import React, { useEffect, useMemo, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -664,7 +668,25 @@ const [cashReceivedSplit, setCashReceivedSplit] = useState(0);
   const [inventoryLockedAt, setInventoryLockedAt] = useState(null);
 
   const [adminPins, setAdminPins] = useState({ ...DEFAULT_ADMIN_PINS });
+  const [unlockedPins, setUnlockedPins] = useState({}); // {1:true, 2:false, ...}
+  const verifyAdminPin = (n) => {
+  const entered = window.prompt(`Enter PIN for Admin ${n}:`, "");
+  if (entered == null) return false;
+  if (norm(entered) !== norm(adminPins[n] || "")) {
+    alert("Invalid PIN.");
+    return false;
+  }
+  return true;
+};
 
+const unlockAdminPin = (n) => {
+  if (!verifyAdminPin(n)) return;
+  setUnlockedPins((u) => ({ ...u, [n]: true }));
+};
+
+const lockAdminPin = (n) => {
+  setUnlockedPins((u) => ({ ...u, [n]: false }));
+};
 
   const [pricesUnlocked, setPricesUnlocked] = useState(false);
 
@@ -714,11 +736,6 @@ const [cashReceivedSplit, setCashReceivedSplit] = useState(0);
 
   const [localHydrated, setLocalHydrated] = useState(false);
 const [lastLocalEditAt, setLastLocalEditAt] = useState(0);
-  // Edit → Order Types UI
-const [newOrderType, setNewOrderType] = useState("");
-
-
-
 
   /* --------------------------- FIREBASE STATE --------------------------- */
   const [fbReady, setFbReady] = useState(false);
@@ -827,15 +844,7 @@ useEffect(() => { saveLocalPartial({ nextOrderNo }); }, [nextOrderNo]);
 useEffect(() => {
   if (!realtimeOrders) saveLocalPartial({ orders });
 }, [orders, realtimeOrders]);
-
-useEffect(() => {
-  if (!orderTypes.includes(orderType)) {
-    const def = orderTypes[0] || "";
-    setOrderType(def);
-    setDeliveryFee(def === "Delivery" ? (defaultDeliveryFee || 0) : 0);
-  }
-}, [orderTypes, orderType, defaultDeliveryFee]);
-
+/* === END MIRROR === */
 
   /* === ADD BELOW THIS LINE (timestamp local edits) === */
 
@@ -2029,12 +2038,6 @@ for (const o of validOrders) {
       if (idx < 0) return arr;
       return moveByIndex(arr, idx, +1);
     });
-  // Reorder helpers for Workers & Payment Methods
-const moveWorkerUp   = (idx) => setWorkers((arr) => moveByIndex(arr, idx, -1));
-const moveWorkerDown = (idx) => setWorkers((arr) => moveByIndex(arr, idx, +1));
-const movePayUp      = (idx) => setPaymentMethods((arr) => moveByIndex(arr, idx, -1));
-const movePayDown    = (idx) => setPaymentMethods((arr) => moveByIndex(arr, idx, +1));
-
 
   const cardBorder = dark ? "#555" : "#ddd";
   const softBg = dark ? "#1e1e1e" : "#f5f5f5";
@@ -3494,172 +3497,6 @@ const movePayDown    = (idx) => setPaymentMethods((arr) => moveByIndex(arr, idx,
       {activeTab === "edit" && (
         <div>
           <h2>Edit</h2>
-       {/* People / Payment / Order Types side-by-side */}
-<div
-  style={{
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-    gap: 12,
-    marginBottom: 18,
-  }}
->
-  {/* Workers */}
-  <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 8, padding: 10, background: dark ? "#191919" : "#fafafa" }}>
-    <h3 style={{ marginTop: 0 }}>Workers</h3>
-    <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-      {workers.map((w, idx) => (
-        <li key={`${w}_${idx}`} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
-          <input
-            type="text"
-            value={w}
-            onChange={(e) => {
-              const v = e.target.value;
-              setWorkers((arr) => arr.map((x, i) => (i === idx ? v : x)));
-            }}
-            style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-          />
-          <button onClick={() => moveWorkerUp(idx)}>↑</button>
-          <button onClick={() => moveWorkerDown(idx)}>↓</button>
-          <button
-            onClick={() => setWorkers((arr) => arr.filter((_, i) => i !== idx))}
-            style={{ background: "#c62828", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
-          >
-            Remove
-          </button>
-        </li>
-      ))}
-    </ul>
-    <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-      <input
-        type="text"
-        placeholder="Add worker"
-        value={newWorker}
-        onChange={(e) => setNewWorker(e.target.value)}
-        style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-      />
-      <button
-        onClick={() => {
-          const name = String(newWorker || "").trim();
-          if (!name) return alert("Worker name required.");
-          if (workers.some((x) => x.toLowerCase() === name.toLowerCase()))
-            return alert("This worker already exists.");
-          setWorkers((arr) => [...arr, name]);
-          setNewWorker("");
-        }}
-        style={{ background: "#2e7d32", color: "#fff", border: "none", borderRadius: 6, padding: "8px 12px", cursor: "pointer" }}
-      >
-        Add
-      </button>
-    </div>
-  </div>
-
-  {/* Payment Methods */}
-  <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 8, padding: 10, background: dark ? "#191919" : "#fafafa" }}>
-    <h3 style={{ marginTop: 0 }}>Payment Methods</h3>
-    <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-      {paymentMethods.map((p, idx) => (
-        <li key={`${p}_${idx}`} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
-          <input
-            type="text"
-            value={p}
-            onChange={(e) => {
-              const v = e.target.value;
-              setPaymentMethods((arr) => arr.map((x, i) => (i === idx ? v : x)));
-            }}
-            style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-          />
-          <button onClick={() => movePayUp(idx)}>↑</button>
-          <button onClick={() => movePayDown(idx)}>↓</button>
-          <button
-            onClick={() => setPaymentMethods((arr) => arr.filter((_, i) => i !== idx))}
-            style={{ background: "#c62828", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
-          >
-            Remove
-          </button>
-        </li>
-      ))}
-    </ul>
-    <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-      <input
-        type="text"
-        placeholder="Add payment method"
-        value={newPayment}
-        onChange={(e) => setNewPayment(e.target.value)}
-        style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-      />
-      <button
-        onClick={() => {
-          const name = String(newPayment || "").trim();
-          if (!name) return alert("Payment method required.");
-          if (paymentMethods.some((x) => x.toLowerCase() === name.toLowerCase()))
-            return alert("This method already exists.");
-          setPaymentMethods((arr) => [...arr, name]);
-          setNewPayment("");
-        }}
-        style={{ background: "#2e7d32", color: "#fff", border: "none", borderRadius: 6, padding: "8px 12px", cursor: "pointer" }}
-      >
-        Add
-      </button>
-    </div>
-  </div>
-
-  {/* Order Types (moved here) */}
-  <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 8, padding: 10, background: dark ? "#191919" : "#fafafa" }}>
-    <h3 style={{ marginTop: 0 }}>Order Types</h3>
-    <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-      {orderTypes.map((t, idx) => (
-        <li key={`${t}_${idx}`} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
-          <input
-            type="text"
-            value={t}
-            onChange={(e) => {
-              const v = String(e.target.value || "").trim();
-              setOrderTypes((arr) => arr.map((x, i) => (i === idx ? v : x)));
-            }}
-            style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-          />
-          <button onClick={() => setOrderTypes((arr) => moveByIndex(arr, idx, -1))}>↑</button>
-          <button onClick={() => setOrderTypes((arr) => moveByIndex(arr, idx, +1))}>↓</button>
-          <button
-            onClick={() => setOrderTypes((arr) => arr.filter((_, i) => i !== idx))}
-            style={{ background: "#c62828", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
-          >
-            Remove
-          </button>
-        </li>
-      ))}
-      {orderTypes.length === 0 && (
-        <li style={{ opacity: 0.8, padding: 6 }}>No order types. Add some below.</li>
-      )}
-    </ul>
-    <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-      <input
-        type="text"
-        placeholder="Add order type (e.g., Delivery)"
-        value={newOrderType}
-        onChange={(e) => setNewOrderType(e.target.value)}
-        style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-      />
-      <button
-        onClick={() => {
-          const name = String(newOrderType || "").trim();
-          if (!name) return alert("Type name required.");
-          if (orderTypes.some((x) => x.toLowerCase() === name.toLowerCase()))
-            return alert("That order type already exists.");
-          setOrderTypes((arr) => [...arr, name]);
-          setNewOrderType("");
-        }}
-        style={{ background: "#2e7d32", color: "#fff", border: "none", borderRadius: 6, padding: "8px 12px", cursor: "pointer" }}
-      >
-        Add
-      </button>
-      <small style={{ alignSelf: "center", opacity: 0.75 }}>
-        Keep a type named <b>Delivery</b> to keep the delivery-fee box working.
-      </small>
-    </div>
-  </div>
-</div>
-
 
           {/* Items editor */}
           <h3>Menu Items</h3>
@@ -3707,151 +3544,97 @@ const movePayDown    = (idx) => setPaymentMethods((arr) => moveByIndex(arr, idx,
                         style={{ width: 40, height: 28, border: "none", background: "none" }}
                       />
                     </td>
-                   <td style={{ padding: 6, textAlign: "center" }}>
-  <button onClick={() => moveMenuUp(it.id)} style={{ marginRight: 6 }}>↑</button>
-  <button onClick={() => moveMenuDown(it.id)}>↓</button>
-</td>
+                    <td style={{ padding: 6, textAlign: "center" }}>
+                      <button onClick={() => moveMenuUp(it.id)} style={{ marginRight: 6 }}>↑</button>
+                      <button onClick={() => moveMenuDown(it.id)}>↓</button>
+                    </td>
+                    <td style={{ padding: 6 }}>
+                      <button
+                        onClick={() => setOpenMenuConsId((v) => (v === it.id ? null : it.id))}
+                        style={{
+                          background: "#455a64",
+                          color: "#fff",
+                          border: "none",
+                          borderRadius: 6,
+                          padding: "6px 10px",
+                          cursor: "pointer",
+                          marginRight: 6,
+                        }}
+                      >
+                        Edit Consumption
+                      </button>
+                      <button
+                        onClick={() => setMenu((arr) => arr.filter((x) => x.id !== it.id))}
+                        style={{
+                          background: "#c62828",
+                          color: "#fff",
+                          border: "none",
+                          borderRadius: 6,
+                          padding: "6px 10px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                  {openMenuConsId === it.id && (
+                    <tr>
+                      <td colSpan={5} style={{ padding: 6, background: dark ? "#151515" : "#fafafa" }}>
+                       <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                              columnGap: 16,
+                              rowGap: 14,
+                            }}
+                          >
 
-<td style={{ padding: 6 }}>
-  <button
-    onClick={() => setOpenMenuConsId((v) => (v === it.id ? null : it.id))}
-    style={{
-      background: "#455a64",
-      color: "#fff",
-      border: "none",
-      borderRadius: 6,
-      padding: "6px 10px",
-      cursor: "pointer",
-      marginRight: 6,
-    }}
-  >
-    Edit Consumption
-  </button>
-
-  <button
-    onClick={() => setMenu((arr) => arr.filter((x) => x.id !== it.id))}
-    style={{
-      background: "#c62828",
-      color: "#fff",
-      border: "none",
-      borderRadius: 6,
-      padding: "6px 10px",
-      cursor: "pointer",
-    }}
-  >
-    Remove
-  </button>
-</td>
-
-</tr>
-      {openMenuConsId === it.id && (
-  <tr>
-    <td
-      colSpan={5}
-      style={{ padding: 6, background: dark ? "#151515" : "#fafafa" }}
-    >
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-          columnGap: 16,
-          rowGap: 14,
-        }}
-      >
-        {inventory.map((inv) => {
-          const cur = Number((it.uses || {})[inv.id] || 0);
-          return (
-            <label
-              key={inv.id}
-              style={{
-                display: "flex",
-                gap: 6,
-                alignItems: "center",
-                padding: 6,
-                borderRadius: 6,
-                border: `1px solid ${btnBorder}`,
-                background: dark ? "#1e1e1e" : "#fff",
-              }}
-            >
-              <span style={{ minWidth: 120 }}>
-                {inv.name} ({inv.unit})
-              </span>
-              <input
-                type="number"
-                value={cur}
-                min={0}
-                step="any"
-                onChange={(e) => {
-                  const v = Number(e.target.value || 0);
-                  setMenu((arr) =>
-                    arr.map((x) => {
-                      if (x.id !== it.id) return x;
-                      const nextUses = { ...(x.uses || {}) };
-                      if (v > 0) nextUses[inv.id] = v;
-                      else delete nextUses[inv.id];
-                      return { ...x, uses: nextUses };
-                    })
-                  );
-                }}
-                style={{ width: 120, marginLeft: 8 }}
-              />
-              <span style={{ marginLeft: 6 }}>
-                {inv.unit} / one {it.name}
-              </span>
-            </label>
-          );
-        })}
-      </div>
-    </td>
-  </tr>
-)}
-
-      </div>
-
-      <div
-        style={{
-          marginTop: 8,
-          display: "flex",
-          gap: 8,
-          flexWrap: "wrap",
-        }}
-      >
-        <button
-          onClick={() =>
-            setMenu((arr) =>
-              arr.map((x) => (x.id === it.id ? { ...x, uses: {} } : x))
-            )
-          }
-          style={{
-            background: "#9e9e9e",
-            color: "#000",
-            border: "none",
-            borderRadius: 6,
-            padding: "6px 10px",
-            cursor: "pointer",
-          }}
-        >
-          Clear All
-        </button>
-
-        <button
-          onClick={() => setOpenMenuConsId(null)}
-          style={{
-            background: "#455a64",
-            color: "#fff",
-            border: "none",
-            borderRadius: 6,
-            padding: "6px 10px",
-            cursor: "pointer",
-          }}
-        >
-          Done
-        </button>
-      </div>
-    </td>
-  </tr>
-)}
-
+                          {inventory.map((inv) => {
+                            const cur = Number((it.uses || {})[inv.id] || 0);
+                            return (
+                              <label
+                                key={inv.id}
+                                style={{
+                                  display: "flex",
+                                  gap: 6,
+                                  alignItems: "center",
+                                  padding: 6,
+                                  borderRadius: 6,
+                                  border: `1px solid ${btnBorder}`,
+                                  background: dark ? "#1e1e1e" : "#fff",
+                                }}
+                              >
+                                <span style={{ minWidth: 120 }}>{inv.name} ({inv.unit})</span>
+                                <input
+                                  type="number"
+                                  value={cur}
+                                  min={0}
+                                  step="any"
+                                  onChange={(e) => {
+                                    const v = Math.max(0, Number(e.target.value || 0));
+                                    setMenu((arr) =>
+                                      arr.map((x) =>
+                                        x.id === it.id
+                                          ? {
+                                              ...x,
+                                              uses: v > 0
+                                                ? { ...(x.uses || {}), [inv.id]: v }
+                                                : Object.fromEntries(Object.entries(x.uses || {}).filter(([k]) => k !== inv.id)),
+                                            }
+                                          : x
+                                      )
+                                    );
+                                  }}
+                                  style={{ width: 120 }}
+                                />
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
                 </React.Fragment>
               ))}
               {menu.length === 0 && (
@@ -4305,18 +4088,6 @@ const movePayDown    = (idx) => setPaymentMethods((arr) => moveByIndex(arr, idx,
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
