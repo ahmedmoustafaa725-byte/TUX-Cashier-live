@@ -1689,12 +1689,15 @@ const voidOrderAndRestock = async (orderNo) => {
   if (!ord) return;
   if (ord.done) return alert("This order is DONE and cannot be cancelled.");
   if (ord.voided) return alert("This order is already cancelled/returned.");
+  // Require a reason
+const reasonRaw = window.prompt(
+  `Reason for CANCEL (restock) — order #${orderNo}:`,
+  ""
+);
+const reason = String(reasonRaw || "").trim();
+if (!reason) return alert("A reason is required.");
+
   if (!window.confirm(`Cancel order #${orderNo} and restock inventory?`)) return;
-   /** NEW: require reason */
-  const reasonRaw = window.prompt(
-    `Reason for CANCEL (restock) — order #${orderNo}:`,
-    ""
-  );
 
   // Compute items to give back
   const giveBack = {};
@@ -1716,10 +1719,13 @@ const voidOrderAndRestock = async (orderNo) => {
   // Mark cancelled with restock timestamp
   const when = new Date();
   setOrders((o) =>
-    o.map((x) =>
-      x.orderNo === orderNo ? { ...x, voided: true, restockedAt: when } : x
-    )
-  );
+  o.map((x) =>
+    x.orderNo === orderNo
+      ? { ...x, voided: true, restockedAt: when, voidReason: reason }
+      : x
+  )
+);
+
 
   // Cloud update
   try {
@@ -1733,6 +1739,8 @@ const voidOrderAndRestock = async (orderNo) => {
     if (targetId) {
       await updateDoc(fsDoc(db, "shops", SHOP_ID, "orders", targetId), {
         voided: true,
+        voidReason: reason,   
+
         restockedAt: when.toISOString(),
         updatedAt: serverTimestamp(),
       });
@@ -1750,6 +1758,14 @@ const voidOrderToExpense = async (orderNo) => {
   if (!isExpenseVoidEligible(ord.orderType)) {
     return alert("This action is only for non Dine-in / Take-Away orders.");
   }
+  // Require a reason
+const reasonRaw = window.prompt(
+  `Reason for RETURN (no restock) — order #${orderNo}:`,
+  ""
+);
+const reason = String(reasonRaw || "").trim();
+if (!reason) return alert("A reason is required.");
+
 
   // Use items-only total as the waste amount (delivery fee isn't item cost)
   const itemsOnly = ord.itemsTotal != null
@@ -1763,10 +1779,13 @@ const voidOrderToExpense = async (orderNo) => {
 
   // 1) Mark voided (no restock)
   setOrders((o) =>
-    o.map((x) =>
-      x.orderNo === orderNo ? { ...x, voided: true, restockedAt: undefined } : x
-    )
-  );
+  o.map((x) =>
+    x.orderNo === orderNo
+      ? { ...x, voided: true, restockedAt: undefined, voidReason: reason }
+      : x
+  )
+);
+
 
   // 2) Push an expense row at the top
   const expRow = {
@@ -1775,7 +1794,7 @@ const voidOrderToExpense = async (orderNo) => {
     unit: "order",
     qty: 1,
     unitPrice: itemsOnly,
-    note: "Customer refused; waste (no restock).",
+    note: reason,
     date: new Date(),
   };
   setExpenses((arr) => [expRow, ...arr]);
@@ -1792,6 +1811,7 @@ const voidOrderToExpense = async (orderNo) => {
       if (targetId) {
         await updateDoc(fsDoc(db, "shops", SHOP_ID, "orders", targetId), {
           voided: true,
+          voidReason: reason,
           updatedAt: serverTimestamp(),
         });
       }
@@ -1946,18 +1966,18 @@ for (const o of validOrders) {
       y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : 28;
       doc.text("Orders", 14, y);
       autoTable(doc, {
-   head: [["#", "Date", "Worker", "Payment", "Type", "Delivery (E£)", "Total (E£)", "Status"]],
+   head: [["#", "Date", "Worker", "Payment", "Type", "Delivery (E£)", "Total (E£)", "Status", "Reason"]],
    body: getSortedOrders().map((o) => [
-     o.orderNo,
-     o.date.toLocaleString(),
-     o.worker,
-     o.payment,
-     o.orderType || "",
-     (o.deliveryFee || 0).toFixed(2),
-     o.total.toFixed(2),
-     o.voided ? (o.restockedAt ? "Cancelled" : "Returned") : (o.done ? "Done" : "Not done"),
-      o.voided ? (o.voidReason || "") : "",
-   ]),
+  o.orderNo,
+  o.date.toLocaleString(),
+  o.worker,
+  o.payment,
+  o.orderType || "",
+  (o.deliveryFee || 0).toFixed(2),
+  o.total.toFixed(2),
+  o.voided ? (o.restockedAt ? "Cancelled" : "Returned") : (o.done ? "Done" : "Not done"),
+  o.voided ? (o.voidReason || "") : "",
+]),
    startY: y + 4,
    styles: { fontSize: 9 },
  });
@@ -2884,12 +2904,11 @@ for (const o of validOrders) {
                              </strong>
                              {o.voided && o.restockedAt && (
                                <span> • Cancelled at: {o.restockedAt.toLocaleString()}</span>
+                              {o.voided && o.voidReason && (
+                            <span> • Reason: {o.voidReason}</span>
+                              )}
+
                              )}
-                          {/* NEW: show reason */}
-                            {o.voided && o.voidReason && (
-                              <span> • Reason: {o.voidReason}</span>
-                            )}
-                          </span>
                 </div>
 
                 <ul style={{ marginTop: 8, marginBottom: 8 }}>
@@ -4367,8 +4386,6 @@ for (const o of validOrders) {
     </div>
   );
 }
-
-
 
 
 
