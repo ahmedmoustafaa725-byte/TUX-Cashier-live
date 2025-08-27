@@ -3892,7 +3892,6 @@ for (const o of validOrders) {
 
 
           {/* Workers / Payments / Order Types — side-by-side */}
-<h3>People & Payments</h3>
 
 <div
   style={{
@@ -4270,6 +4269,7 @@ for (const o of validOrders) {
     </div>
   );
 }
+
 
 
 
