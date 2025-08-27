@@ -621,9 +621,6 @@ function printReceiptHTML(order, widthMm = 80, copy = "Customer", images) {
 export default function App() {
   const [activeTab, setActiveTab] = useState("orders");
   const [dark, setDark] = useState(false);
-  // For adding a new order type in the Edit tab
-const [newOrderType, setNewOrderType] = useState("");
-
 
   const [menu, setMenu] = useState(BASE_MENU);
   const [extraList, setExtraList] = useState(BASE_EXTRAS);
@@ -650,21 +647,18 @@ const [payB, setPayB] = useState("");
 const [amtA, setAmtA] = useState(0);
 const [amtB, setAmtB] = useState(0);
 const [cashReceivedSplit, setCashReceivedSplit] = useState(0);
-
-  const [orderNote, setOrderNote] = useState("");
-  const [orderType, setOrderType] = useState(orderTypes[0] || "Take-Away");
-  const [deliveryFee, setDeliveryFee] = useState(0);
-
-  const [cashReceived, setCashReceived] = useState(0);
-
-  const [inventory, setInventory] = useState(DEFAULT_INVENTORY);
-  const [newInvName, setNewInvName] = useState("");
-  const [newInvUnit, setNewInvUnit] = useState("");
-  const [newInvQty, setNewInvQty] = useState(0);
-
-  const [inventoryLocked, setInventoryLocked] = useState(false);
-  const [inventorySnapshot, setInventorySnapshot] = useState([]);
-  const [inventoryLockedAt, setInventoryLockedAt] = useState(null);
+const [newOrderType, setNewOrderType] = useState("");
+const [orderNote, setOrderNote] = useState("");
+const [orderType, setOrderType] = useState(orderTypes[0] || "Take-Away");
+const [deliveryFee, setDeliveryFee] = useState(0);
+const [cashReceived, setCashReceived] = useState(0);
+const [inventory, setInventory] = useState(DEFAULT_INVENTORY);
+const [newInvName, setNewInvName] = useState("");
+const [newInvUnit, setNewInvUnit] = useState("");
+const [newInvQty, setNewInvQty] = useState(0);
+const [inventoryLocked, setInventoryLocked] = useState(false);
+const [inventorySnapshot, setInventorySnapshot] = useState([]);
+const [inventoryLockedAt, setInventoryLockedAt] = useState(null);
 
   const [adminPins, setAdminPins] = useState({ ...DEFAULT_ADMIN_PINS });
   const [unlockedPins, setUnlockedPins] = useState({}); // {1:true, 2:false, ...}
@@ -860,6 +854,16 @@ useEffect(() => {
   autoPrintOnCheckout, preferredPaperWidthMm, cloudEnabled, realtimeOrders, nextOrderNo
   // (intentionally NOT including `orders`; realtime listener drives those)
 ]);
+
+useEffect(() => {
+  if (!orderTypes.includes(orderType)) {
+    const def = orderTypes[0] || "";
+    setOrderType(def);
+    setDeliveryFee(def === "Delivery" ? (deliveryFee || defaultDeliveryFee) : 0);
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [orderTypes]);
+
 
 
 
@@ -3496,123 +3500,6 @@ for (const o of validOrders) {
       {activeTab === "edit" && (
         <div>
           <h2>Edit</h2>
-       {/* ───────── Order Types editor (add / rename / reorder / remove) ───────── */}
-<h3>Order Types</h3>
-
-<div
-  style={{
-    marginBottom: 12,
-    padding: 10,
-    borderRadius: 6,
-    background: dark ? "#191919" : "#fafafa",
-    border: `1px solid ${btnBorder}`,
-  }}
->
-  <table style={{ width: "100%", borderCollapse: "collapse" }}>
-    <thead>
-      <tr>
-        <th style={{ textAlign: "left",  borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Type</th>
-        <th style={{ textAlign: "center", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Arrange</th>
-        <th style={{ textAlign: "left",  borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Actions</th>
-      </tr>
-    </thead>
-    <tbody>
-      {orderTypes.map((t, idx) => (
-        <tr key={`${t}_${idx}`}>
-          <td style={{ padding: 6 }}>
-            <input
-              type="text"
-              value={t}
-              onChange={(e) => {
-                const v = e.target.value.trim();
-                setOrderTypes((arr) => arr.map((x, i) => (i === idx ? v : x)));
-              }}
-              style={{ width: "100%", padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-            />
-          </td>
-          <td style={{ padding: 6, textAlign: "center" }}>
-            <button onClick={() => setOrderTypes((arr) => moveByIndex(arr, idx, -1))} style={{ marginRight: 6 }}>↑</button>
-            <button onClick={() => setOrderTypes((arr) => moveByIndex(arr, idx, +1))}>↓</button>
-          </td>
-          <td style={{ padding: 6 }}>
-            <button
-              onClick={() => setOrderTypes((arr) => arr.filter((_, i) => i !== idx))}
-              style={{
-                background: "#c62828",
-                color: "#fff",
-                border: "none",
-                borderRadius: 6,
-                padding: "6px 10px",
-                cursor: "pointer",
-              }}
-            >
-              Remove
-            </button>
-          </td>
-        </tr>
-      ))}
-
-      {orderTypes.length === 0 && (
-        <tr>
-          <td colSpan={3} style={{ padding: 8, opacity: 0.8 }}>No order types yet.</td>
-        </tr>
-      )}
-    </tbody>
-  </table>
-
-  {/* Add new type */}
-  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 10 }}>
-    <input
-      type="text"
-      placeholder="New order type (e.g., Delivery, Dine-in)"
-      value={newOrderType}
-      onChange={(e) => setNewOrderType(e.target.value)}
-      style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 240 }}
-    />
-    <button
-      onClick={() => {
-        const v = String(newOrderType || "").trim();
-        if (!v) return alert("Type name required.");
-        if (orderTypes.some((x) => x.toLowerCase() === v.toLowerCase())) {
-          return alert("This type already exists.");
-        }
-        setOrderTypes((arr) => [...arr, v]);
-        setNewOrderType("");
-      }}
-      style={{
-        background: "#2e7d32",
-        color: "#fff",
-        border: "none",
-        borderRadius: 6,
-        padding: "8px 12px",
-        cursor: "pointer",
-      }}
-    >
-      Add Type
-    </button>
-  </div>
-
-  {/* Default delivery fee editor (already used by Orders tab when type === "Delivery") */}
-  <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-    <label>
-      <b>Default Delivery Fee:&nbsp;</b>
-      <input
-        type="number"
-        value={defaultDeliveryFee}
-        onChange={(e) => setDefaultDeliveryFee(Number(e.target.value || 0))}
-        style={{ width: 140, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-      />
-    </label>
-    <small style={{ opacity: 0.8 }}>
-      Tip: keep a type literally named <b>Delivery</b> to auto-apply this fee in the Orders tab.
-    </small>
-  </div>
-
-  <div style={{ marginTop: 8, opacity: 0.75 }}>
-    <small>Note: The first type in the list becomes the default after each checkout.</small>
-  </div>
-</div>
-
 
           {/* Items editor */}
           <h3>Menu Items</h3>
@@ -4081,6 +3968,112 @@ for (const o of validOrders) {
                 </button>
               </div>
             </div>
+                    {/* Order Types editor */}
+<h3>Order Types</h3>
+<table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 12 }}>
+  <thead>
+    <tr>
+      <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Type</th>
+      <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6, textAlign: "center" }}>Arrange</th>
+      <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {orderTypes.map((t, idx) => (
+      <tr key={`${t}_${idx}`}>
+        <td style={{ padding: 6 }}>
+          <input
+            type="text"
+            value={t}
+            onChange={(e) =>
+              setOrderTypes((arr) =>
+                arr.map((x, i) => (i === idx ? e.target.value : x))
+              )
+            }
+            style={{
+              width: "100%",
+              padding: 6,
+              borderRadius: 6,
+              border: `1px solid ${btnBorder}`,
+            }}
+          />
+        </td>
+        <td style={{ padding: 6, textAlign: "center" }}>
+          <button onClick={() => setOrderTypes((arr) => moveByIndex(arr, idx, -1))} style={{ marginRight: 6 }}>↑</button>
+          <button onClick={() => setOrderTypes((arr) => moveByIndex(arr, idx, +1))}>↓</button>
+        </td>
+        <td style={{ padding: 6 }}>
+          <button
+            onClick={() => {
+              const name = t || "";
+              const isDelivery = (name || "").trim().toLowerCase() === "delivery";
+              if (isDelivery && !window.confirm(
+                "You are removing 'Delivery'. Delivery fee logic relies on this exact name. Continue?"
+              )) return;
+              setOrderTypes((arr) => arr.filter((_, i) => i !== idx));
+            }}
+            style={{
+              background: "#c62828",
+              color: "#fff",
+              border: "none",
+              borderRadius: 6,
+              padding: "6px 10px",
+              cursor: "pointer",
+            }}
+          >
+            Remove
+          </button>
+        </td>
+      </tr>
+    ))}
+
+    {orderTypes.length === 0 && (
+      <tr>
+        <td colSpan={3} style={{ padding: 8, opacity: 0.8 }}>
+          No order types. Add one below.
+        </td>
+      </tr>
+    )}
+  </tbody>
+</table>
+
+{/* Add new type */}
+<div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 18 }}>
+  <input
+    type="text"
+    placeholder='e.g. "Take-Away", "Dine-in", "Delivery"'
+    value={newOrderType}
+    onChange={(e) => setNewOrderType(e.target.value)}
+    style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 260 }}
+  />
+  <button
+    onClick={() => {
+      const name = String(newOrderType || "").trim();
+      if (!name) return alert("Type name required.");
+      // avoid case-insensitive duplicates
+      if (orderTypes.map((x) => String(x).trim().toLowerCase()).includes(name.toLowerCase())) {
+        return alert("This type already exists.");
+      }
+      setOrderTypes((arr) => [...arr, name]);
+      setNewOrderType("");
+    }}
+    style={{
+      background: "#2e7d32",
+      color: "#fff",
+      border: "none",
+      borderRadius: 6,
+      padding: "8px 12px",
+      cursor: "pointer",
+    }}
+  >
+    Add Type
+  </button>
+</div>
+
+<small style={{ opacity: 0.75 }}>
+  Tip: keep one type named <b>Delivery</b> (exactly) so your delivery fee logic continues to work without any other code changes.
+</small>
+
 
          <h4 style={{ marginTop: 0 }}>Admin PINs (locked)</h4>
 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8 }}>
@@ -4204,8 +4197,6 @@ for (const o of validOrders) {
     </div>
   );
 }
-
-
 
 
 
