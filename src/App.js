@@ -199,9 +199,9 @@ return {
     : [],
   orderType: order.orderType,
   deliveryFee: order.deliveryFee,
-    deliveryName: order.deliveryName || "",
-  deliveryPhone: order.deliveryPhone || "",
-  deliveryAddress: order.deliveryAddress || "",
+  deliveryName: order.deliveryName || "",
+deliveryPhone: order.deliveryPhone || "",
+deliveryAddress: order.deliveryAddress || "",
 
   total: order.total,
   itemsTotal: order.itemsTotal,
@@ -233,9 +233,9 @@ function orderFromCloudDoc(id, d) {
 
     orderType: d.orderType,
     deliveryFee: Number(d.deliveryFee || 0),
-      deliveryName: d.deliveryName || "",
-  deliveryPhone: d.deliveryPhone || "",
-  deliveryAddress: d.deliveryAddress || "",
+    deliveryName: d.deliveryName || "",
+deliveryPhone: d.deliveryPhone || "",
+deliveryAddress: d.deliveryAddress || "",
 
     total: Number(d.total || 0),
     itemsTotal: Number(d.itemsTotal || 0),
@@ -452,16 +452,16 @@ function buildReceiptHTML(order, widthMm = 80) {
     </div>
   `
       : "";
-  // --- NEW: delivery info block (only for Delivery orders) ---
+  // NEW: Delivery customer info block (prints only for Delivery)
 const deliveryInfoBlock =
   order.orderType === "Delivery"
     ? `
-    <div class="delivery">
-      <div><b>Customer:</b> ${escHtml(order.deliveryName || "-")}</div>
-      <div><b>Phone:</b> ${escHtml(order.deliveryPhone || "-")}</div>
-      <div><b>Address:</b> ${escHtml(order.deliveryAddress || "-")}</div>
-    </div>
-  `
+  <div class="cust">
+    <div class="meta"><strong>Customer:</strong> ${escHtml(order.deliveryName || "")}</div>
+    <div class="meta"><strong>Phone:</strong> ${escHtml(order.deliveryPhone || "")}</div>
+    <div class="meta"><strong>Address:</strong> ${escHtml(order.deliveryAddress || "")}</div>
+  </div>
+`
     : "";
 
 
@@ -517,9 +517,6 @@ const deliveryInfoBlock =
   }
   .note .label{ font-weight:700; font-size:9pt; margin-bottom:1mm; }
   .note .body{ font-size:10pt; white-space: pre-wrap; }
-  .delivery { margin: 1mm 0 2mm; font-size: 10pt; }
-.delivery div { margin: 0.5mm 0; }
-
 
   .table { display:grid; grid-auto-rows:auto; row-gap:1mm; }
   .thead, .tr {
@@ -565,7 +562,6 @@ const deliveryInfoBlock =
 
     ${noteBlock}
     ${deliveryInfoBlock}
-
 
     <div class="sep"></div>
 
@@ -657,11 +653,6 @@ export default function App() {
 
   const [orderTypes, setOrderTypes] = useState(DEFAULT_ORDER_TYPES);
   const [defaultDeliveryFee, setDefaultDeliveryFee] = useState(DEFAULT_DELIVERY_FEE);
-  // Delivery details (only used when orderType === "Delivery")
-const [deliveryName, setDeliveryName] = useState("");
-const [deliveryAddress, setDeliveryAddress] = useState("");
-const [deliveryPhone, setDeliveryPhone] = useState("");
-
 
   const [selectedBurger, setSelectedBurger] = useState(null);
   const [selectedExtras, setSelectedExtras] = useState([]);
@@ -681,6 +672,11 @@ const [newOrderType, setNewOrderType] = useState("");
 const [orderNote, setOrderNote] = useState("");
 const [orderType, setOrderType] = useState(orderTypes[0] || "Take-Away");
 const [deliveryFee, setDeliveryFee] = useState(0);
+  // Delivery customer details (per-order, not persisted globally)
+const [deliveryName, setDeliveryName] = useState("");
+const [deliveryPhone, setDeliveryPhone] = useState("");
+const [deliveryAddress, setDeliveryAddress] = useState("");
+
 const [cashReceived, setCashReceived] = useState(0);
 const [inventory, setInventory] = useState(DEFAULT_INVENTORY);
 const [newInvName, setNewInvName] = useState("");
@@ -893,15 +889,6 @@ useEffect(() => {
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [orderTypes]);
-
-  useEffect(() => {
-  if (orderType !== "Delivery") {
-    setDeliveryName("");
-    setDeliveryAddress("");
-    setDeliveryPhone("");
-  }
-}, [orderType]);
-
 
 
 
@@ -1482,11 +1469,14 @@ const multiplyUses = (uses = {}, factor = 1) => {
 
     // When NOT split, a single payment is required
     if (!splitPay && !payment) return alert("Select payment.");
-    // Require customer details for Delivery
+    // Require delivery details when order type is Delivery
 if (orderType === "Delivery") {
-  if (!String(deliveryName).trim()) return alert("Enter customer name for delivery.");
-  if (!String(deliveryPhone).trim()) return alert("Enter phone number for delivery.");
-  // address can be optional, but capture whatever is typed
+  const n = String(deliveryName || "").trim();
+  const p = String(deliveryPhone || "").trim();
+  const a = String(deliveryAddress || "").trim();
+  if (!n || !p || !a) {
+    return alert("Please enter customer name, phone, and address for Delivery.");
+  }
 }
 
 
@@ -1580,15 +1570,13 @@ if (orderType === "Delivery") {
       orderNo: optimisticNo,
       date: new Date(),
       worker,
-      
       payment: paymentLabel,
       paymentParts,
       orderType,
       deliveryFee: delFee,
-        // --- NEW: customer info for Delivery ---
-  deliveryName: String(deliveryName || "").trim(),
-  deliveryPhone: String(deliveryPhone || "").trim(),
-  deliveryAddress: String(deliveryAddress || "").trim(),
+      deliveryName: (orderType === "Delivery" ? String(deliveryName || "").trim() : ""),
+deliveryPhone: (orderType === "Delivery" ? String(deliveryPhone || "").trim() : ""),
+deliveryAddress: (orderType === "Delivery" ? String(deliveryAddress || "").trim() : ""),
 
       total,
       itemsTotal,
@@ -1652,16 +1640,16 @@ if (orderType === "Delivery") {
     setOrderType(defaultType);
     setDeliveryFee(defaultType === "Delivery" ? defaultDeliveryFee : 0);
     setCashReceived(0);
+    // Clear delivery details
+setDeliveryName("");
+setDeliveryPhone("");
+setDeliveryAddress("");
+
     // reset split
     setSplitPay(false);
     setPayA(""); setPayB("");
     setAmtA(0); setAmtB(0);
     setCashReceivedSplit(0);
-    // reset delivery fields
-setDeliveryName("");
-setDeliveryPhone("");
-setDeliveryAddress("");
-
   } finally {
     setIsCheckingOut(false);
   }
@@ -2715,8 +2703,8 @@ for (const o of validOrders) {
                   ))}
                 </div>
 
-               {orderType === "Delivery" && (
-  <div style={{ marginTop: 8 }}>
+                {orderType === "Delivery" && (
+  <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
     <div>
       <label>
         Delivery fee:&nbsp;
@@ -2732,50 +2720,33 @@ for (const o of validOrders) {
       </small>
     </div>
 
-    <div style={{ marginTop: 8, display: "grid", gap: 6, maxWidth: 520 }}>
-      <input
-        type="text"
-        placeholder="Customer name"
-        value={deliveryName}
-        onChange={(e) => setDeliveryName(e.target.value)}
-        style={{
-          padding: 6,
-          borderRadius: 6,
-          border: `1px solid ${btnBorder}`,
-          background: dark ? "#1e1e1e" : "white",
-          color: dark ? "#eee" : "#000",
-        }}
-      />
-      <input
-        type="text"
-        placeholder="Phone number"
-        value={deliveryPhone}
-        onChange={(e) => setDeliveryPhone(e.target.value)}
-        style={{
-          padding: 6,
-          borderRadius: 6,
-          border: `1px solid ${btnBorder}`,
-          background: dark ? "#1e1e1e" : "white",
-          color: dark ? "#eee" : "#000",
-        }}
-      />
-      <input
-        type="text"
-        placeholder="Address"
-        value={deliveryAddress}
-        onChange={(e) => setDeliveryAddress(e.target.value)}
-        style={{
-          padding: 6,
-          borderRadius: 6,
-          border: `1px solid ${btnBorder}`,
-          background: dark ? "#1e1e1e" : "white",
-          color: dark ? "#eee" : "#000",
-        }}
-      />
-    </div>
+    {/* NEW: Customer details (only for Delivery) */}
+    <input
+      type="text"
+      placeholder="Customer name"
+      value={deliveryName}
+      onChange={(e) => setDeliveryName(e.target.value)}
+      style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+    />
+    <input
+      type="tel"
+      placeholder="Phone number"
+      value={deliveryPhone}
+      onChange={(e) => setDeliveryPhone(e.target.value)}
+      style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+    />
+    <input
+      type="text"
+      placeholder="Address"
+      value={deliveryAddress}
+      onChange={(e) => setDeliveryAddress(e.target.value)}
+      style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+    />
   </div>
 )}
 
+              </div>
+            </div>
 
             {/* Totals + Checkout row */}
             <div
@@ -2894,14 +2865,6 @@ for (const o of validOrders) {
                                <span> • Cancelled at: {o.restockedAt.toLocaleString()}</span>
                              )}
                 </div>
-                  {o.orderType === "Delivery" && (
-  <div style={{ marginTop: 4, color: dark ? "#ccc" : "#555" }}>
-    Customer: <b>{o.deliveryName || "-"}</b> • Phone: {o.deliveryPhone || "-"}
-    <br/>
-    Address: {o.deliveryAddress || "-"}
-  </div>
-)}
-
 
                 <ul style={{ marginTop: 8, marginBottom: 8 }}>
                   {o.cart.map((ci, idx) => (
@@ -4000,6 +3963,7 @@ for (const o of validOrders) {
 
 
           {/* Workers / Payments / Order Types — side-by-side */}
+<h3>People & Payments</h3>
 
 <div
   style={{
@@ -4377,10 +4341,6 @@ for (const o of validOrders) {
     </div>
   );
 }
-
-
-
-
 
 
 
