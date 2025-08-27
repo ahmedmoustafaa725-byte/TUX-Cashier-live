@@ -199,6 +199,10 @@ return {
     : [],
   orderType: order.orderType,
   deliveryFee: order.deliveryFee,
+    deliveryName: order.deliveryName || "",
+  deliveryPhone: order.deliveryPhone || "",
+  deliveryAddress: order.deliveryAddress || "",
+
   total: order.total,
   itemsTotal: order.itemsTotal,
   cashReceived: order.cashReceived ?? null,
@@ -229,6 +233,10 @@ function orderFromCloudDoc(id, d) {
 
     orderType: d.orderType,
     deliveryFee: Number(d.deliveryFee || 0),
+      deliveryName: d.deliveryName || "",
+  deliveryPhone: d.deliveryPhone || "",
+  deliveryAddress: d.deliveryAddress || "",
+
     total: Number(d.total || 0),
     itemsTotal: Number(d.itemsTotal || 0),
     cashReceived: d.cashReceived != null ? Number(d.cashReceived) : null,
@@ -444,6 +452,18 @@ function buildReceiptHTML(order, widthMm = 80) {
     </div>
   `
       : "";
+  // --- NEW: delivery info block (only for Delivery orders) ---
+const deliveryInfoBlock =
+  order.orderType === "Delivery"
+    ? `
+    <div class="delivery">
+      <div><b>Customer:</b> ${escHtml(order.deliveryName || "-")}</div>
+      <div><b>Phone:</b> ${escHtml(order.deliveryPhone || "-")}</div>
+      <div><b>Address:</b> ${escHtml(order.deliveryAddress || "-")}</div>
+    </div>
+  `
+    : "";
+
 
  const cashBlock = (() => {
   if (order.cashReceived == null) return "";
@@ -497,6 +517,9 @@ function buildReceiptHTML(order, widthMm = 80) {
   }
   .note .label{ font-weight:700; font-size:9pt; margin-bottom:1mm; }
   .note .body{ font-size:10pt; white-space: pre-wrap; }
+  .delivery { margin: 1mm 0 2mm; font-size: 10pt; }
+.delivery div { margin: 0.5mm 0; }
+
 
   .table { display:grid; grid-auto-rows:auto; row-gap:1mm; }
   .thead, .tr {
@@ -541,6 +564,8 @@ function buildReceiptHTML(order, widthMm = 80) {
     <div class="meta">Worker: ${escHtml(order.worker)} • Payment: ${escHtml(order.payment)} • Type: ${escHtml(order.orderType || "")}</div>
 
     ${noteBlock}
+    ${deliveryInfoBlock}
+
 
     <div class="sep"></div>
 
@@ -632,6 +657,11 @@ export default function App() {
 
   const [orderTypes, setOrderTypes] = useState(DEFAULT_ORDER_TYPES);
   const [defaultDeliveryFee, setDefaultDeliveryFee] = useState(DEFAULT_DELIVERY_FEE);
+  // Delivery details (only used when orderType === "Delivery")
+const [deliveryName, setDeliveryName] = useState("");
+const [deliveryAddress, setDeliveryAddress] = useState("");
+const [deliveryPhone, setDeliveryPhone] = useState("");
+
 
   const [selectedBurger, setSelectedBurger] = useState(null);
   const [selectedExtras, setSelectedExtras] = useState([]);
@@ -863,6 +893,15 @@ useEffect(() => {
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [orderTypes]);
+
+  useEffect(() => {
+  if (orderType !== "Delivery") {
+    setDeliveryName("");
+    setDeliveryAddress("");
+    setDeliveryPhone("");
+  }
+}, [orderType]);
+
 
 
 
@@ -1443,6 +1482,13 @@ const multiplyUses = (uses = {}, factor = 1) => {
 
     // When NOT split, a single payment is required
     if (!splitPay && !payment) return alert("Select payment.");
+    // Require customer details for Delivery
+if (orderType === "Delivery") {
+  if (!String(deliveryName).trim()) return alert("Enter customer name for delivery.");
+  if (!String(deliveryPhone).trim()) return alert("Enter phone number for delivery.");
+  // address can be optional, but capture whatever is typed
+}
+
 
     // Rebuild per-unit uses from current menu/extras, then multiply by qty
     const cartWithUses = cart.map((line) => {
@@ -1534,10 +1580,16 @@ const multiplyUses = (uses = {}, factor = 1) => {
       orderNo: optimisticNo,
       date: new Date(),
       worker,
+      
       payment: paymentLabel,
       paymentParts,
       orderType,
       deliveryFee: delFee,
+        // --- NEW: customer info for Delivery ---
+  deliveryName: String(deliveryName || "").trim(),
+  deliveryPhone: String(deliveryPhone || "").trim(),
+  deliveryAddress: String(deliveryAddress || "").trim(),
+
       total,
       itemsTotal,
       cashReceived: cashVal,
@@ -1605,6 +1657,11 @@ const multiplyUses = (uses = {}, factor = 1) => {
     setPayA(""); setPayB("");
     setAmtA(0); setAmtB(0);
     setCashReceivedSplit(0);
+    // reset delivery fields
+setDeliveryName("");
+setDeliveryPhone("");
+setDeliveryAddress("");
+
   } finally {
     setIsCheckingOut(false);
   }
@@ -2662,6 +2719,8 @@ for (const o of validOrders) {
                   <div style={{ marginTop: 8 }}>
                     <label>
                       Delivery fee:&nbsp;
+
+
                       <input
                         type="number"
                         value={deliveryFee}
@@ -2674,6 +2733,55 @@ for (const o of validOrders) {
                     </small>
                   </div>
                 )}
+                    <div
+    style={{
+      marginTop: 8,
+      display: "grid",
+      gap: 6,
+      maxWidth: 520,
+    }}
+  >
+    <input
+      type="text"
+      placeholder="Customer name"
+      value={deliveryName}
+      onChange={(e) => setDeliveryName(e.target.value)}
+      style={{
+        padding: 6,
+        borderRadius: 6,
+        border: `1px solid ${btnBorder}`,
+        background: dark ? "#1e1e1e" : "white",
+        color: dark ? "#eee" : "#000",
+      }}
+    />
+    <input
+      type="text"
+      placeholder="Phone number"
+      value={deliveryPhone}
+      onChange={(e) => setDeliveryPhone(e.target.value)}
+      style={{
+        padding: 6,
+        borderRadius: 6,
+        border: `1px solid ${btnBorder}`,
+        background: dark ? "#1e1e1e" : "white",
+        color: dark ? "#eee" : "#000",
+      }}
+    />
+    <input
+      type="text"
+      placeholder="Address"
+      value={deliveryAddress}
+      onChange={(e) => setDeliveryAddress(e.target.value)}
+      style={{
+        padding: 6,
+        borderRadius: 6,
+        border: `1px solid ${btnBorder}`,
+        background: dark ? "#1e1e1e" : "white",
+        color: dark ? "#eee" : "#000",
+      }}
+    />
+  </div>
+
               </div>
             </div>
 
@@ -2794,6 +2902,14 @@ for (const o of validOrders) {
                                <span> • Cancelled at: {o.restockedAt.toLocaleString()}</span>
                              )}
                 </div>
+                  {o.orderType === "Delivery" && (
+  <div style={{ marginTop: 4, color: dark ? "#ccc" : "#555" }}>
+    Customer: <b>{o.deliveryName || "-"}</b> • Phone: {o.deliveryPhone || "-"}
+    <br/>
+    Address: {o.deliveryAddress || "-"}
+  </div>
+)}
+
 
                 <ul style={{ marginTop: 8, marginBottom: 8 }}>
                   {o.cart.map((ci, idx) => (
@@ -4269,6 +4385,7 @@ for (const o of validOrders) {
     </div>
   );
 }
+
 
 
 
