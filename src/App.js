@@ -3097,7 +3097,7 @@ for (const o of validOrders) {
               Add item
             </button>
           </div>
-        </div>
+        
       )};
 
       {/* EXPENSES */}
@@ -4288,6 +4288,7 @@ for (const o of validOrders) {
     </div>
   );
 }
+
 
 
 
