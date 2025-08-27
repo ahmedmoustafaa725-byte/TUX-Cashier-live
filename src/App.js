@@ -199,8 +199,9 @@ return {
     : [],
   orderType: order.orderType,
   deliveryFee: order.deliveryFee,
- 
-  
+    deliveryName: order.deliveryName || "",
+  deliveryPhone: order.deliveryPhone || "",
+  deliveryAddress: order.deliveryAddress || "",
 
   total: order.total,
   itemsTotal: order.itemsTotal,
@@ -232,6 +233,9 @@ function orderFromCloudDoc(id, d) {
 
     orderType: d.orderType,
     deliveryFee: Number(d.deliveryFee || 0),
+      deliveryName: d.deliveryName || "",
+  deliveryPhone: d.deliveryPhone || "",
+  deliveryAddress: d.deliveryAddress || "",
 
     total: Number(d.total || 0),
     itemsTotal: Number(d.itemsTotal || 0),
@@ -2711,74 +2715,106 @@ for (const o of validOrders) {
                   ))}
                 </div>
 
-                {orderType === "Delivery" && (
-                  <div style={{ marginTop: 8 }}>
-                    <label>
-                      Delivery fee:&nbsp;
-
-
-                      <input
-                        type="number"
-                        value={deliveryFee}
-                        onChange={(e) => setDeliveryFee(Number(e.target.value || 0))}
-                        style={{ width: 120 }}
-                      />
-                    </label>
-                    <small style={{ opacity: 0.75 }}>
-                      &nbsp;(Default: E£{Number(defaultDeliveryFee || 0).toFixed(2)})
-                    </small>
-                  </div>
-                )}
-                    <div
-    style={{
-      marginTop: 8,
-      display: "grid",
-      gap: 6,
-      maxWidth: 520,
-    }}
-  >
-    <input
-      type="text"
-      placeholder="Customer name"
-      value={deliveryName}
-      onChange={(e) => setDeliveryName(e.target.value)}
-      style={{
-        padding: 6,
-        borderRadius: 6,
-        border: `1px solid ${btnBorder}`,
-        background: dark ? "#1e1e1e" : "white",
-        color: dark ? "#eee" : "#000",
-      }}
-    />
-    <input
-      type="text"
-      placeholder="Phone number"
-      value={deliveryPhone}
-      onChange={(e) => setDeliveryPhone(e.target.value)}
-      style={{
-        padding: 6,
-        borderRadius: 6,
-        border: `1px solid ${btnBorder}`,
-        background: dark ? "#1e1e1e" : "white",
-        color: dark ? "#eee" : "#000",
-      }}
-    />
-    <input
-      type="text"
-      placeholder="Address"
-      value={deliveryAddress}
-      onChange={(e) => setDeliveryAddress(e.target.value)}
-      style={{
-        padding: 6,
-        borderRadius: 6,
-        border: `1px solid ${btnBorder}`,
-        background: dark ? "#1e1e1e" : "white",
-        color: dark ? "#eee" : "#000",
-      }}
-    />
+                {/* Order type group */}
+<div
+  style={{
+    border: `1px solid ${btnBorder}`,
+    borderRadius: 8,
+    padding: 8,
+    background: dark ? "#191919" : "#fafafa",
+  }}
+>
+  <div style={{ fontWeight: 700, marginBottom: 6 }}>Order Type</div>
+  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+    {orderTypes.map((t) => (
+      <button
+        key={t}
+        onClick={() => {
+          setOrderType(t);
+          setDeliveryFee(t === "Delivery" ? (deliveryFee || defaultDeliveryFee) : 0);
+        }}
+        style={{
+          padding: "8px 10px",
+          borderRadius: 8,
+          border: `1px solid ${btnBorder}`,
+          background: orderType === t ? "#c8e6c9" : "#fff",
+          cursor: "pointer",
+        }}
+      >
+        {t}
+      </button>
+    ))}
   </div>
 
-              </div>
+  {orderType === "Delivery" && (
+    <>
+      <div style={{ marginTop: 8 }}>
+        <label>
+          Delivery fee:&nbsp;
+          <input
+            type="number"
+            value={deliveryFee}
+            onChange={(e) => setDeliveryFee(Number(e.target.value || 0))}
+            style={{ width: 120 }}
+          />
+        </label>
+        <small style={{ opacity: 0.75 }}>
+          &nbsp;(Default: E£{Number(defaultDeliveryFee || 0).toFixed(2)})
+        </small>
+      </div>
+
+      <div
+        style={{
+          marginTop: 8,
+          display: "grid",
+          gap: 6,
+          maxWidth: 520,
+        }}
+      >
+        <input
+          type="text"
+          placeholder="Customer name"
+          value={deliveryName}
+          onChange={(e) => setDeliveryName(e.target.value)}
+          style={{
+            padding: 6,
+            borderRadius: 6,
+            border: `1px solid ${btnBorder}`,
+            background: dark ? "#1e1e1e" : "white",
+            color: dark ? "#eee" : "#000",
+          }}
+        />
+        <input
+          type="text"
+          placeholder="Phone number"
+          value={deliveryPhone}
+          onChange={(e) => setDeliveryPhone(e.target.value)}
+          style={{
+            padding: 6,
+            borderRadius: 6,
+            border: `1px solid ${btnBorder}`,
+            background: dark ? "#1e1e1e" : "white",
+            color: dark ? "#eee" : "#000",
+          }}
+        />
+        <input
+          type="text"
+          placeholder="Address"
+          value={deliveryAddress}
+          onChange={(e) => setDeliveryAddress(e.target.value)}
+          style={{
+            padding: 6,
+            borderRadius: 6,
+            border: `1px solid ${btnBorder}`,
+            background: dark ? "#1e1e1e" : "white",
+            color: dark ? "#eee" : "#000",
+          }}
+        />
+      </div>
+    </>
+  )}
+</div>
+
             </div>
 
             {/* Totals + Checkout row */}
@@ -2898,7 +2934,13 @@ for (const o of validOrders) {
                                <span> • Cancelled at: {o.restockedAt.toLocaleString()}</span>
                              )}
                 </div>
-                 
+                  {o.orderType === "Delivery" && (
+  <div style={{ marginTop: 4, color: dark ? "#ccc" : "#555" }}>
+    Customer: <b>{o.deliveryName || "-"}</b> • Phone: {o.deliveryPhone || "-"}
+    <br/>
+    Address: {o.deliveryAddress || "-"}
+  </div>
+)}
 
 
                 <ul style={{ marginTop: 8, marginBottom: 8 }}>
@@ -4375,9 +4417,6 @@ for (const o of validOrders) {
     </div>
   );
 }
-
-
-
 
 
 
