@@ -3859,29 +3859,47 @@ for (const o of validOrders) {
               style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 160 }}
             />
             <button
-              onClick={() => {
-                const name = String(newExtraName || "").trim();
-                if (!name) return alert("Name required.");
-                const id = Date.now();
-                setExtraList((arr) => [...arr, { id, name, price: Math.max(0, Number(newExtraPrice || 0)), uses: {}, color: "#ffffff" }]);
-                setNewExtraName("");
-                setNewExtraPrice(0);
-              }}
-              style={{
-                background: "#2e7d32",
-                color: "#fff",
-                border: "none",
-                borderRadius: 6,
-                padding: "8px 12px",
-                cursor: "pointer",
-              }}
-            >
-              Add Extra
-            </button>
-          </div>
+  onClick={() => {
+    const name = String(newExtraName || "").trim();
+    if (!name) return alert("Name required.");
+
+    const id = Date.now();
+    setExtraList((arr) => [
+      ...arr,
+      {
+        id,
+        name,
+        price: Math.max(0, Number(newExtraPrice || 0)),
+        uses: {},
+        color: "#ffffff",
+      },
+    ]);
+
+    setNewExtraName("");
+    setNewExtraPrice(0);
+  }}
+  style={{
+    background: "#2e7d32",
+    color: "#fff",
+    border: "none",
+    borderRadius: 6,
+    padding: "8px 12px",
+    cursor: "pointer",
+  }}
+>
+  Add Extra
+</button>
+
 
           {/* Workers & Payments (moved back to Edit) */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
+          <div
+  style={{
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(260px, 1fr))",
+    gap: 12,
+    marginBottom: 16,
+  }}
+>
             <div style={{ padding: 10, borderRadius: 6, border: `1px solid ${cardBorder}` }}>
               <h4 style={{ marginTop: 0 }}>Workers</h4>
               <ul>
@@ -4200,6 +4218,7 @@ for (const o of validOrders) {
     </div>
   );
 }
+
 
 
 
