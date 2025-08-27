@@ -3528,192 +3528,7 @@ for (const o of validOrders) {
             </tbody>
           </table>
 
-          {/* Add item */}
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 18 }}>
-            <input
-              type="text"
-              placeholder="New item name"
-              value={newMenuName}
-              onChange={(e) => setNewMenuName(e.target.value)}
-              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 220 }}
-            />
-            <input
-              type="number"
-              placeholder="Price (E£)"
-              value={newMenuPrice}
-              onChange={(e) => setNewMenuPrice(Number(e.target.value || 0))}
-              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 160 }}
-            />
-            <button
-              onClick={() => {
-                const name = String(newMenuName || "").trim();
-                if (!name) return alert("Name required.");
-                const id = Date.now();
-                setMenu((arr) => [...arr, { id, name, price: Math.max(0, Number(newMenuPrice || 0)), uses: {}, color: "#ffffff" }]);
-                setNewMenuName("");
-                setNewMenuPrice(0);
-              }}
-              style={{
-                background: "#2e7d32",
-                color: "#fff",
-                border: "none",
-                borderRadius: 6,
-                padding: "8px 12px",
-                cursor: "pointer",
-              }}
-            >
-              Add Item
-            </button>
-          </div>
-
-          {/* Extras editor */}
-          <h3>Extras</h3>
-          <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 12 }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Name</th>
-                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Price (E£)</th>
-                <th style={{ textAlign: "center", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Color</th>
-                <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Arrange</th>
-                <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {extraList.map((ex, idx) => (
-                <React.Fragment key={ex.id}>
-                  <tr>
-                    <td style={{ padding: 6 }}>
-                      <input
-                        type="text"
-                        value={ex.name}
-                        onChange={(e) =>
-                          setExtraList((arr) => arr.map((x) => (x.id === ex.id ? { ...x, name: e.target.value } : x)))
-                        }
-                        style={{ width: "100%", padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-                      />
-                    </td>
-                    <td style={{ padding: 6, textAlign: "right" }}>
-                      <input
-                        type="number"
-                        value={ex.price}
-                        onChange={(e) =>
-                          setExtraList((arr) => arr.map((x) => (x.id === ex.id ? { ...x, price: Number(e.target.value || 0) } : x)))
-                        }
-                        style={{ width: 120, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, textAlign: "right" }}
-                      />
-                    </td>
-                    <td style={{ padding: 6, textAlign: "center" }}>
-                      <input
-                        type="color"
-                        value={ex.color || "#ffffff"}
-                        onChange={(e) =>
-                          setExtraList((arr) => arr.map((x) => (x.id === ex.id ? { ...x, color: e.target.value } : x)))
-                        }
-                        style={{ width: 40, height: 28, border: "none", background: "none" }}
-                      />
-                    </td>
-                    <td style={{ padding: 6, textAlign: "center" }}>
-                      <button onClick={() => moveExtraUp(ex.id)} style={{ marginRight: 6 }}>↑</button>
-                      <button onClick={() => moveExtraDown(ex.id)}>↓</button>
-                    </td>
-                    <td style={{ padding: 6 }}>
-                      <button
-                        onClick={() => setOpenExtraConsId((v) => (v === ex.id ? null : ex.id))}
-                        style={{
-                          background: "#455a64",
-                          color: "#fff",
-                          border: "none",
-                          borderRadius: 6,
-                          padding: "6px 10px",
-                          cursor: "pointer",
-                          marginRight: 6,
-                        }}
-                      >
-                        Edit Consumption
-                      </button>
-                      <button
-                        onClick={() => setExtraList((arr) => arr.filter((x) => x.id !== ex.id))}
-                        style={{
-                          background: "#c62828",
-                          color: "#fff",
-                          border: "none",
-                          borderRadius: 6,
-                          padding: "6px 10px",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Remove
-                      </button>
-                    </td>
-                  </tr>
-                  {openExtraConsId === ex.id && (
-                    <tr>
-                      <td colSpan={5} style={{ padding: 6, background: dark ? "#151515" : "#fafafa" }}>
-                       <div
-                              style={{
-                                display: "grid",
-                                gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-                                columnGap: 16,
-                                rowGap: 14,
-                              }}
-                            >
-
-                          {inventory.map((inv) => {
-                            const cur = Number((ex.uses || {})[inv.id] || 0);
-                            return (
-                              <label
-                                key={inv.id}
-                                style={{
-                                  display: "flex",
-                                  gap: 6,
-                                  alignItems: "center",
-                                  padding: 6,
-                                  borderRadius: 6,
-                                  border: `1px solid ${btnBorder}`,
-                                  background: dark ? "#1e1e1e" : "#fff",
-                                }}
-                              >
-                                <span style={{ minWidth: 120 }}>{inv.name} ({inv.unit})</span>
-                                <input
-                                  type="number"
-                                  value={cur}
-                                  min={0}
-                                  step="any"
-                                  onChange={(e) => {
-                                    const v = Math.max(0, Number(e.target.value || 0));
-                                    setExtraList((arr) =>
-                                      arr.map((x) =>
-                                        x.id === ex.id
-                                          ? {
-                                              ...x,
-                                              uses: v > 0
-                                                ? { ...(x.uses || {}), [inv.id]: v }
-                                                : Object.fromEntries(Object.entries(x.uses || {}).filter(([k]) => k !== inv.id)),
-                                            }
-                                          : x
-                                      )
-                                    );
-                                  }}
-                                  style={{ width: 120 }}
-                                />
-                              </label>
-                            );
-                          })}
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              ))}
-              {extraList.length === 0 && (
-                <tr>
-                  <td colSpan={5} style={{ padding: 8, opacity: 0.8 }}>No extras. Add some below.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-
-  <div
+          <div
   style={{
     display: "flex",
     gap: 8,
@@ -3778,6 +3593,7 @@ for (const o of validOrders) {
 </div>
 </div>
 )}
+
 {activeTab === "settings" && (
   <div>
     <h2>Settings</h2>
@@ -3790,6 +3606,7 @@ for (const o of validOrders) {
         gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
       }}
     >
+      {/* THEME */}
       <div
         style={{
           border: `1px solid ${btnBorder}`,
@@ -3809,6 +3626,7 @@ for (const o of validOrders) {
         </label>
       </div>
 
+      {/* PRINTING */}
       <div
         style={{
           border: `1px solid ${btnBorder}`,
@@ -3839,6 +3657,7 @@ for (const o of validOrders) {
         </label>
       </div>
 
+      {/* CLOUD */}
       <div
         style={{
           border: `1px solid ${btnBorder}`,
