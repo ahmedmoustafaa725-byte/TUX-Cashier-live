@@ -199,9 +199,8 @@ return {
     : [],
   orderType: order.orderType,
   deliveryFee: order.deliveryFee,
-    deliveryName: order.deliveryName || "",
-  deliveryPhone: order.deliveryPhone || "",
-  deliveryAddress: order.deliveryAddress || "",
+ 
+  
 
   total: order.total,
   itemsTotal: order.itemsTotal,
@@ -233,9 +232,6 @@ function orderFromCloudDoc(id, d) {
 
     orderType: d.orderType,
     deliveryFee: Number(d.deliveryFee || 0),
-      deliveryName: d.deliveryName || "",
-  deliveryPhone: d.deliveryPhone || "",
-  deliveryAddress: d.deliveryAddress || "",
 
     total: Number(d.total || 0),
     itemsTotal: Number(d.itemsTotal || 0),
@@ -4379,6 +4375,7 @@ for (const o of validOrders) {
     </div>
   );
 }
+
 
 
 
