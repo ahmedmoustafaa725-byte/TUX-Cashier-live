@@ -3085,7 +3085,7 @@ for (const o of validOrders) {
                     setNewInvUnit("");
                     setNewInvQty(0);
                   }}
-                                style={{
+                style={{
                 background: "#1976d2",
                 color: "#fff",
                 border: "none",
@@ -3099,10 +3099,6 @@ for (const o of validOrders) {
           </div>
         </div>
       )}
-
-    </div>
-  );
-}
 
 
       {/* EXPENSES */}
@@ -4293,6 +4289,7 @@ for (const o of validOrders) {
     </div>
   );
 }
+
 
 
 
