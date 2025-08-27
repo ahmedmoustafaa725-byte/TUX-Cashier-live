@@ -1605,46 +1605,35 @@ const multiplyUses = (uses = {}, factor = 1) => {
 
   
 
-  // --------- Order actions ----------
-  const voidOrderToExpense = async (orderNo) => {
-  const ord = orders.find((o) => o.orderNo === orderNo);
-  if (!ord) return;
-  if (ord.done) return alert("This order is DONE and cannot be voided.");
-  if (ord.voided) return alert("This order is already voided.");
-  if (!isExpenseVoidEligible(ord.orderType)) {
-    return alert("This action is only for non Dine-in / Take-Away orders.");
-  }
-
-  
-  const markOrderDone = async (orderNo) => {
-    setOrders((o) =>
-      o.map((ord) => (ord.orderNo !== orderNo || ord.done ? ord : { ...ord, done: true }))
-    );
-    try {
-      if (!cloudEnabled || !ordersColRef || !fbUser) return;
-      let targetId = orders.find((o) => o.orderNo === orderNo)?.cloudId;
-      if (!targetId) {
-        const qy = query(ordersColRef, where("orderNo", "==", orderNo));
-        const ss = await getDocs(qy);
-        if (!ss.empty) targetId = ss.docs[0].id;
-      }
-      if (targetId) {
-        await updateDoc(fsDoc(db, "shops", SHOP_ID, "orders", targetId), {
-          done: true,
-          updatedAt: serverTimestamp(),
-        });
-      }
-    } catch (e) {
-      console.warn("Cloud update (done) failed:", e);
+ // --------- Order actions ----------
+const markOrderDone = async (orderNo) => {
+  setOrders((o) =>
+    o.map((ord) => (ord.orderNo !== orderNo || ord.done ? ord : { ...ord, done: true }))
+  );
+  try {
+    if (!cloudEnabled || !ordersColRef || !fbUser) return;
+    let targetId = orders.find((o) => o.orderNo === orderNo)?.cloudId;
+    if (!targetId) {
+      const qy = query(ordersColRef, where("orderNo", "==", orderNo));
+      const ss = await getDocs(qy);
+      if (!ss.empty) targetId = ss.docs[0].id;
     }
-  };
+    if (targetId) {
+      await updateDoc(fsDoc(db, "shops", SHOP_ID, "orders", targetId), {
+        done: true,
+        updatedAt: serverTimestamp(),
+      });
+    }
+  } catch (e) {
+    console.warn("Cloud update (done) failed:", e);
+  }
+};
 
-  const voidOrderAndRestock = async (orderNo) => {
+const voidOrderAndRestock = async (orderNo) => {
   const ord = orders.find((o) => o.orderNo === orderNo);
   if (!ord) return;
   if (ord.done) return alert("This order is DONE and cannot be cancelled.");
   if (ord.voided) return alert("This order is already cancelled/returned.");
-
   if (!window.confirm(`Cancel order #${orderNo} and restock inventory?`)) return;
 
   // Compute items to give back
@@ -1693,8 +1682,16 @@ const multiplyUses = (uses = {}, factor = 1) => {
   }
 };
 
-   
-  // Use items-only total as the waste amount (delivery fee is not part of items cost)
+const voidOrderToExpense = async (orderNo) => {
+  const ord = orders.find((o) => o.orderNo === orderNo);
+  if (!ord) return;
+  if (ord.done) return alert("This order is DONE and cannot be voided.");
+  if (ord.voided) return alert("This order is already voided.");
+  if (!isExpenseVoidEligible(ord.orderType)) {
+    return alert("This action is only for non Dine-in / Take-Away orders.");
+  }
+
+  // Use items-only total as the waste amount (delivery fee isn't item cost)
   const itemsOnly = ord.itemsTotal != null
     ? Number(ord.itemsTotal || 0)
     : Math.max(0, Number(ord.total || 0) - Number(ord.deliveryFee || 0));
@@ -1743,6 +1740,7 @@ const multiplyUses = (uses = {}, factor = 1) => {
     console.warn("Cloud update (void→expense) failed:", e);
   }
 };
+
 
 
     const giveBack = {};
@@ -4117,6 +4115,7 @@ for (const o of validOrders) {
     </div>
   );
 }
+
 
 
 
