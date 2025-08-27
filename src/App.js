@@ -194,6 +194,8 @@ function normalizeOrderForCloud(order) {
     orderNo: order.orderNo,
     worker: order.worker,
     payment: order.payment,
+    paymentBreakdown: Array.isArray(order.paymentBreakdown) ? order.paymentBreakdown : null,
+
     orderType: order.orderType,
     deliveryFee: order.deliveryFee,
     total: order.total,
@@ -220,6 +222,8 @@ function orderFromCloudDoc(id, d) {
     orderNo: d.orderNo,
     worker: d.worker,
     payment: d.payment,
+    paymentBreakdown: Array.isArray(d.paymentBreakdown) ? d.paymentBreakdown : [],
+
     orderType: d.orderType,
     deliveryFee: Number(d.deliveryFee || 0),
     total: Number(d.total || 0),
@@ -421,13 +425,26 @@ function buildReceiptHTML(order, widthMm = 80) {
   `
       : "";
 
-  const cashBlock =
-    order.payment === "Cash" && order.cashReceived != null
-      ? `
+  const paymentBreakdownBlock =
+  Array.isArray(order.paymentBreakdown) && order.paymentBreakdown.length > 0
+    ? order.paymentBreakdown
+        .map((p) => `
+          <div class="row"><div>Paid via ${escHtml(p.method)}</div><div>${currency(Number(p.amount || 0))}</div></div>
+        `)
+        .join("")
+    : "";
+
+const cashBlock =
+  ((Array.isArray(order.paymentBreakdown)
+      ? order.paymentBreakdown.some((p) => p.method === "Cash")
+      : order.payment === "Cash") &&
+    order.cashReceived != null)
+    ? `
       <div class="row"><div>Cash Received</div><div>${currency(order.cashReceived)}</div></div>
       <div class="row"><div>Change</div><div>${currency(order.changeDue || 0)}</div></div>
     `
-      : "";
+    : "";
+
 
   return `
 <!doctype html>
@@ -535,7 +552,9 @@ function buildReceiptHTML(order, widthMm = 80) {
       <div class="row"><div>Items Subtotal</div><div>${currency(itemsSubtotal)}</div></div>
       ${deliveryFee > 0 ? `<div class="row"><div>Delivery Fee</div><div>${currency(deliveryFee)}</div></div>` : ``}
       <div class="row total"><div>TOTAL</div><div>${currency(grandTotal)}</div></div>
-      ${cashBlock}
+      ${paymentBreakdownBlock}
+${cashBlock}
+
     </div>
 
     <div class="footer">
@@ -612,6 +631,10 @@ export default function App() {
 
   const [worker, setWorker] = useState("");
   const [payment, setPayment] = useState("");
+  const [useSecondPay, setUseSecondPay] = useState(false);
+const [payment2, setPayment2] = useState("");
+const [secondAmount, setSecondAmount] = useState(0);
+
   const [orderNote, setOrderNote] = useState("");
   const [orderType, setOrderType] = useState(orderTypes[0] || "Take-Away");
   const [deliveryFee, setDeliveryFee] = useState(0);
@@ -1452,9 +1475,31 @@ const itemsTotal = cartWithUses.reduce((s, b) => {
       orderType === "Delivery" ? Math.max(0, Number(deliveryFee || 0)) : 0;
     const total = itemsTotal + delFee;
 
-    const cashVal = payment === "Cash" ? Number(cashReceived || 0) : null;
-    const changeDue =
-      payment === "Cash" ? Math.max(0, Number((cashVal || 0) - total)) : null;
+    // Split payment (optional)
+const secAmt = useSecondPay ? Math.max(0, Math.min(Number(secondAmount || 0), total)) : 0;
+if (useSecondPay) {
+  if (!payment2) return alert("Select second payment method.");
+  if (payment2 === payment) return alert("Second payment method must be different.");
+  if (!(secAmt > 0 && secAmt < total))
+    return alert("Second method amount must be between 0 and TOTAL.");
+}
+const firstAmt = total - secAmt;
+const paymentBreakdown = useSecondPay
+  ? [{ method: payment, amount: firstAmt }, { method: payment2, amount: secAmt }]
+  : [{ method: payment, amount: total }];
+const paymentLabel = useSecondPay ? `${payment} + ${payment2}` : payment;
+
+// Cash portion/change (only for the cash part of the split)
+const cashPortion =
+  payment === "Cash" ? firstAmt :
+  (useSecondPay && payment2 === "Cash" ? secAmt : 0);
+const cashVal =
+  payment === "Cash" || (useSecondPay && payment2 === "Cash")
+    ? Number(cashReceived || 0)
+    : null;
+const changeDue =
+  cashVal != null ? Math.max(0, Number(cashVal - cashPortion)) : null;
+
 
     // Use current local nextOrderNo immediately (to keep print in the click gesture)
     let optimisticNo = nextOrderNo;
@@ -1463,7 +1508,9 @@ const itemsTotal = cartWithUses.reduce((s, b) => {
       orderNo: optimisticNo,
       date: new Date(),
       worker,
-      payment,
+     payment: paymentLabel,
+paymentBreakdown,
+
       orderType,
       deliveryFee: delFee,
       total,
@@ -1626,15 +1673,25 @@ const itemsTotal = cartWithUses.reduce((s, b) => {
         ),
       0
     );
-    const byPay = {};
-    for (const p of paymentMethods) byPay[p] = 0;
-    for (const o of validOrders) {
-      const itemsOnly = Number(
-        o.itemsTotal != null ? o.itemsTotal : o.total - (o.deliveryFee || 0)
-      );
-      if (byPay[o.payment] == null) byPay[o.payment] = 0;
-      byPay[o.payment] += itemsOnly;
+   const byPay = {};
+for (const p of paymentMethods) byPay[p] = 0;
+for (const o of validOrders) {
+  const itemsOnly = Number(
+    o.itemsTotal != null ? o.itemsTotal : o.total - (o.deliveryFee || 0)
+  );
+  if (Array.isArray(o.paymentBreakdown) && o.paymentBreakdown.length > 0 && o.total > 0) {
+    for (const pb of o.paymentBreakdown) {
+      const m = pb.method;
+      const share = Number(pb.amount || 0) / Number(o.total || 1);
+      if (byPay[m] == null) byPay[m] = 0;
+      byPay[m] += itemsOnly * Math.max(0, Math.min(1, share));
     }
+  } else {
+    if (byPay[o.payment] == null) byPay[o.payment] = 0;
+    byPay[o.payment] += itemsOnly;
+  }
+}
+
     const byType = {};
     for (const t of orderTypes) byType[t] = 0;
     for (const o of validOrders) {
@@ -2338,63 +2395,129 @@ const itemsTotal = cartWithUses.reduce((s, b) => {
                 }}
               >
                 <div style={{ fontWeight: 700, marginBottom: 6 }}>Payment</div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {paymentMethods.map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => setPayment(p)}
-                      style={{
-                        padding: "8px 10px",
-                        borderRadius: 8,
-                        border: `1px solid ${btnBorder}`,
-                        background: payment === p ? "#c8e6c9" : "#fff",
-                        cursor: "pointer",
-                      }}
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </div>
+<div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+  {paymentMethods.map((p) => (
+    <button
+      key={p}
+      onClick={() => setPayment(p)}
+      style={{
+        padding: "8px 10px",
+        borderRadius: 8,
+        border: `1px solid ${btnBorder}`,
+        background: payment === p ? "#c8e6c9" : "#fff",
+        cursor: "pointer",
+      }}
+    >
+      {p}
+    </button>
+  ))}
+</div>
 
-                {/* Cash received */}
-                {payment === "Cash" && (
-                  <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                    <label>
-                      Cash received:&nbsp;
-                      <input
-                        type="number"
-                        value={cashReceived}
-                        onChange={(e) => setCashReceived(Number(e.target.value || 0))}
-                        style={{ width: 140 }}
-                      />
-                    </label>
-                    <small style={{ opacity: 0.8 }}>
-                      Change:{" "}
-                      <b>
-                        E£
-                        {(
-                          Math.max(
-                            0,
-                            Number(cashReceived || 0) -
-                              (cart.reduce((s, b) => {
-                                const ex = (b.extras || []).reduce(
-                                  (t, e) => t + Number(e.price || 0),
-                                  0
-                                );
-                                return (
-                                  s + (Number(b.price || 0) + ex) * Number(b.qty || 1)
-                                );
-                              }, 0) +
-                                (orderType === "Delivery"
-                                  ? Number(deliveryFee || 0)
-                                  : 0))
-                          ) || 0
-                        ).toFixed(2)}
-                      </b>
-                    </small>
-                  </div>
-                )}
-              </div>
+{/* Toggle second method */}
+<div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
+  <label>
+    <input
+      type="checkbox"
+      checked={useSecondPay}
+      onChange={(e) => {
+        setUseSecondPay(e.target.checked);
+        if (!e.target.checked) {
+          setPayment2("");
+          setSecondAmount(0);
+        }
+      }}
+    />{" "}
+    Add second method
+  </label>
+</div>
+
+{/* Second method + amount */}
+{useSecondPay && (
+  <div style={{ marginTop: 8 }}>
+    <div style={{ marginBottom: 6, fontWeight: 600 }}>Second method & amount</div>
+    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {paymentMethods
+          .filter((m) => m !== payment)
+          .map((m) => (
+            <button
+              key={m}
+              onClick={() => setPayment2(m)}
+              style={{
+                padding: "8px 10px",
+                borderRadius: 8,
+                border: `1px solid ${btnBorder}`,
+                background: payment2 === m ? "#c8e6c9" : "#fff",
+                cursor: "pointer",
+              }}
+            >
+              {m}
+            </button>
+          ))}
+      </div>
+      <label>
+        Amount on 2nd:&nbsp;
+        <input
+          type="number"
+          value={secondAmount}
+          onChange={(e) =>
+            setSecondAmount(Math.max(0, Number(e.target.value || 0)))
+          }
+          style={{ width: 140 }}
+        />
+      </label>
+      <small style={{ opacity: 0.8 }}>
+        (Set the part paid with the second method)
+      </small>
+    </div>
+  </div>
+)}
+
+{/* Cash received (for whichever method is Cash) */}
+{(payment === "Cash" || (useSecondPay && payment2 === "Cash")) && (
+  <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+    <label>
+      Cash received:&nbsp;
+      <input
+        type="number"
+        value={cashReceived}
+        onChange={(e) => setCashReceived(Number(e.target.value || 0))}
+        style={{ width: 140 }}
+      />
+    </label>
+    {(() => {
+      const itemsTotalPreview = cart.reduce((s, b) => {
+        const ex = (b.extras || []).reduce(
+          (t, e) => t + Number(e.price || 0),
+          0
+        );
+        return s + (Number(b.price || 0) + ex) * Number(b.qty || 1);
+      }, 0);
+      const orderTotalPreview =
+        itemsTotalPreview +
+        (orderType === "Delivery" ? Number(deliveryFee || 0) : 0);
+      const secondAmt = useSecondPay
+        ? Math.max(0, Number(secondAmount || 0))
+        : 0;
+      const cashPortion =
+        payment === "Cash"
+          ? orderTotalPreview - secondAmt
+          : useSecondPay && payment2 === "Cash"
+          ? secondAmt
+          : 0;
+      const change = Math.max(
+        0,
+        Number(cashReceived || 0) - Math.max(0, cashPortion)
+      );
+      return (
+        <small style={{ opacity: 0.8 }}>
+          Change: <b>E£{change.toFixed(2)}</b>
+        </small>
+      );
+    })()}
+  </div>
+)}
+
 
               {/* Order type group */}
               <div
@@ -2547,9 +2670,19 @@ const itemsTotal = cartWithUses.reduce((s, b) => {
                   {o.orderType === "Delivery" && (
                     <> • Delivery: E£{Number(o.deliveryFee || 0).toFixed(2)}</>
                   )}
-                  {o.payment === "Cash" && o.cashReceived != null && (
-                    <> • Cash: E£{o.cashReceived.toFixed(2)} • Change: E£{(o.changeDue || 0).toFixed(2)}</>
-                  )}
+                  {((o.payment === "Cash") ||
+  (Array.isArray(o.paymentBreakdown) && o.paymentBreakdown.some((pb) => pb.method === "Cash"))) &&
+  o.cashReceived != null && (
+    <> • Cash: E£{o.cashReceived.toFixed(2)} • Change: E£{(o.changeDue || 0).toFixed(2)}</>
+)}
+{Array.isArray(o.paymentBreakdown) && o.paymentBreakdown.length > 0 && (
+  <> • Breakdown: {
+    o.paymentBreakdown.map((pb) =>
+      `${pb.method} E£${Number(pb.amount || 0).toFixed(2)}`
+    ).join(" + ")
+  }</>
+)}
+
                   {" "}• Status:{" "}
                   <strong>
                     {o.voided ? "Voided & Restocked" : o.done ? "Done" : "Not done"}
@@ -3832,6 +3965,7 @@ const itemsTotal = cartWithUses.reduce((s, b) => {
     </div>
   );
 }
+
 
 
 
