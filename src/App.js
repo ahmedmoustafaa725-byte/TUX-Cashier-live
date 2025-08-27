@@ -1474,8 +1474,9 @@ if (orderType === "Delivery") {
   const n = String(deliveryName || "").trim();
   const p = String(deliveryPhone || "").trim();
   const a = String(deliveryAddress || "").trim();
-  if (!n || !p || !a) {
-    return alert("Please enter customer name, phone, and address for Delivery.");
+
+  if (!n || !/^\d{11}$/.test(p) || !a) {
+    return alert("Please enter customer name, phone (11 digits), and address for Delivery.");
   }
 }
 
@@ -2729,12 +2730,24 @@ for (const o of validOrders) {
       style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
     />
     <input
-      type="tel"
-      placeholder="Phone number"
-      value={deliveryPhone}
-      onChange={(e) => setDeliveryPhone(e.target.value)}
-      style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-    />
+  type="tel"
+  inputMode="numeric"
+  pattern="\d{11}"
+  maxLength={11}
+  placeholder="Phone (11 digits)"
+  value={deliveryPhone}
+  onChange={(e) => {
+    const digits = e.target.value.replace(/\D/g, "").slice(0, 11);
+    setDeliveryPhone(digits);
+  }}
+  onKeyDown={(e) => {
+    const ctrl = e.ctrlKey || e.metaKey;
+    const allowed = ["Backspace","Delete","ArrowLeft","ArrowRight","Home","End","Tab"];
+    if (allowed.includes(e.key) || ctrl) return;
+    if (!/^\d$/.test(e.key)) e.preventDefault(); // block non-digits
+  }}
+  style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+/>
     <input
       type="text"
       placeholder="Address"
@@ -4341,6 +4354,7 @@ for (const o of validOrders) {
     </div>
   );
 }
+
 
 
 
