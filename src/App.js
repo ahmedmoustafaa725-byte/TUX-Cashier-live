@@ -3713,258 +3713,211 @@ for (const o of validOrders) {
             </tbody>
           </table>
 
-          {/* Add extra */}
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 18 }}>
-            <input
-              type="text"
-              placeholder="New extra name"
-              value={newExtraName}
-              onChange={(e) => setNewExtraName(e.target.value)}
-              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 220 }}
-            />
-            <input
-              type="number"
-              placeholder="Price (E£)"
-              value={newExtraPrice}
-              onChange={(e) => setNewExtraPrice(Number(e.target.value || 0))}
-              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 160 }}
-            />
-            <button
-              onClick={() => {
-                const name = String(newExtraName || "").trim();
-                if (!name) return alert("Name required.");
-                const id = Date.now();
-                setExtraList((arr) => [...arr, { id, name, price: Math.max(0, Number(newExtraPrice || 0)), uses: {}, color: "#ffffff" }]);
-                setNewExtraName("");
-                setNewExtraPrice(0);
-              }}
-              style={{
-                background: "#2e7d32",
-                color: "#fff",
-                border: "none",
-                borderRadius: 6,
-                padding: "8px 12px",
-                cursor: "pointer",
-              }}
-            >
-              Add Extra
-            </button>
-          </div>
-
-          {/* Workers & Payments (moved back to Edit) */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
-            <div style={{ padding: 10, borderRadius: 6, border: `1px solid ${cardBorder}` }}>
-              <h4 style={{ marginTop: 0 }}>Workers</h4>
-              <ul>
-                {workers.map((w) => (
-                  <li key={w} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                    <input
-                      type="text"
-                      value={w}
-                      onChange={(e) =>
-                        setWorkers((arr) => arr.map((x) => (x === w ? e.target.value : x)))
-                      }
-                      style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-                    />
-                    <button
-                      onClick={() => setWorkers((arr) => arr.filter((x) => x !== w))}
-                      style={{ background: "#c62828", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px" }}
-                    >
-                      Remove
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <div style={{ display: "flex", gap: 8 }}>
-                <input
-                  type="text"
-                  placeholder="Add worker"
-                  value={newWorker}
-                  onChange={(e) => setNewWorker(e.target.value)}
-                  style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-                />
-                <button
-                  onClick={() => {
-                    const v = String(newWorker || "").trim();
-                    if (!v) return;
-                    if (workers.includes(v)) return alert("Worker already exists.");
-                    setWorkers((arr) => [...arr, v]);
-                    setNewWorker("");
-                  }}
-                  style={{ background: "#1976d2", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px" }}
-                >
-                  Add
-                </button>
-              </div>
-            </div>
-
-            <div style={{ padding: 10, borderRadius: 6, border: `1px solid ${cardBorder}` }}>
-              <h4 style={{ marginTop: 0 }}>Payment Methods</h4>
-              <ul>
-                {paymentMethods.map((p) => (
-                  <li key={p} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                    <input
-                      type="text"
-                      value={p}
-                      onChange={(e) =>
-                        setPaymentMethods((arr) => arr.map((x) => (x === p ? e.target.value : x)))
-                      }
-                      style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-                    />
-                    <button
-                      onClick={() => setPaymentMethods((arr) => arr.filter((x) => x !== p))}
-                      style={{ background: "#c62828", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px" }}
-                    >
-                      Remove
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <div style={{ display: "flex", gap: 8 }}>
-                <input
-                  type="text"
-                  placeholder="Add payment"
-                  value={newPayment}
-                  onChange={(e) => setNewPayment(e.target.value)}
-                  style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-                />
-                <button
-                  onClick={() => {
-                    const v = String(newPayment || "").trim();
-                    if (!v) return;
-                    if (paymentMethods.includes(v)) return alert("Payment method exists.");
-                    setPaymentMethods((arr) => [...arr, v]);
-                    setNewPayment("");
-                  }}
-                  style={{ background: "#1976d2", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px" }}
-                >
-                  Add
-                </button>
-              </div>
-            </div>
-
-         <h4 style={{ marginTop: 0 }}>Admin PINs (locked)</h4>
-<div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8 }}>
-  {[1,2,3,4,5,6].map((n) => {
-    const isUnlocked = !!unlockedPins[n];
-    return (
-      <div key={n} style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <span style={{ minWidth: 80 }}>Admin {n}</span>
-        <input
-          type="password"
-          value={isUnlocked ? (adminPins[n] || "") : ""}
-          placeholder="••••"
-          disabled={!isUnlocked}
-          onChange={(e) => {
-            // digits only, up to 6 chars
-            const v = (e.target.value || "").replace(/\D/g, "").slice(0, 6);
-            setAdminPins((p) => ({ ...p, [n]: v }));
-          }}
-          style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-        />
-        {isUnlocked ? (
-          <button
-            onClick={() => lockAdminPin(n)}
-            style={{ background: "#6d4c41", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
-          >
-            Lock
-          </button>
-        ) : (
-          <button
-            onClick={() => unlockAdminPin(n)}
-            style={{ background: "#1976d2", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
-          >
-            Unlock
-          </button>
-        )}
-      </div>
-    );
-  })}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* SETTINGS */}
-      {activeTab === "settings" && (
-        <div>
-          <h2>Settings</h2>
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
-            <div style={{ padding: 10, borderRadius: 6, border: `1px solid ${cardBorder}` }}>
-              <h4 style={{ marginTop: 0 }}>Printing</h4>
-              <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <input
-                  type="checkbox"
-                  checked={autoPrintOnCheckout}
-                  onChange={(e) => setAutoPrintOnCheckout(e.target.checked)}
-                />
-                Auto-print on Checkout
-              </label>
-              <div style={{ marginTop: 8 }}>
-                <label>
-                  Paper width (mm):&nbsp;
-                  <input
-                    type="number"
-                    value={preferredPaperWidthMm}
-                    onChange={(e) => setPreferredPaperWidthMm(Math.max(40, Number(e.target.value || 80)))}
-                    style={{ width: 120 }}
-                  />
-                </label>
-                <small style={{ display: "block", opacity: 0.75 }}>
-                  Typical sizes: 80, 58. Your current: {preferredPaperWidthMm} mm.
-                </small>
-              </div>
-            </div>
-
-            <div style={{ padding: 10, borderRadius: 6, border: `1px solid ${cardBorder}` }}>
-              <h4 style={{ marginTop: 0 }}>Display</h4>
-              <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <input type="checkbox" checked={dark} onChange={(e) => setDark(e.target.checked)} />
-                Dark theme
-              </label>
-            </div>
-
-            <div style={{ padding: 10, borderRadius: 6, border: `1px solid ${cardBorder}` }}>
-              <h4 style={{ marginTop: 0 }}>Cloud</h4>
-              <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <input
-                  type="checkbox"
-                  checked={cloudEnabled}
-                  onChange={(e) => setCloudEnabled(e.target.checked)}
-                />
-                Enable cloud autosave (state)
-              </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
-                <input
-                  type="checkbox"
-                  checked={realtimeOrders}
-                  onChange={(e) => setRealtimeOrders(e.target.checked)}
-                />
-                Live Orders Board (realtime)
-              </label>
-             <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
-  <button onClick={saveToCloudNow} style={{ background: "#2e7d32", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px" }}>
-    Sync to Cloud
+   {/* Add extra */}
+<div
+  style={{
+    display: "flex",
+    gap: 8,
+    alignItems: "center",
+    flexWrap: "wrap",
+    marginBottom: 18,
+  }}
+>
+  <input
+    type="text"
+    placeholder="New extra name"
+    value={newExtraName}
+    onChange={(e) => setNewExtraName(e.target.value)}
+    style={{
+      padding: 6,
+      borderRadius: 6,
+      border: `1px solid ${btnBorder}`,
+      minWidth: 220,
+    }}
+  />
+  <input
+    type="number"
+    placeholder="Price (E£)"
+    value={newExtraPrice}
+    onChange={(e) => setNewExtraPrice(Number(e.target.value || 0))}
+    style={{
+      padding: 6,
+      borderRadius: 6,
+      border: `1px solid ${btnBorder}`,
+      width: 160,
+    }}
+  />
+  <button
+    onClick={() => {
+      const name = String(newExtraName || "").trim();
+      if (!name) return alert("Name required.");
+      const id = Date.now();
+      setExtraList((arr) => [
+        ...arr,
+        {
+          id,
+          name,
+          price: Math.max(0, Number(newExtraPrice || 0)),
+          uses: {},
+          color: "#ffffff",
+        },
+      ]);
+      setNewExtraName("");
+      setNewExtraPrice(0);
+    }}
+    style={{
+      background: "#2e7d32",
+      color: "#fff",
+      border: "none",
+      borderRadius: 6,
+      padding: "8px 12px",
+      cursor: "pointer",
+    }}
+  >
+    Add Extra
   </button>
-  <button onClick={loadFromCloud} style={{ background: "#1976d2", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px" }}>
-    Load from Cloud
-  </button>
-  <small style={{ opacity: 0.8 }}>
-    Last save: {cloudStatus.lastSaveAt ? cloudStatus.lastSaveAt.toLocaleString() : "—"} • Last load: {cloudStatus.lastLoadAt ? cloudStatus.lastLoadAt.toLocaleString() : "—"}
-  </small>
-  {cloudStatus.error && (
-    <small style={{ color: "#c62828" }}>Error: {String(cloudStatus.error)}</small>
-  )}
 </div>
+</div> {/* end Edit wrapper */}
+)} {/* end Edit tab conditional */}
 
-            </div>
+/* SETTINGS */
+{activeTab === "settings" && (
+  <div>
+    <h2>Settings</h2>
+
+    <div
+      style={{
+        display: "grid",
+        gap: 12,
+        marginTop: 10,
+        gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+      }}
+    >
+      {/* Theme */}
+      <div
+        style={{
+          border: `1px solid ${btnBorder}`,
+          borderRadius: 8,
+          padding: 10,
+          background: dark ? "#191919" : "#fafafa",
+        }}
+      >
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>Theme</div>
+        <label>
+          <input
+            type="checkbox"
+            checked={dark}
+            onChange={(e) => setDark(e.target.checked)}
+          />{" "}
+          Dark mode
+        </label>
+      </div>
+
+      {/* Printing */}
+      <div
+        style={{
+          border: `1px solid ${btnBorder}`,
+          borderRadius: 8,
+          padding: 10,
+          background: dark ? "#191919" : "#fafafa",
+        }}
+      >
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>Printing</div>
+        <label style={{ display: "block", marginBottom: 8 }}>
+          <input
+            type="checkbox"
+            checked={autoPrintOnCheckout}
+            onChange={(e) => setAutoPrintOnCheckout(e.target.checked)}
+          />{" "}
+          Auto-print on checkout
+        </label>
+        <label>
+          Paper width (mm):{" "}
+          <input
+            type="number"
+            value={preferredPaperWidthMm}
+            onChange={(e) =>
+              setPreferredPaperWidthMm(Math.max(58, Number(e.target.value || 80)))
+            }
+            style={{ width: 120 }}
+          />
+        </label>
+      </div>
+
+      {/* Cloud */}
+      <div
+        style={{
+          border: `1px solid ${btnBorder}`,
+          borderRadius: 8,
+          padding: 10,
+          background: dark ? "#191919" : "#fafafa",
+        }}
+      >
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>Cloud</div>
+        <label style={{ display: "block", marginBottom: 8 }}>
+          <input
+            type="checkbox"
+            checked={cloudEnabled}
+            onChange={(e) => setCloudEnabled(e.target.checked)}
+          />{" "}
+          Enable Firebase sync
+        </label>
+        <label style={{ display: "block", marginBottom: 8 }}>
+          <input
+            type="checkbox"
+            checked={realtimeOrders}
+            onChange={(e) => setRealtimeOrders(e.target.checked)}
+          />{" "}
+          Realtime Orders Board
+        </label>
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button
+            onClick={saveToCloudNow}
+            style={{
+              background: "#1976d2",
+              color: "#fff",
+              border: "none",
+              borderRadius: 6,
+              padding: "8px 12px",
+              cursor: "pointer",
+            }}
+          >
+            Save to cloud now
+          </button>
+          <button
+            onClick={loadFromCloud}
+            style={{
+              background: "#455a64",
+              color: "#fff",
+              border: "none",
+              borderRadius: 6,
+              padding: "8px 12px",
+              cursor: "pointer",
+            }}
+          >
+            Load from cloud
+          </button>
+          <div style={{ fontSize: 12, opacity: 0.8, alignSelf: "center" }}>
+            {cloudStatus.lastSaveAt && (
+              <>Last save: {cloudStatus.lastSaveAt.toLocaleString()} • </>
+            )}
+            {cloudStatus.lastLoadAt && (
+              <>Last load: {cloudStatus.lastLoadAt.toLocaleString()} • </>
+            )}
+            {cloudStatus.error && <span style={{ color: "#c62828" }}>Error: {cloudStatus.error}</span>}
           </div>
         </div>
-      )}
+      </div>
     </div>
-  )
-}
+  </div>
+)}
+
+</div> {/* end containerStyle wrapper */}
+); /* end return */
+} /* end App component */
+
+
 
 
 
