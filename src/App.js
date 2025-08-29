@@ -3717,27 +3717,30 @@ const prettyDate = (d) => {
         }}
       >
         {/* Category */}
-        <select
-          value={newPurchase.categoryId}
-          onChange={(e) => {
- const id = e.target.value;
-   setNewPurchase((p) => ({ ...p, categoryId: id }));
-   setPurchaseCatFilterId(id);   }}
-          style={{
-            padding: 10,
-            borderRadius: 10,
-            border: `1px solid ${btnBorder}`,
-            background: dark ? "#121212" : "#fff",
-            color: dark ? "#eee" : "#000",
-          }}
-        >
-          <option value="">Category…</option>
-          {purchaseCategories.map((cat) => {
-  const total = catTotals.get(cat.id) || 0;
-  const active = purchaseCatFilterId === cat.id;
-  return (
-    <div
-      key={cat.id}
+       {/* Category */}
+<select
+  value={newPurchase.categoryId}
+  onChange={(e) => {
+    const id = e.target.value;
+    setNewPurchase((p) => ({ ...p, categoryId: id }));
+    setPurchaseCatFilterId(id);
+  }}
+  style={{
+    padding: 10,
+    borderRadius: 10,
+    border: `1px solid ${btnBorder}`,
+    background: dark ? "#121212" : "#fff",
+    color: dark ? "#eee" : "#000",
+  }}
+>
+  <option value="">Category…</option>
+  {purchaseCategories.map((cat) => (
+    <option key={cat.id} value={cat.id}>
+      {cat.name}
+    </option>
+  ))}
+</select>
+
       onClick={() => setPurchaseCatFilterId(active ? "" : cat.id)}
       style={{
         padding: 16,
@@ -3912,79 +3915,35 @@ const prettyDate = (d) => {
       </button>
     </div>
 
-    {/* Category tiles grid (keep this as it is, it comes right after the new Add Category row) */}
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-        gap: 12,
-        marginBottom: 14,
-      }}
-    >
-      {/* Category tiles with 📦 icon */}
-      {purchaseCategories.map((cat) => {
-
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-        gap: 12,
-        marginBottom: 14,
-      }}
-    >
-      {/* Category tiles with 📦 icon */}
-      {purchaseCategories.map((cat) => {
-        const total = catTotals.get(cat.id) || 0;
-        const active = purchaseCatFilterId === cat.id;
-        return (
-          <button
-            key={cat.id}
-             onClick={() =>
-   setPurchaseCatFilterId((id) => (id === cat.id ? "" : cat.id))
- }
-            style={{
-              textAlign: "left",
-              padding: 14,
-              borderRadius: 12,
-              border: `1px solid ${cardBorder}`,
-              background: active ? (dark ? "#222" : "#fff8e1") : dark ? "#1e1e1e" : "#fff",
-              color: dark ? "#eee" : "#000",
-              cursor: "pointer",
-            }}
-            title="Show category details below"
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span
-                style={{
-                  display: "inline-flex",
-                  width: 28,
-                  height: 28,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderRadius: 8,
-                  border: `1px solid ${btnBorder}`,
-                  fontSize: 16,
-                }}
-              >
-                📦
-              </span>
-              <div style={{ fontWeight: 700 }}>{cat.name}</div>
-            </div>
-            <div style={{ marginTop: 6, opacity: 0.8 }}>
-              {currency(total)}
-            </div>
-          </button>
-        );
-      })}
-
-      {/* Add Category tile (inside the categories group) */}
-      <div
+  {/* Category tiles grid */}
+<div
+  style={{
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+    gap: 12,
+    marginBottom: 14,
+  }}
+>
+  {/* Category tiles with 📦 icon */}
+  {purchaseCategories.map((cat) => {
+    const total = catTotals.get(cat.id) || 0;
+    const active = purchaseCatFilterId === cat.id;
+    return (
+      <button
+        key={cat.id}
+        onClick={() =>
+          setPurchaseCatFilterId((id) => (id === cat.id ? "" : cat.id))
+        }
         style={{
+          textAlign: "left",
           padding: 14,
           borderRadius: 12,
           border: `1px solid ${cardBorder}`,
-          background: dark ? "#1a1a1a" : "#fff",
+          background: active ? (dark ? "#222" : "#fff8e1") : dark ? "#1e1e1e" : "#fff",
+          color: dark ? "#eee" : "#000",
+          cursor: "pointer",
         }}
+        title="Show category details below"
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span
@@ -3996,59 +3955,93 @@ const prettyDate = (d) => {
               justifyContent: "center",
               borderRadius: 8,
               border: `1px solid ${btnBorder}`,
-              fontWeight: 800,
+              fontSize: 16,
             }}
           >
-            +
+            📦
           </span>
-          <div style={{ fontWeight: 700 }}>Add Category</div>
+          <div style={{ fontWeight: 700 }}>{cat.name}</div>
         </div>
-        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-          <input
-            type="text"
-            placeholder="Category name"
-            value={newCategoryName}
-            onChange={(e) => setNewCategoryName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                const name = String(newCategoryName || "").trim();
-                if (!name) return;
-                const id = `cat_${Date.now()}`;
-                setPurchaseCategories((arr) => [...arr, { id, name }]);
-                setNewCategoryName("");
-              }
-            }}
-            style={{
-              flex: 1,
-              padding: 10,
-              borderRadius: 10,
-              border: `1px solid ${btnBorder}`,
-              background: dark ? "#121212" : "#fff",
-              color: dark ? "#eee" : "#000",
-            }}
-          />
-          <button
-            onClick={() => {
-              const name = String(newCategoryName || "").trim();
-              if (!name) return;
-              const id = `cat_${Date.now()}`;
-              setPurchaseCategories((arr) => [...arr, { id, name }]);
-              setNewCategoryName("");
-            }}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 10,
-              border: "none",
-              background: "#000",
-              color: "#fff",
-              cursor: "pointer",
-            }}
-          >
-            Add
-          </button>
+        <div style={{ marginTop: 6, opacity: 0.8 }}>
+          {currency(total)}
         </div>
-      </div>
+      </button>
+    );
+  })}
+
+  {/* Add Category tile */}
+  <div
+    style={{
+      padding: 14,
+      borderRadius: 12,
+      border: `1px solid ${cardBorder}`,
+      background: dark ? "#1a1a1a" : "#fff",
+    }}
+  >
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <span
+        style={{
+          display: "inline-flex",
+          width: 28,
+          height: 28,
+          alignItems: "center",
+          justifyContent: "center",
+          borderRadius: 8,
+          border: `1px solid ${btnBorder}`,
+          fontWeight: 800,
+        }}
+      >
+        +
+      </span>
+      <div style={{ fontWeight: 700 }}>Add Category</div>
     </div>
+    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+      <input
+        type="text"
+        placeholder="Category name"
+        value={newCategoryName}
+        onChange={(e) => setNewCategoryName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            const name = String(newCategoryName || "").trim();
+            if (!name) return;
+            const id = `cat_${Date.now()}`;
+            setPurchaseCategories((arr) => [...arr, { id, name }]);
+            setNewCategoryName("");
+          }
+        }}
+        style={{
+          flex: 1,
+          padding: 10,
+          borderRadius: 10,
+          border: `1px solid ${btnBorder}`,
+          background: dark ? "#121212" : "#fff",
+          color: dark ? "#eee" : "#000",
+        }}
+      />
+      <button
+        onClick={() => {
+          const name = String(newCategoryName || "").trim();
+          if (!name) return;
+          const id = `cat_${Date.now()}`;
+          setPurchaseCategories((arr) => [...arr, { id, name }]);
+          setNewCategoryName("");
+        }}
+        style={{
+          padding: "10px 14px",
+          borderRadius: 10,
+          border: "none",
+          background: "#000",
+          color: "#fff",
+          cursor: "pointer",
+        }}
+      >
+        Add
+      </button>
+    </div>
+  </div>
+</div>
+
 
     {/* === DETAILS LIST ================================================= */}
     <div style={{ marginTop: 4 }}>
