@@ -331,10 +331,6 @@ const DEFAULT_ZONES = [
   { id: "zone-c", name: "Zone C (Far)", fee: 40 },
 ];
 
-// ---- Purchase categories (you can add more in Purchases tab) ----       // ⬅️ NEW
-const DEFAULT_PURCHASE_CATEGORIES = [
-  "Buns", "Meat", "Cheese", "Veg", "Sauces", "Packaging", "Drinks"
-];
 
 const EDITOR_PIN = "0512";
 const DEFAULT_ADMIN_PINS = {
@@ -707,9 +703,7 @@ const [deliveryName, setDeliveryName] = useState("");
 const [deliveryPhone, setDeliveryPhone] = useState("");
 const [deliveryAddress, setDeliveryAddress] = useState("");
   // ───── Purchases & Zones state ─────                                     // ⬅️ NEW
-const [purchaseCategories, setPurchaseCategories] = useState(
-  DEFAULT_PURCHASE_CATEGORIES.map((name, i) => ({ id: `cat_${i+1}`, name }))
-);
+const [purchaseCategories, setPurchaseCategories] = useState([]);
 const [purchases, setPurchases] = useState([]); // {id, categoryId, ingredientId?, itemName, unit, qty, unitPrice, date: Date}
 const [purchaseFilter, setPurchaseFilter] = useState("day"); // 'day' | 'month' | 'year'
 const [purchaseCatFilterId, setPurchaseCatFilterId] = useState("");
@@ -721,7 +715,7 @@ const [newPurchase, setNewPurchase] = useState({
   unitPrice: 0,
   date: new Date().toISOString().slice(0,10),
 });
-  
+ const [purchaseDate, setPurchaseDate] = useState(""); //  
 const [deliveryZoneId, setDeliveryZoneId] = useState("");               // ⬅️ NEW
 const [customers, setCustomers] = useState([]);                         // {phone,name,address,zoneId}
 const [deliveryZones, setDeliveryZones] = useState(DEFAULT_ZONES);      // ⬅️ NEW
@@ -1283,12 +1277,22 @@ function computeCOGSForItemDef(def, invMap) {
   }
   return Number(sum.toFixed(2));
 }
-// Period helpers for Purchases                                                // ⬅️ NEW
-function getPeriodRange(kind, dayMeta) {
+function getPeriodRange(kind, dayMeta, baseDateStr = null) {
   const now = new Date();
   if (kind === "day") {
-    const start = dayMeta?.startedAt ? new Date(dayMeta.startedAt) : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
-    const end   = dayMeta?.endedAt   ? new Date(dayMeta.endedAt)   : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    // If a specific calendar day was picked (YYYY-MM-DD), use exactly that day
+    if (baseDateStr) {
+      const [y, m, d] = baseDateStr.split("-").map(Number);
+      const start = new Date(y, (m || 1) - 1, d || 1, 0, 0, 0, 0);
+      const end   = new Date(y, (m || 1) - 1, d || 1, 23, 59, 59, 999);
+      return [start, end];
+    }
+    const start = dayMeta?.startedAt
+      ? new Date(dayMeta.startedAt)
+      : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const end   = dayMeta?.endedAt
+      ? new Date(dayMeta.endedAt)
+      : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
     return [start, end];
   }
   if (kind === "month") {
@@ -1300,6 +1304,7 @@ function getPeriodRange(kind, dayMeta) {
   const end   = new Date(now.getFullYear(), 11, 31, 23,59,59,999);
   return [start, end];
 }
+
 function isWithin(d, start, end) {
   const t = +d;
   return t >= +start && t <= +end;
@@ -2078,9 +2083,10 @@ for (const o of validOrders) {
   }, [inventory, inventorySnapshot]);
   // --- Purchases: compute current period & filtered rows
 const [pStart, pEnd] = useMemo(
-  () => getPeriodRange(purchaseFilter, dayMeta),
-  [purchaseFilter, dayMeta]
+  () => getPeriodRange(purchaseFilter, dayMeta, purchaseDate || null),
+  [purchaseFilter, dayMeta, purchaseDate]
 );
+
 
 const filteredPurchases = useMemo(() => {
  const withinPeriod = (purchases || []).filter((p) => {
@@ -2125,11 +2131,7 @@ const byCategory = useMemo(() => {
 }, [filteredPurchases]);
 
 
-// KPI: Net after Purchases
-const netAfterPurchases = useMemo(() => {
-  const rev = Number(totals?.revenueTotal || 0);
-  return rev - Number(totalPurchasesInPeriod || 0);
-}, [totals, totalPurchasesInPeriod]);
+
 const handleAddPurchase = () => {
   const { categoryId, itemName, unit, qty, unitPrice, date } = newPurchase;
 
@@ -2293,7 +2295,7 @@ const handleAddPurchase = () => {
           String(e.qty),
           Number(e.unitPrice || 0).toFixed(2),
           (Number(e.qty || 0) * Number(e.unitPrice || 0)).toFixed(2),
-          e.date ? new Date(e.date).toLocaleString() : "",
+          e.date ? prettyDate(e.date) : "",
           e.note || "",
         ]),
         startY: y + 4,
@@ -2385,11 +2387,15 @@ const handleAddPurchase = () => {
   // Money formatter for Purchases KPI & tables
 const currency = (v) => `E£${Number(v || 0).toFixed(2)}`;
 
-// Date -> YYYY-MM-DD for Purchases tables
+// Date -> dd/mm/yy for tables
 const prettyDate = (d) => {
   const dt = d instanceof Date ? d : new Date(d);
-  return dt.toISOString().slice(0, 10);
+  const dd = String(dt.getDate()).padStart(2, "0");
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const yy = String(dt.getFullYear()).slice(-2);
+  return `${dd}/${mm}/${yy}`;
 };
+
 
 
   /* --------------------------- UI --------------------------- */
@@ -3619,8 +3625,52 @@ const prettyDate = (d) => {
 {activeTab === "purchases" && (
   <div>
     <h2>Purchases</h2>
+ {/* Purchases filters: choose exact date + period buttons */}
+<div style={{ display: "flex", gap: 8, justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+    <label style={{ opacity: 0.85 }}>Choose date:</label>
+    <input
+      type="date"
+      value={purchaseDate}
+      onChange={(e) => {
+        setPurchaseDate(e.target.value);   // YYYY-MM-DD
+        setPurchaseFilter("day");          // lock to the chosen day
+        setPurchaseCatFilterId("");        // clear category filter
+      }}
+      style={{ padding: 8, borderRadius: 8, border: `1px solid ${cardBorder}` }}
+    />
+    {purchaseDate && (
+      <button
+        onClick={() => setPurchaseDate("")}
+        style={{ padding: "6px 10px", borderRadius: 8, border: `1px solid ${btnBorder}`, background: dark ? "#2b2b2b" : "#f2f2f2", cursor: "pointer" }}
+      >
+        Clear
+      </button>
+    )}
+  </div>
 
-    {/* === KPI ROW ===================================================== */}
+  <div style={{ display: "flex", gap: 8 }}>
+    {["day","month","year"].map((k) => (
+      <button
+        key={k}
+        onClick={() => { setPurchaseFilter(k); if (k !== "day") setPurchaseDate(""); }}
+        style={{
+          padding: "6px 10px",
+          borderRadius: 8,
+          border: `1px solid ${btnBorder}`,
+          background: (purchaseFilter === k && (!purchaseDate || k !== "day")) ? "#ffd54f" : (dark ? "#2b2b2b" : "#f2f2f2"),
+          cursor: "pointer"
+        }}
+        aria-pressed={purchaseFilter === k}
+      >
+        {k.toUpperCase()}
+      </button>
+    ))}
+  </div>
+</div>
+
+
+       {/* === KPI ROW ===================================================== */}
     <div
       style={{
         display: "grid",
@@ -3629,7 +3679,7 @@ const prettyDate = (d) => {
         marginBottom: 12,
       }}
     >
-      {/* Total Purchases */}
+      {/* Total Purchases only */}
       <div
         style={{
           position: "relative",
@@ -3644,54 +3694,8 @@ const prettyDate = (d) => {
           {currency(totalPurchasesInPeriod)}
         </div>
       </div>
-
-      {/* Net after Purchases with DAY/MONTH/YEAR at upper top */}
-      <div
-        style={{
-          position: "relative",
-          padding: 16,
-          paddingTop: 56,
-          borderRadius: 12,
-          background: dark ? "#1e1e1e" : "#fff",
-          border: `1px solid ${cardBorder}`,
-        }}
-      >
-        {/* Toggle anchored at the upper-top (right) */}
-        <div
-          style={{
-            position: "absolute",
-            top: 12,
-            right: 12,
-            display: "flex",
-            gap: 8,
-          }}
-        >
-          {["day", "month", "year"].map((k) => (
-            <button
-              key={k}
-              onClick={() => setPurchaseFilter(k)}
-              style={{
-                padding: "6px 10px",
-                borderRadius: 8,
-                border: `1px solid ${btnBorder}`,
-                background:
-                  purchaseFilter === k ? "#ffd54f" : dark ? "#2b2b2b" : "#f2f2f2",
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-              aria-pressed={purchaseFilter === k}
-            >
-              {k.toUpperCase()}
-            </button>
-          ))}
-        </div>
-
-        <div style={{ fontWeight: 600, opacity: 0.9 }}>Net after Purchases</div>
-        <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>
-          {currency(netAfterPurchases)}
-        </div>
-      </div>
     </div>
+
 
     {/* === ADD PURCHASE CARD ========================================== */}
     <div
@@ -3728,12 +3732,56 @@ const prettyDate = (d) => {
           }}
         >
           <option value="">Category…</option>
-          {purchaseCategories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
+          {purchaseCategories.map((cat) => {
+  const total = catTotals.get(cat.id) || 0;
+  const active = purchaseCatFilterId === cat.id;
+  return (
+    <div
+      key={cat.id}
+      onClick={() => setPurchaseCatFilterId(active ? "" : cat.id)}
+      style={{
+        padding: 16,
+        borderRadius: 12,
+        background: dark ? "#1e1e1e" : "#fff",
+        border: `2px solid ${active ? "#ffd54f" : cardBorder}`,
+        cursor: "pointer",
+        position: "relative"
+      }}
+      title="Click to filter/unfilter this category"
+    >
+      <div style={{ fontWeight: 700, marginBottom: 6 }}>{cat.name}</div>
+      <div style={{ fontSize: 18, fontWeight: 800 }}>{currency(total)}</div>
+
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          if (!window.confirm(`Remove category "${cat.name}"? Purchases remain, but the tile will disappear.`)) return;
+          setPurchaseCategories((arr) => arr.filter((c) => c.id !== cat.id));
+          if (purchaseCatFilterId === cat.id) setPurchaseCatFilterId("");
+        }}
+        style={{
+          position: "absolute",
+          top: 8,
+          right: 8,
+          border: "none",
+          background: "#c62828",
+          color: "#fff",
+          borderRadius: 8,
+          padding: "4px 8px",
+          cursor: "pointer"
+        }}
+      >
+        Remove
+      </button>
+    </div>
+  );
+})}
+{purchaseCategories.length === 0 && (
+  <div style={{ opacity: 0.8, padding: 12 }}>
+    No categories yet. Add your first category above.
+  </div>
+)}
+
 
        
 
@@ -3841,6 +3889,41 @@ const prettyDate = (d) => {
     </div>
 
     {/* === CATEGORY TILES + ADD CATEGORY =============================== */}
+
+    <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+      <input
+        type="text"
+        placeholder="New category name"
+        value={newCategoryName}
+        onChange={(e) => setNewCategoryName(e.target.value)}
+        style={{ padding: 10, borderRadius: 10, border: `1px solid ${btnBorder}`, minWidth: 220 }}
+      />
+      <button
+        onClick={() => {
+          const name = String(newCategoryName || "").trim();
+          if (!name) return alert("Enter a category name.");
+          const id = `cat_${Date.now()}`;
+          setPurchaseCategories((arr) => [...arr, { id, name }]);
+          setNewCategoryName("");
+        }}
+        style={{ padding: "10px 14px", borderRadius: 10, border: "none", background: "#1976d2", color: "#fff", cursor: "pointer" }}
+      >
+        Add Category
+      </button>
+    </div>
+
+    {/* Category tiles grid (keep this as it is, it comes right after the new Add Category row) */}
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+        gap: 12,
+        marginBottom: 14,
+      }}
+    >
+      {/* Category tiles with 📦 icon */}
+      {purchaseCategories.map((cat) => {
+
     <div
       style={{
         display: "grid",
@@ -5225,6 +5308,7 @@ const prettyDate = (d) => {
     </div>
   );
 }
+
 
 
 
