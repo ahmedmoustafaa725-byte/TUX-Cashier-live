@@ -331,6 +331,10 @@ const DEFAULT_ZONES = [
   { id: "zone-c", name: "Zone C (Far)", fee: 40 },
 ];
 
+// ---- Purchase categories (you can add more in Purchases tab) ----       // ⬅️ NEW
+const DEFAULT_PURCHASE_CATEGORIES = [
+  "Buns", "Meat", "Cheese", "Veg", "Sauces", "Packaging", "Drinks"
+];
 
 const EDITOR_PIN = "0512";
 const DEFAULT_ADMIN_PINS = {
@@ -684,6 +688,8 @@ export default function App() {
   const [selectedExtras, setSelectedExtras] = useState([]);
   const [selectedQty, setSelectedQty] = useState(1);
   const [cart, setCart] = useState([]);
+  const [purchaseDateFilter, setPurchaseDateFilter] = useState(""); // "YYYY-MM-DD" or ""
+
 
   const [worker, setWorker] = useState("");
   const [payment, setPayment] = useState("");
@@ -703,10 +709,12 @@ const [deliveryName, setDeliveryName] = useState("");
 const [deliveryPhone, setDeliveryPhone] = useState("");
 const [deliveryAddress, setDeliveryAddress] = useState("");
   // ───── Purchases & Zones state ─────                                     // ⬅️ NEW
-const [purchaseCategories, setPurchaseCategories] = useState([]);
+const [purchaseCategories, setPurchaseCategories] = useState(
+  DEFAULT_PURCHASE_CATEGORIES.map((name, i) => ({ id: `cat_${i+1}`, name }))
+);
 const [purchases, setPurchases] = useState([]); // {id, categoryId, ingredientId?, itemName, unit, qty, unitPrice, date: Date}
 const [purchaseFilter, setPurchaseFilter] = useState("day"); // 'day' | 'month' | 'year'
-const [purchaseCatFilterId, setPurchaseCatFilterId] = useState("");
+const [openPurchaseCatId, setOpenPurchaseCatId] = useState(null);
 const [newPurchase, setNewPurchase] = useState({
   categoryId: "",
   itemName: "",
@@ -715,12 +723,9 @@ const [newPurchase, setNewPurchase] = useState({
   unitPrice: 0,
   date: new Date().toISOString().slice(0,10),
 });
- const [purchaseDate, setPurchaseDate] = useState(""); //  
 const [deliveryZoneId, setDeliveryZoneId] = useState("");               // ⬅️ NEW
 const [customers, setCustomers] = useState([]);                         // {phone,name,address,zoneId}
 const [deliveryZones, setDeliveryZones] = useState(DEFAULT_ZONES);      // ⬅️ NEW
-const [newCategoryName, setNewCategoryName] = useState("");
-
 
 
 const [cashReceived, setCashReceived] = useState(0);
@@ -861,6 +866,8 @@ if (Array.isArray(l.purchases)) setPurchases(
   l.purchases.map(p => ({ ...p, date: p.date ? new Date(p.date) : new Date() }))
 ); // ⬅️ NEW
 if (typeof l.purchaseFilter === "string") setPurchaseFilter(l.purchaseFilter); // ⬅️ NEW
+  if (typeof l.purchaseDateFilter === "string") setPurchaseDateFilter(l.purchaseDateFilter);
+
 if (Array.isArray(l.customers)) setCustomers(l.customers);           // ⬅️ NEW
 if (Array.isArray(l.deliveryZones)) setDeliveryZones(l.deliveryZones); // ⬅️ NEW
 
@@ -902,6 +909,8 @@ useEffect(() => { saveLocalPartial({ purchaseCategories }); }, [purchaseCategori
 useEffect(() => { saveLocalPartial({ purchaseFilter }); }, [purchaseFilter]);        // ⬅️ NEW
 useEffect(() => { saveLocalPartial({ customers }); }, [customers]);                  // ⬅️ NEW
 useEffect(() => { saveLocalPartial({ deliveryZones }); }, [deliveryZones]);          // ⬅️ NEW
+useEffect(() => { saveLocalPartial({ purchaseDateFilter }); }, [purchaseDateFilter]);
+
 
 useEffect(() => { saveLocalPartial({ extraList }); }, [extraList]);
 useEffect(() => { saveLocalPartial({ workers }); }, [workers]);
@@ -1277,22 +1286,12 @@ function computeCOGSForItemDef(def, invMap) {
   }
   return Number(sum.toFixed(2));
 }
-function getPeriodRange(kind, dayMeta, baseDateStr = null) {
+// Period helpers for Purchases                                                // ⬅️ NEW
+function getPeriodRange(kind, dayMeta) {
   const now = new Date();
   if (kind === "day") {
-    // If a specific calendar day was picked (YYYY-MM-DD), use exactly that day
-    if (baseDateStr) {
-      const [y, m, d] = baseDateStr.split("-").map(Number);
-      const start = new Date(y, (m || 1) - 1, d || 1, 0, 0, 0, 0);
-      const end   = new Date(y, (m || 1) - 1, d || 1, 23, 59, 59, 999);
-      return [start, end];
-    }
-    const start = dayMeta?.startedAt
-      ? new Date(dayMeta.startedAt)
-      : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
-    const end   = dayMeta?.endedAt
-      ? new Date(dayMeta.endedAt)
-      : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    const start = dayMeta?.startedAt ? new Date(dayMeta.startedAt) : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const end   = dayMeta?.endedAt   ? new Date(dayMeta.endedAt)   : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
     return [start, end];
   }
   if (kind === "month") {
@@ -1304,7 +1303,6 @@ function getPeriodRange(kind, dayMeta, baseDateStr = null) {
   const end   = new Date(now.getFullYear(), 11, 31, 23,59,59,999);
   return [start, end];
 }
-
 function isWithin(d, start, end) {
   const t = +d;
   return t >= +start && t <= +end;
@@ -2081,85 +2079,6 @@ for (const o of validOrders) {
       return { name: it.name, unit: it.unit, start, now, used };
     });
   }, [inventory, inventorySnapshot]);
-  // --- Purchases: compute current period & filtered rows
-const [pStart, pEnd] = useMemo(
-  () => getPeriodRange(purchaseFilter, dayMeta, purchaseDate || null),
-  [purchaseFilter, dayMeta, purchaseDate]
-);
-
-
-const filteredPurchases = useMemo(() => {
- const withinPeriod = (purchases || []).filter((p) => {
-    const d = p?.date instanceof Date ? p.date : new Date(p?.date);
-    return isWithin(d, pStart, pEnd);
-  });
-  return purchaseCatFilterId
-    ? withinPeriod.filter((p) => p.categoryId === purchaseCatFilterId)
-    : withinPeriod;
-}, [purchases, pStart, pEnd, purchaseCatFilterId]);
-
-// KPI: Total Purchases for the selected period
-const totalPurchasesInPeriod = useMemo(
-  () => sumPurchases(filteredPurchases),
-  [filteredPurchases]
-);
-
-// Map category -> total amount in period
-const catTotals = useMemo(() => {
-  const m = new Map();
-  for (const p of filteredPurchases) {
-    const amt = Number(p.qty || 0) * Number(p.unitPrice || 0);
-    m.set(p.categoryId || "", (m.get(p.categoryId || "") || 0) + amt);
-  }
-  return m;
-}, [filteredPurchases]);
-
-// Map category -> rows (sorted by date)
-const byCategory = useMemo(() => {
-  const m = new Map();
-  for (const p of filteredPurchases) {
-    const key = p.categoryId || "";
-    const arr = m.get(key) || [];
-    arr.push(p);
-    m.set(key, arr);
-  }
-  // ✅ no unused variable
-  for (const arr of m.values()) {
-    arr.sort((a, b) => +new Date(a.date) - +new Date(b.date));
-  }
-  return m;
-}, [filteredPurchases]);
-
-
-
-const handleAddPurchase = () => {
-  const { categoryId, itemName, unit, qty, unitPrice, date } = newPurchase;
-
-  if (!categoryId) return alert("Select a category.");
-  const name = String(itemName || "").trim();
-  if (!name) return alert("Enter item name.");
-
-  const row = {
-    id: `p_${Date.now()}`,
-    categoryId,
-    itemName: name,
-    unit: String(unit || "pcs"),
-    qty: Math.max(0, Number(qty || 0)),
-    unitPrice: Math.max(0, Number(unitPrice || 0)),
-    date: date ? new Date(date) : new Date(),
-  };
-
-  setPurchases((arr) => [row, ...arr]);
-  setNewPurchase({
-    categoryId: "",
-    itemName: "",
-    unit: "pcs",
-    qty: 1,
-    unitPrice: 0,
-    date: new Date().toISOString().slice(0, 10),
-  });
-};
-
 
   // --------------------------- PDF: REPORT ---------------------------
   const generatePDF = (silent = false, metaOverride = null) => {
@@ -2295,7 +2214,7 @@ const handleAddPurchase = () => {
           String(e.qty),
           Number(e.unitPrice || 0).toFixed(2),
           (Number(e.qty || 0) * Number(e.unitPrice || 0)).toFixed(2),
-          e.date ? prettyDate(e.date) : "",
+          e.date ? new Date(e.date).toLocaleString() : "",
           e.note || "",
         ]),
         startY: y + 4,
@@ -2384,19 +2303,6 @@ const handleAddPurchase = () => {
       return sum;
     }, 0);
   }, [bankTx]);
-  // Money formatter for Purchases KPI & tables
-const currency = (v) => `E£${Number(v || 0).toFixed(2)}`;
-
-// Date -> dd/mm/yy for tables
-const prettyDate = (d) => {
-  const dt = d instanceof Date ? d : new Date(d);
-  const dd = String(dt.getDate()).padStart(2, "0");
-  const mm = String(dt.getMonth() + 1).padStart(2, "0");
-  const yy = String(dt.getFullYear()).slice(-2);
-  return `${dd}/${mm}/${yy}`;
-};
-
-
 
   /* --------------------------- UI --------------------------- */
 
@@ -3622,533 +3528,266 @@ const prettyDate = (d) => {
           </table>
         </div>
       )}
-{activeTab === "purchases" && (
-  <div>
-    <h2>Purchases</h2>
- {/* Purchases filters: choose exact date + period buttons */}
-<div style={{ display: "flex", gap: 8, justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
-  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-    <label style={{ opacity: 0.85 }}>Choose date:</label>
+{/* ────────────────────────────── PURCHASES TAB ────────────────────────────── */}  {/* ⬅️ NEW */}
+{activeTab === "purchases" && (() => {
+  const [start, end] = getPeriodRange(purchaseFilter, dayMeta);
+
+const dayFilter = purchaseDateFilter
+  ? new Date(`${purchaseDateFilter}T00:00:00`)
+  : null;
+
+const inPeriod = purchases.filter(p => {
+  const d = new Date(p.date);
+  if (dayFilter) {
+    return (
+      d.getFullYear() === dayFilter.getFullYear() &&
+      d.getMonth() === dayFilter.getMonth() &&
+      d.getDate() === dayFilter.getDate()
+    );
+  }
+  return isWithin(d, start, end);
+});
+
+
+  const catTotals = new Map();
+  for (const c of purchaseCategories) catTotals.set(c.id, 0);
+  for (const p of inPeriod) {
+    const k = p.categoryId;
+    if (!catTotals.has(k)) catTotals.set(k, 0);
+    catTotals.set(k, catTotals.get(k) + Number(p.qty || 0) * Number(p.unitPrice || 0));
+  }
+  const totalInPeriod = sumPurchases(inPeriod);
+
+
+  const toDateKey = (d) => {
+    const x = new Date(d);
+    return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`;
+  };
+  const groupedAll = inPeriod.reduce((acc, p) => {
+    const k = toDateKey(p.date);
+    (acc[k] ||= []).push(p);
+    return acc;
+  }, {});
+
+  const selectedList = openPurchaseCatId
+    ? inPeriod.filter(p => p.categoryId === openPurchaseCatId)
+    : inPeriod;
+  const groupedByCat = selectedList.reduce((acc,p)=>{
+    const k = toDateKey(p.date);
+    (acc[k] ||= []).push(p);
+    return acc;
+  }, {});
+
+  return (
+    <div>
+      <h2>Purchases</h2>
+
+      <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", marginBottom: 10 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {["day","month","year"].map(k => (
+            <button
+              key={k}
+              onClick={() => setPurchaseFilter(k)}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 6,
+                border: `1px solid ${btnBorder}`,
+                background: purchaseFilter === k ? "#ffd54f" : (dark ? "#333" : "#eee")
+              }}
+            >
+              {k.toUpperCase()}
+            </button>
+))}
     <input
       type="date"
-      value={purchaseDate}
-      onChange={(e) => {
-        setPurchaseDate(e.target.value);   // YYYY-MM-DD
-        setPurchaseFilter("day");          // lock to the chosen day
-        setPurchaseCatFilterId("");        // clear category filter
-      }}
-      style={{ padding: 8, borderRadius: 8, border: `1px solid ${cardBorder}` }}
+      value={purchaseDateFilter}
+      onChange={(e) => setPurchaseDateFilter(e.target.value)}
+      style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
     />
-    {purchaseDate && (
+    {purchaseDateFilter && (
       <button
-        onClick={() => setPurchaseDate("")}
-        style={{ padding: "6px 10px", borderRadius: 8, border: `1px solid ${btnBorder}`, background: dark ? "#2b2b2b" : "#f2f2f2", cursor: "pointer" }}
+        onClick={() => setPurchaseDateFilter("")}
+        style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${btnBorder}`, background: dark ? "#333" : "#eee", marginLeft: 6 }}
       >
-        Clear
+        Clear date
       </button>
     )}
   </div>
+</div>
 
-  <div style={{ display: "flex", gap: 8 }}>
-    {["day","month","year"].map((k) => (
-      <button
-        key={k}
-        onClick={() => { setPurchaseFilter(k); if (k !== "day") setPurchaseDate(""); }}
-        style={{
-          padding: "6px 10px",
-          borderRadius: 8,
-          border: `1px solid ${btnBorder}`,
-          background: (purchaseFilter === k && (!purchaseDate || k !== "day")) ? "#ffd54f" : (dark ? "#2b2b2b" : "#f2f2f2"),
-          cursor: "pointer"
-        }}
-        aria-pressed={purchaseFilter === k}
-      >
-        {k.toUpperCase()}
-      </button>
-    ))}
+        </div>
+       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 8, minWidth: 280, flex: 1, marginLeft: 10 }}>
+  <div style={{ padding: 10, borderRadius: 8, background: dark ? "#1b2631" : "#e3f2fd" }}>
+    <b>Total Purchases</b><br/>E£{totalInPeriod.toFixed(2)}
   </div>
 </div>
 
 
-       {/* === KPI ROW ===================================================== */}
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-        gap: 12,
-        marginBottom: 12,
-      }}
-    >
-      {/* Total Purchases only */}
-      <div
-        style={{
-          position: "relative",
-          padding: 16,
-          borderRadius: 12,
-          background: dark ? "#1e1e1e" : "#fff",
-          border: `1px solid ${cardBorder}`,
-        }}
-      >
-        <div style={{ fontWeight: 600, opacity: 0.9 }}>Total Purchases</div>
-        <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>
-          {currency(totalPurchasesInPeriod)}
-        </div>
-      </div>
-    </div>
-
-
-    {/* === ADD PURCHASE CARD ========================================== */}
-    <div
-      style={{
-        padding: 14,
-        borderRadius: 12,
-        background: dark ? "#1a1a1a" : "#fff",
-        border: `1px solid ${cardBorder}`,
-        marginBottom: 12,
-      }}
-    >
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns:
-            "minmax(160px, 1fr) minmax(210px, 1fr) minmax(200px, 1.2fr) 100px 100px 140px 160px",
-          gap: 10,
-          alignItems: "center",
-        }}
-      >
-        {/* Category */}
-       {/* Category */}
-<select
-  value={newPurchase.categoryId}
-  onChange={(e) => {
-    const id = e.target.value;
-    setNewPurchase((p) => ({ ...p, categoryId: id }));
-    setPurchaseCatFilterId(id);
-  }}
-  style={{
-    padding: 10,
-    borderRadius: 10,
-    border: `1px solid ${btnBorder}`,
-    background: dark ? "#121212" : "#fff",
-    color: dark ? "#eee" : "#000",
-  }}
->
-  <option value="">Category…</option>
-  {purchaseCategories.map((cat) => (
-    <option key={cat.id} value={cat.id}>
-      {cat.name}
-    </option>
-  ))}
-</select>
-
-      onClick={() => setPurchaseCatFilterId(active ? "" : cat.id)}
-      style={{
-        padding: 16,
-        borderRadius: 12,
-        background: dark ? "#1e1e1e" : "#fff",
-        border: `2px solid ${active ? "#ffd54f" : cardBorder}`,
-        cursor: "pointer",
-        position: "relative"
-      }}
-      title="Click to filter/unfilter this category"
-    >
-      <div style={{ fontWeight: 700, marginBottom: 6 }}>{cat.name}</div>
-      <div style={{ fontSize: 18, fontWeight: 800 }}>{currency(total)}</div>
-
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          if (!window.confirm(`Remove category "${cat.name}"? Purchases remain, but the tile will disappear.`)) return;
-          setPurchaseCategories((arr) => arr.filter((c) => c.id !== cat.id));
-          if (purchaseCatFilterId === cat.id) setPurchaseCatFilterId("");
-        }}
-        style={{
-          position: "absolute",
-          top: 8,
-          right: 8,
-          border: "none",
-          background: "#c62828",
-          color: "#fff",
-          borderRadius: 8,
-          padding: "4px 8px",
-          cursor: "pointer"
-        }}
-      >
-        Remove
-      </button>
-    </div>
-  );
-})}
-{purchaseCategories.length === 0 && (
-  <div style={{ opacity: 0.8, padding: 12 }}>
-    No categories yet. Add your first category above.
-  </div>
-)}
-
-
-       
-
-        {/* Item name */}
-        <input
-          type="text"
-          placeholder="Item name"
-          value={newPurchase.itemName}
-          onChange={(e) =>
-            setNewPurchase((p) => ({ ...p, itemName: e.target.value }))
-          }
-          style={{
-            padding: 10,
-            borderRadius: 10,
-            border: `1px solid ${btnBorder}`,
-            background: dark ? "#121212" : "#fff",
-            color: dark ? "#eee" : "#000",
-          }}
-        />
-
-        {/* Unit */}
-        <input
-          type="text"
-          placeholder="pcs"
-          value={newPurchase.unit}
-          onChange={(e) =>
-            setNewPurchase((p) => ({ ...p, unit: e.target.value || "pcs" }))
-          }
-          style={{
-            padding: 10,
-            borderRadius: 10,
-            border: `1px solid ${btnBorder}`,
-            textAlign: "center",
-          }}
-        />
-
-        {/* Qty */}
-        <input
-          type="number"
-          min={0}
-          value={newPurchase.qty}
-          onChange={(e) =>
-            setNewPurchase((p) => ({ ...p, qty: Number(e.target.value || 0) }))
-          }
-          style={{
-            padding: 10,
-            borderRadius: 10,
-            border: `1px solid ${btnBorder}`,
-            textAlign: "center",
-          }}
-        />
-
-        {/* Unit price */}
-        <input
-          type="number"
-          min={0}
-          value={newPurchase.unitPrice}
-          onChange={(e) =>
-            setNewPurchase((p) => ({
-              ...p,
-              unitPrice: Number(e.target.value || 0),
-            }))
-          }
-          style={{
-            padding: 10,
-            borderRadius: 10,
-            border: `1px solid ${btnBorder}`,
-            textAlign: "center",
-          }}
-        />
-
-        {/* Date + Add */}
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <input
-            type="date"
-            value={newPurchase.date}
-            onChange={(e) =>
-              setNewPurchase((p) => ({ ...p, date: e.target.value }))
-            }
-            style={{
-              padding: 10,
-              borderRadius: 10,
-              border: `1px solid ${btnBorder}`,
-              background: dark ? "#121212" : "#fff",
-              color: dark ? "#eee" : "#000",
-              width: "100%",
-            }}
-          />
-          <button
-            onClick={handleAddPurchase}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 10,
-              border: "none",
-              background: "#000",
-              color: "#fff",
-              cursor: "pointer",
-              whiteSpace: "nowrap",
-            }}
-          >
-            Add Purchase
-          </button>
-        </div>
-      </div>
-    </div>
-
-   
-    <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
-      <input
-        type="text"
-        placeholder="New category name"
-        value={newCategoryName}
-        onChange={(e) => setNewCategoryName(e.target.value)}
-        style={{ padding: 10, borderRadius: 10, border: `1px solid ${btnBorder}`, minWidth: 220 }}
-      />
-      <button
-        onClick={() => {
-          const name = String(newCategoryName || "").trim();
-          if (!name) return alert("Enter a category name.");
-          const id = `cat_${Date.now()}`;
-          setPurchaseCategories((arr) => [...arr, { id, name }]);
-          setNewCategoryName("");
-        }}
-        style={{ padding: "10px 14px", borderRadius: 10, border: "none", background: "#1976d2", color: "#fff", cursor: "pointer" }}
-      >
-        Add Category
-      </button>
-    </div>
-
-  {/* Category tiles grid */}
-<div
-  style={{
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-    gap: 12,
-    marginBottom: 14,
-  }}
->
-  {/* Category tiles with 📦 icon */}
-  {purchaseCategories.map((cat) => {
-    const total = catTotals.get(cat.id) || 0;
-    const active = purchaseCatFilterId === cat.id;
-    return (
-      <button
-        key={cat.id}
-        onClick={() =>
-          setPurchaseCatFilterId((id) => (id === cat.id ? "" : cat.id))
-        }
-        style={{
-          textAlign: "left",
-          padding: 14,
-          borderRadius: 12,
-          border: `1px solid ${cardBorder}`,
-          background: active ? (dark ? "#222" : "#fff8e1") : dark ? "#1e1e1e" : "#fff",
-          color: dark ? "#eee" : "#000",
-          cursor: "pointer",
-        }}
-        title="Show category details below"
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span
-            style={{
-              display: "inline-flex",
-              width: 28,
-              height: 28,
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: 8,
-              border: `1px solid ${btnBorder}`,
-              fontSize: 16,
-            }}
-          >
-            📦
-          </span>
-          <div style={{ fontWeight: 700 }}>{cat.name}</div>
-        </div>
-        <div style={{ marginTop: 6, opacity: 0.8 }}>
-          {currency(total)}
-        </div>
-      </button>
-    );
-  })}
-
-  {/* Add Category tile */}
-  <div
-    style={{
-      padding: 14,
-      borderRadius: 12,
-      border: `1px solid ${cardBorder}`,
-      background: dark ? "#1a1a1a" : "#fff",
-    }}
-  >
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <span
-        style={{
-          display: "inline-flex",
-          width: 28,
-          height: 28,
-          alignItems: "center",
-          justifyContent: "center",
-          borderRadius: 8,
-          border: `1px solid ${btnBorder}`,
-          fontWeight: 800,
-        }}
-      >
-        +
-      </span>
-      <div style={{ fontWeight: 700 }}>Add Category</div>
-    </div>
-    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-      <input
-        type="text"
-        placeholder="Category name"
-        value={newCategoryName}
-        onChange={(e) => setNewCategoryName(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            const name = String(newCategoryName || "").trim();
-            if (!name) return;
-            const id = `cat_${Date.now()}`;
-            setPurchaseCategories((arr) => [...arr, { id, name }]);
-            setNewCategoryName("");
-          }
-        }}
-        style={{
-          flex: 1,
-          padding: 10,
-          borderRadius: 10,
-          border: `1px solid ${btnBorder}`,
-          background: dark ? "#121212" : "#fff",
-          color: dark ? "#eee" : "#000",
-        }}
-      />
-      <button
-        onClick={() => {
-          const name = String(newCategoryName || "").trim();
-          if (!name) return;
-          const id = `cat_${Date.now()}`;
-          setPurchaseCategories((arr) => [...arr, { id, name }]);
-          setNewCategoryName("");
-        }}
-        style={{
-          padding: "10px 14px",
-          borderRadius: 10,
-          border: "none",
-          background: "#000",
-          color: "#fff",
-          cursor: "pointer",
-        }}
-      >
-        Add
-      </button>
-    </div>
-  </div>
-</div>
-
-
-    {/* === DETAILS LIST ================================================= */}
-    <div style={{ marginTop: 4 }}>
-      <div style={{ fontWeight: 700, marginBottom: 8 }}>All Categories</div>
-
-      {purchaseCategories.map((cat) => {
-        const rows = byCategory.get(cat.id) || [];
-        const total = catTotals.get(cat.id) || 0;
-        return (
-          <div
-            key={cat.id}
-            style={{
-              border: `1px solid ${cardBorder}`,
-              borderRadius: 12,
-              background: dark ? "#141414" : "#fff",
-              marginBottom: 12,
-              overflow: "hidden",
-            }}
-          >
-            {/* Section header */}
-            <div
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginBottom: 12 }}>
+        {purchaseCategories.map(c => {
+          const amt = Number(catTotals.get(c.id) || 0);
+          const on = openPurchaseCatId === c.id;
+          return (
+            <button
+              key={c.id}
+              onClick={() => setOpenPurchaseCatId(on ? null : c.id)}
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "10px 12px",
-                background: dark ? "#1c1c1c" : "#fafafa",
-                borderBottom: `1px solid ${cardBorder}`,
+                textAlign: "left",
+                padding: 12,
+                borderRadius: 10,
+                border: `1px solid ${btnBorder}`,
+                background: on ? "#c8e6c9" : (dark ? "#1e1e1e" : "#fff"),
+                cursor: "pointer"
               }}
             >
-              <span
-                style={{
-                  display: "inline-flex",
-                  width: 24,
-                  height: 24,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderRadius: 6,
-                  border: `1px solid ${btnBorder}`,
-                  fontSize: 14,
-                }}
-              >
-                📦
-              </span>
-              <div style={{ fontWeight: 700 }}>{cat.name}</div>
-              <div style={{ opacity: 0.8 }}>• {currency(total)}</div>
-            </div>
+              <div style={{ fontWeight: 700 }}>{c.name}</div>
+              <div style={{ opacity: .8 }}>E£{amt.toFixed(2)}</div>
+            </button>
+          );
+        })}
+      </div>
 
-            {/* Table */}
-            <div style={{ padding: 12 }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr>
-                    {["Date", "Item", "Unit", "Qty", "Unit Price", "Total"].map(
-                      (h) => (
-                        <th
-                          key={h}
-                          style={{
-                            textAlign:
-                              h === "Qty" || h === "Unit Price" || h === "Total"
-                                ? "right"
-                                : "left",
-                            borderBottom: `1px solid ${cardBorder}`,
-                            padding: 8,
-                            fontWeight: 700,
-                          }}
-                        >
-                          {h}
-                        </th>
-                      )
-                    )}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} style={{ padding: 8, opacity: 0.7 }}>
-                        No purchases in this period.
-                      </td>
-                    </tr>
-                  ) : (
-                    rows.map((r) => (
-                      <tr key={r.id}>
-                        <td style={{ padding: 8 }}>{prettyDate(r.date)}</td>
-                        <td style={{ padding: 8 }}>{r.itemName || "-"}</td>
-                        <td style={{ padding: 8 }}>{r.unit || "-"}</td>
-                        <td style={{ padding: 8, textAlign: "right" }}>
-                          {Number(r.qty || 0)}
-                        </td>
-                        <td style={{ padding: 8, textAlign: "right" }}>
-                          {currency(r.unitPrice)}
-                        </td>
-                        <td style={{ padding: 8, textAlign: "right" }}>
-                          {currency(Number(r.qty || 0) * Number(r.unitPrice || 0))}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12, marginBottom: 14 }}>
+        <div style={{ padding: 10, borderRadius: 8, background: softBg }}>
+          <h4 style={{ margin: 0, marginBottom: 8 }}>Add Purchase</h4>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+            <select
+              value={newPurchase.categoryId}
+              onChange={(e)=> setNewPurchase(p => ({ ...p, categoryId: e.target.value }))}
+            >
+              <option value="">Category…</option>
+              {purchaseCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+
+            <input
+              type="text"
+              placeholder="Item name"
+              value={newPurchase.itemName}
+              onChange={(e)=> setNewPurchase(p => ({ ...p, itemName: e.target.value }))}
+            />
+
+            <input
+              type="text"
+              placeholder="Unit"
+              value={newPurchase.unit}
+              onChange={(e)=> setNewPurchase(p => ({ ...p, unit: e.target.value }))}
+            />
+            <input
+              type="number"
+              placeholder="Qty"
+              value={newPurchase.qty}
+              onChange={(e)=> setNewPurchase(p => ({ ...p, qty: Number(e.target.value || 0) }))}
+            />
+            <input
+              type="number"
+              step="any"
+              placeholder="Unit Price (E£)"
+              value={newPurchase.unitPrice}
+              onChange={(e)=> setNewPurchase(p => ({ ...p, unitPrice: Number(e.target.value || 0) }))}
+            />
+
+            <input
+              type="date"
+              value={newPurchase.date}
+              onChange={(e)=> setNewPurchase(p => ({ ...p, date: e.target.value }))}
+            />
+
+            <button
+              onClick={() => {
+                if (!newPurchase.categoryId) return alert("Choose a category.");
+                const d = new Date(`${newPurchase.date}T12:00:00`);
+                const row = {
+                  id: `pur_${Date.now()}`,
+                  categoryId: newPurchase.categoryId,
+                  itemName: String(newPurchase.itemName || "").trim(),
+                  unit: newPurchase.unit || "pcs",
+                  qty: Math.max(0, Number(newPurchase.qty || 0)),
+                  unitPrice: Math.max(0, Number(newPurchase.unitPrice || 0)),
+                  date: d,
+                };
+                setPurchases(arr => [row, ...arr]);
+
+                
+
+                setNewPurchase(p => ({ ...p, qty: 1, unitPrice: 0, itemName: "" }));
+              }}
+              style={{ background: "#2e7d32", color: "#fff", border: "none", borderRadius: 6, padding: "8px 12px", cursor: "pointer" }}
+            >
+              Add Purchase
+            </button>
           </div>
-        );
-      })}
-    </div>
-  </div>
-)}
+        </div>
 
+        <div style={{ padding: 10, borderRadius: 8, background: softBg }}>
+          <h4 style={{ margin: 0, marginBottom: 8 }}>Add Category</h4>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input id="np-cat" type="text" placeholder="Category name" style={{ flex: 1 }} />
+            <button
+              onClick={() => {
+                const el = document.getElementById("np-cat");
+                const name = String(el.value || "").trim();
+                if (!name) return;
+                const id = `cat_${Date.now()}`;
+                setPurchaseCategories(arr => [...arr, { id, name }]);
+                el.value = "";
+              }}
+              style={{ background: "#1976d2", color: "#fff", border: "none", borderRadius: 6, padding: "8px 12px", cursor: "pointer" }}
+            >
+              Add
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 6 }}>
+        <h3 style={{ marginBottom: 8 }}>
+          {openPurchaseCatId
+            ? `Purchases: ${purchaseCategories.find(c=>c.id===openPurchaseCatId)?.name || ""}`
+            : "All Purchases (grouped by date)"
+          }
+        </h3>
+
+        {Object.entries(openPurchaseCatId ? groupedByCat : groupedAll)
+          .sort((a,b) => a[0] < b[0] ? 1 : -1)
+          .map(([dkey, rows]) => (
+          <div key={dkey} style={{ marginBottom: 10 }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>{dkey}</div>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Category</th>
+                  <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Item</th>
+                  <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit</th>
+                  <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Qty</th>
+                  <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit Price</th>
+                  <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => {
+                  const catName = purchaseCategories.find(c=>c.id===r.categoryId)?.name || "-";
+                  const tot = Number(r.qty || 0) * Number(r.unitPrice || 0);
+                  return (
+                    <tr key={r.id}>
+                      <td style={{ padding: 6 }}>{catName}</td>
+                     <td style={{ padding: 6 }}>{r.itemName}</td>
+
+                      <td style={{ padding: 6 }}>{r.unit}</td>
+                      <td style={{ padding: 6, textAlign: "right" }}>{r.qty}</td>
+                      <td style={{ padding: 6, textAlign: "right" }}>E£{Number(r.unitPrice || 0).toFixed(2)}</td>
+                      <td style={{ padding: 6, textAlign: "right" }}>E£{tot.toFixed(2)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ))}
+        {inPeriod.length === 0 && <p style={{ opacity: .8 }}>No purchases in selected period.</p>}
+      </div>
+    </div>
+  );
+})()}
 
 
       {/* BANK */}
@@ -5300,12 +4939,6 @@ const prettyDate = (d) => {
     </div>
   );
 }
-
-
-
-
-
-
 
 
 
