@@ -712,10 +712,9 @@ const [purchaseCategories, setPurchaseCategories] = useState(
 );
 const [purchases, setPurchases] = useState([]); // {id, categoryId, ingredientId?, itemName, unit, qty, unitPrice, date: Date}
 const [purchaseFilter, setPurchaseFilter] = useState("day"); // 'day' | 'month' | 'year'
-const [openPurchaseCatId, setOpenPurchaseCatId] = useState(null);
+const [purchaseCatFilterId, setPurchaseCatFilterId] = useState("");
 const [newPurchase, setNewPurchase] = useState({
   categoryId: "",
-  ingredientId: "",
   itemName: "",
   unit: "pcs",
   qty: 1,
@@ -2084,11 +2083,14 @@ const [pStart, pEnd] = useMemo(
 );
 
 const filteredPurchases = useMemo(() => {
-  return (purchases || []).filter((p) => {
+ const withinPeriod = (purchases || []).filter((p) => {
     const d = p?.date instanceof Date ? p.date : new Date(p?.date);
     return isWithin(d, pStart, pEnd);
   });
-}, [purchases, pStart, pEnd]);
+  return purchaseCatFilterId
+    ? withinPeriod.filter((p) => p.categoryId === purchaseCatFilterId)
+    : withinPeriod;
+}, [purchases, pStart, pEnd, purchaseCatFilterId]);
 
 // KPI: Total Purchases for the selected period
 const totalPurchasesInPeriod = useMemo(
@@ -2129,7 +2131,7 @@ const netAfterPurchases = useMemo(() => {
   return rev - Number(totalPurchasesInPeriod || 0);
 }, [totals, totalPurchasesInPeriod]);
 const handleAddPurchase = () => {
-  const { categoryId, ingredientId, itemName, unit, qty, unitPrice, date } = newPurchase;
+  const { categoryId, itemName, unit, qty, unitPrice, date } = newPurchase;
 
   if (!categoryId) return alert("Select a category.");
   const name = String(itemName || "").trim();
@@ -3715,9 +3717,10 @@ const prettyDate = (d) => {
         {/* Category */}
         <select
           value={newPurchase.categoryId}
-          onChange={(e) =>
-            setNewPurchase((p) => ({ ...p, categoryId: e.target.value }))
-          }
+          onChange={(e) => {
+ const id = e.target.value;
+   setNewPurchase((p) => ({ ...p, categoryId: id }));
+   setPurchaseCatFilterId(id);   }}
           style={{
             padding: 10,
             borderRadius: 10,
@@ -3734,27 +3737,7 @@ const prettyDate = (d) => {
           ))}
         </select>
 
-        {/* Link ingredient (optional) */}
-        <select
-          value={newPurchase.ingredientId}
-          onChange={(e) =>
-            setNewPurchase((p) => ({ ...p, ingredientId: e.target.value }))
-          }
-          style={{
-            padding: 10,
-            borderRadius: 10,
-            border: `1px solid ${btnBorder}`,
-            background: dark ? "#121212" : "#fff",
-            color: dark ? "#eee" : "#000",
-          }}
-        >
-          <option value="">Link ingredient (optional)</option>
-          {inventory.map((i) => (
-            <option key={i.id} value={i.id}>
-              {i.name} ({i.unit})
-            </option>
-          ))}
-        </select>
+       
 
         {/* Item name */}
         <input
@@ -3871,13 +3854,13 @@ const prettyDate = (d) => {
       {/* Category tiles with 📦 icon */}
       {purchaseCategories.map((cat) => {
         const total = catTotals.get(cat.id) || 0;
-        const active = openPurchaseCatId === cat.id;
+        const active = purchaseCatFilterId === cat.id;
         return (
           <button
             key={cat.id}
-            onClick={() =>
-              setOpenPurchaseCatId((id) => (id === cat.id ? null : cat.id))
-            }
+             onClick={() =>
+   setPurchaseCatFilterId((id) => (id === cat.id ? "" : cat.id))
+ }
             style={{
               textAlign: "left",
               padding: 14,
@@ -5244,6 +5227,7 @@ const prettyDate = (d) => {
     </div>
   );
 }
+
 
 
 
