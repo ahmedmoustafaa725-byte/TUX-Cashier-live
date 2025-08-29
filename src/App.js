@@ -3835,71 +3835,7 @@ const generatePurchasesPDF = () => {
         </div>
       </div>
     </div>
-{/* === ADD: Manage Categories (filter/delete) ===================== */}
-<div
-  style={{
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-    gap: 10,
-    marginBottom: 12,
-  }}
->
-  {purchaseCategories.map(c => {
-    const amt = (function () {
-      let s = 0;
-      for (const p of filteredPurchases) {
-        if ((p.categoryId || "") === c.id) {
-          s += Number(p.qty || 0) * Number(p.unitPrice || 0);
-        }
-      }
-      return s;
-    })();
 
-    return (
-      <div
-        key={c.id}
-        style={{
-          padding: 12,
-          borderRadius: 10,
-          background: dark ? "#1a1a1a" : "#fff",
-          border: `1px solid ${cardBorder}`,
-          display: "grid",
-          gap: 8,
-        }}
-      >
-        <div style={{ fontWeight: 800 }}>{c.name}</div>
-        <div style={{ opacity: 0.9 }}>In period: <b>{currency(amt)}</b></div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button
-            onClick={() => setPurchaseCatFilterId(c.id)}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 8,
-              border: `1px solid ${btnBorder}`,
-              background: purchaseCatFilterId === c.id ? "#ffd54f" : (dark ? "#2b2b2b" : "#f2f2f2"),
-              cursor: "pointer",
-            }}
-          >
-            Show
-          </button>
-          <button
-            onClick={() => removePurchaseCategory(c.id)}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 8,
-              border: "none",
-              background: "#c62828",
-              color: "#fff",
-              cursor: "pointer",
-            }}
-          >
-            Delete
-          </button>
-        </div>
-      </div>
-    );
-  })}
-</div>
 
    
 
@@ -5438,6 +5374,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
