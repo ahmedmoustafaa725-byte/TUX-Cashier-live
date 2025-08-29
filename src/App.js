@@ -2140,7 +2140,6 @@ const handleAddPurchase = () => {
   const row = {
     id: `p_${Date.now()}`,
     categoryId,
-    ingredientId: ingredientId || "",
     itemName: name,
     unit: String(unit || "pcs"),
     qty: Math.max(0, Number(qty || 0)),
@@ -2151,7 +2150,6 @@ const handleAddPurchase = () => {
   setPurchases((arr) => [row, ...arr]);
   setNewPurchase({
     categoryId: "",
-    ingredientId: "",
     itemName: "",
     unit: "pcs",
     qty: 1,
@@ -5227,6 +5225,7 @@ const prettyDate = (d) => {
     </div>
   );
 }
+
 
 
 
