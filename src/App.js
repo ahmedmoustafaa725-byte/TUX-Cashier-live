@@ -3997,50 +3997,82 @@ const generatePurchasesPDF = () => {
         marginBottom: 14,
       }}
     >
-      {/* Category tiles with 📦 icon */}
-      {purchaseCategories.map((cat) => {
-        const total = catTotals.get(cat.id) || 0;
-        const active = purchaseCatFilterId === cat.id;
-        return (
-          <button
-            key={cat.id}
-             onClick={() =>
-   setPurchaseCatFilterId((id) => (id === cat.id ? "" : cat.id))
- }
-            style={{
-              textAlign: "left",
-              padding: 14,
-              borderRadius: 12,
-              border: `1px solid ${cardBorder}`,
-              background: active ? (dark ? "#222" : "#fff8e1") : dark ? "#1e1e1e" : "#fff",
-              color: dark ? "#eee" : "#000",
-              cursor: "pointer",
-            }}
-            title="Show category details below"
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span
-                style={{
-                  display: "inline-flex",
-                  width: 28,
-                  height: 28,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderRadius: 8,
-                  border: `1px solid ${btnBorder}`,
-                  fontSize: 16,
-                }}
-              >
-                📦
-              </span>
-              <div style={{ fontWeight: 700 }}>{cat.name}</div>
-            </div>
-            <div style={{ marginTop: 6, opacity: 0.8 }}>
-              {currency(total)}
-            </div>
-          </button>
-        );
-      })}
+     {purchaseCategories.map((cat) => {
+  const total = catTotals.get(cat.id) || 0;
+  const active = purchaseCatFilterId === cat.id;
+  return (
+    <button
+      key={cat.id}
+      onClick={() =>
+        setPurchaseCatFilterId((id) => (id === cat.id ? "" : cat.id))
+      }
+      style={{
+        position: "relative",                  // ⬅️ add
+        textAlign: "left",
+        padding: 14,
+        borderRadius: 12,
+        border: `1px solid ${cardBorder}`,
+        background: active ? (dark ? "#222" : "#fff8e1") : (dark ? "#1e1e1e" : "#fff"),
+        color: dark ? "#eee" : "#000",
+        cursor: "pointer",
+      }}
+      title="Show category details below"
+    >
+      {/* tiny X in the top-right */}
+      <span
+        title={`Delete ${cat.name}`}
+        aria-label={`Delete ${cat.name}`}
+        onClick={(e) => {
+          e.stopPropagation();   // don't toggle selection
+          e.preventDefault();
+          removePurchaseCategory(cat.id);
+        }}
+        style={{
+          position: "absolute",
+          top: 6,
+          right: 6,
+          width: 22,
+          height: 22,
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          borderRadius: "50%",
+          border: `1px solid ${btnBorder}`,
+          background: dark ? "#2a2a2a" : "#fff",
+          color: dark ? "#eee" : "#000",
+          fontSize: 14,
+          fontWeight: 700,
+          lineHeight: 1,
+          cursor: "pointer",
+          opacity: 0.9,
+        }}
+      >
+        ×
+      </span>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span
+          style={{
+            display: "inline-flex",
+            width: 28,
+            height: 28,
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 8,
+            border: `1px solid ${btnBorder}`,
+            fontSize: 16,
+          }}
+        >
+          📦
+        </span>
+        <div style={{ fontWeight: 700 }}>{cat.name}</div>
+      </div>
+      <div style={{ marginTop: 6, opacity: 0.8 }}>
+        {currency(total)}
+      </div>
+    </button>
+  );
+})}
 
 
       {/* Add Category tile (inside the categories group) */}
@@ -5374,6 +5406,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
