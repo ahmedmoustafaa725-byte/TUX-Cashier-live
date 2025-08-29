@@ -3923,72 +3923,6 @@ const generatePurchasesPDF = () => {
         }}
       >
 
-{/* === FILTERED PURCHASES TABLE ================================== */}
-<div style={{
-  padding: 14,
-  borderRadius: 12,
-  background: dark ? "#1a1a1a" : "#fff",
-  border: `1px solid ${cardBorder}`,
-}}>
-  <div style={{ marginBottom: 8, display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:8 }}>
-    <strong>
-      Purchases {purchaseCatFilterId ? `— ${purchaseCategories.find(c=>c.id===purchaseCatFilterId)?.name || ""}` : "(all categories)"} • {filteredPurchases.length} rows
-    </strong>
-    {purchaseCatFilterId && (
-      <button
-        onClick={() => setPurchaseCatFilterId("")}
-        style={{ padding:"6px 10px", borderRadius:8, border:`1px solid ${btnBorder}`, background: dark ? "#2b2b2b" : "#f2f2f2", cursor:"pointer" }}
-      >
-        Clear category filter
-      </button>
-    )}
-  </div>
-
-  <table style={{ width:"100%", borderCollapse:"collapse" }}>
-    <thead>
-      <tr>
-        <th style={{ textAlign:"left", borderBottom:`1px solid ${cardBorder}`, padding:6 }}>Date</th>
-        <th style={{ textAlign:"left", borderBottom:`1px solid ${cardBorder}`, padding:6 }}>Category</th>
-        <th style={{ textAlign:"left", borderBottom:`1px solid ${cardBorder}`, padding:6 }}>Item</th>
-        <th style={{ textAlign:"center", borderBottom:`1px solid ${cardBorder}`, padding:6 }}>Unit</th>
-        <th style={{ textAlign:"right", borderBottom:`1px solid ${cardBorder}`, padding:6 }}>Qty</th>
-        <th style={{ textAlign:"right", borderBottom:`1px solid ${cardBorder}`, padding:6 }}>Unit Price</th>
-        <th style={{ textAlign:"right", borderBottom:`1px solid ${cardBorder}`, padding:6 }}>Total</th>
-        <th style={{ borderBottom:`1px solid ${cardBorder}`, padding:6 }}>Actions</th>
-      </tr>
-    </thead>
-    <tbody>
-      {filteredPurchases.map((p) => {
-        const catName = purchaseCategories.find(c => c.id === p.categoryId)?.name || "-";
-        const total = Number(p.qty || 0) * Number(p.unitPrice || 0);
-        return (
-          <tr key={p.id}>
-            <td style={{ padding:6 }}>{prettyDate(p.date)}</td>
-            <td style={{ padding:6 }}>{catName}</td>
-            <td style={{ padding:6 }}>{p.itemName}</td>
-            <td style={{ padding:6, textAlign:"center" }}>{p.unit}</td>
-            <td style={{ padding:6, textAlign:"right" }}>{p.qty}</td>
-            <td style={{ padding:6, textAlign:"right" }}>{currency(p.unitPrice)}</td>
-            <td style={{ padding:6, textAlign:"right" }}>{currency(total)}</td>
-            <td style={{ padding:6 }}>
-              <button
-                onClick={() => setPurchases((arr) => arr.filter(x => x.id !== p.id))}
-                style={{ background:"#c62828", color:"#fff", border:"none", borderRadius:6, padding:"6px 10px", cursor:"pointer" }}
-              >
-                Remove
-              </button>
-            </td>
-          </tr>
-        );
-      })}
-      {filteredPurchases.length === 0 && (
-        <tr>
-          <td colSpan={8} style={{ padding:8, opacity:0.8 }}>No purchases for this selection.</td>
-        </tr>
-      )}
-    </tbody>
-  </table>
-</div>
 
         {/* Category */}
         <select
@@ -5504,6 +5438,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
