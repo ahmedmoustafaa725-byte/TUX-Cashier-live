@@ -2212,106 +2212,6 @@ const removePurchaseCategory = (catId) => {
         startY: 18,
         theme: "grid",
       });
-      // === ADD BELOW: Purchases PDF report =================================
-const generatePurchasesPDF = () => {
-  try {
-    const doc = new jsPDF();
-    const [start, end] = getPeriodRange(purchaseFilter, dayMeta);
-    const title = `TUX — Purchases Report (${purchaseFilter.toUpperCase()})`;
-    doc.text(title, 14, 12);
-
-    const periodStr =
-      `${start.toLocaleDateString()} → ${end.toLocaleDateString()}`;
-
-    // Build filtered rows just like the UI
-    const within = (purchases || []).filter((p) => {
-      const d = p?.date instanceof Date ? p.date : new Date(p?.date);
-      return isWithin(d, start, end);
-    });
-    const rows = purchaseCatFilterId
-      ? within.filter((p) => p.categoryId === purchaseCatFilterId)
-      : within;
-
-    const totalAll = rows.reduce(
-      (s, p) => s + Number(p.qty || 0) * Number(p.unitPrice || 0),
-      0
-    );
-
-    // Header table
-    autoTable(doc, {
-      head: [["Period", "Filter", "Total (E£)"]],
-      body: [[periodStr,
-        purchaseCatFilterId
-          ? (purchaseCategories.find(c=>c.id===purchaseCatFilterId)?.name || "(unknown)")
-          : "All categories",
-        totalAll.toFixed(2)]],
-      startY: 18,
-      theme: "grid",
-      styles: { fontSize: 10 },
-    });
-
-    // Category totals
-    const catMap = new Map();
-    for (const p of rows) {
-      const amt = Number(p.qty || 0) * Number(p.unitPrice || 0);
-      const k = p.categoryId || "";
-      catMap.set(k, (catMap.get(k) || 0) + amt);
-    }
-
-    let y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : 30;
-    doc.text("Totals by Category", 14, y);
-    const catBody = Array.from(catMap.entries())
-      .map(([cid, amt]) => [
-        purchaseCategories.find(c=>c.id===cid)?.name || "(unknown)",
-        amt.toFixed(2),
-      ])
-      .sort((a,b) => Number(b[1]) - Number(a[1])); // desc by E£
-
-    autoTable(doc, {
-      head: [["Category", "Amount (E£)"]],
-      body: catBody.length ? catBody : [["(no data)", "0.00"]],
-      startY: y + 4,
-      theme: "grid",
-      styles: { fontSize: 10 },
-    });
-
-    // Full line items
-    y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : y + 36;
-    doc.text("Line Items", 14, y);
-
-    const lineBody = rows
-      .slice()
-      .sort((a, b) => +new Date(a.date) - +new Date(b.date))
-      .map((p) => {
-        const catName = purchaseCategories.find(c => c.id === p.categoryId)?.name || "-";
-        const total = Number(p.qty || 0) * Number(p.unitPrice || 0);
-        const d = p?.date instanceof Date ? p.date : new Date(p?.date);
-        return [
-          d.toLocaleDateString(),
-          catName,
-          p.itemName || "",
-          String(p.unit || ""),
-          Number(p.qty || 0).toString(),
-          Number(p.unitPrice || 0).toFixed(2),
-          total.toFixed(2),
-        ];
-      });
-
-    autoTable(doc, {
-      head: [["Date", "Category", "Item", "Unit", "Qty", "Unit Price", "Total (E£)"]],
-      body: lineBody.length ? lineBody : [["—","—","—","—","0","0.00","0.00"]],
-      startY: y + 4,
-      theme: "grid",
-      styles: { fontSize: 9 },
-    });
-
-    doc.save("tux_purchases_report.pdf");
-    alert("Purchases PDF downloaded.");
-  } catch (e) {
-    console.error(e);
-    alert("Could not generate Purchases PDF. Ensure pop-ups are allowed.");
-  }
-};
 
 
       let y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : 28;
@@ -2532,6 +2432,107 @@ const currency = (v) => `E£${Number(v || 0).toFixed(2)}`;
 const prettyDate = (d) => {
   const dt = d instanceof Date ? d : new Date(d);
   return dt.toISOString().slice(0, 10);
+};
+
+     // === ADD BELOW: Purchases PDF report =================================
+const generatePurchasesPDF = () => {
+  try {
+    const doc = new jsPDF();
+    const [start, end] = getPeriodRange(purchaseFilter, dayMeta);
+    const title = `TUX — Purchases Report (${purchaseFilter.toUpperCase()})`;
+    doc.text(title, 14, 12);
+
+    const periodStr =
+      `${start.toLocaleDateString()} → ${end.toLocaleDateString()}`;
+
+    // Build filtered rows just like the UI
+    const within = (purchases || []).filter((p) => {
+      const d = p?.date instanceof Date ? p.date : new Date(p?.date);
+      return isWithin(d, start, end);
+    });
+    const rows = purchaseCatFilterId
+      ? within.filter((p) => p.categoryId === purchaseCatFilterId)
+      : within;
+
+    const totalAll = rows.reduce(
+      (s, p) => s + Number(p.qty || 0) * Number(p.unitPrice || 0),
+      0
+    );
+
+    // Header table
+    autoTable(doc, {
+      head: [["Period", "Filter", "Total (E£)"]],
+      body: [[periodStr,
+        purchaseCatFilterId
+          ? (purchaseCategories.find(c=>c.id===purchaseCatFilterId)?.name || "(unknown)")
+          : "All categories",
+        totalAll.toFixed(2)]],
+      startY: 18,
+      theme: "grid",
+      styles: { fontSize: 10 },
+    });
+
+    // Category totals
+    const catMap = new Map();
+    for (const p of rows) {
+      const amt = Number(p.qty || 0) * Number(p.unitPrice || 0);
+      const k = p.categoryId || "";
+      catMap.set(k, (catMap.get(k) || 0) + amt);
+    }
+
+    let y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : 30;
+    doc.text("Totals by Category", 14, y);
+    const catBody = Array.from(catMap.entries())
+      .map(([cid, amt]) => [
+        purchaseCategories.find(c=>c.id===cid)?.name || "(unknown)",
+        amt.toFixed(2),
+      ])
+      .sort((a,b) => Number(b[1]) - Number(a[1])); // desc by E£
+
+    autoTable(doc, {
+      head: [["Category", "Amount (E£)"]],
+      body: catBody.length ? catBody : [["(no data)", "0.00"]],
+      startY: y + 4,
+      theme: "grid",
+      styles: { fontSize: 10 },
+    });
+
+    // Full line items
+    y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : y + 36;
+    doc.text("Line Items", 14, y);
+
+    const lineBody = rows
+      .slice()
+      .sort((a, b) => +new Date(a.date) - +new Date(b.date))
+      .map((p) => {
+        const catName = purchaseCategories.find(c => c.id === p.categoryId)?.name || "-";
+        const total = Number(p.qty || 0) * Number(p.unitPrice || 0);
+        const d = p?.date instanceof Date ? p.date : new Date(p?.date);
+        return [
+          d.toLocaleDateString(),
+          catName,
+          p.itemName || "",
+          String(p.unit || ""),
+          Number(p.qty || 0).toString(),
+          Number(p.unitPrice || 0).toFixed(2),
+          total.toFixed(2),
+        ];
+      });
+
+    autoTable(doc, {
+      head: [["Date", "Category", "Item", "Unit", "Qty", "Unit Price", "Total (E£)"]],
+      body: lineBody.length ? lineBody : [["—","—","—","—","0","0.00","0.00"]],
+      startY: y + 4,
+      theme: "grid",
+      styles: { fontSize: 9 },
+    });
+
+    doc.save("tux_purchases_report.pdf");
+    alert("Purchases PDF downloaded.");
+  } catch (e) {
+    console.error(e);
+    alert("Could not generate Purchases PDF. Ensure pop-ups are allowed.");
+  }
 };
 
 
@@ -5503,6 +5504,7 @@ const prettyDate = (d) => {
     </div>
   );
 }
+
 
 
 
