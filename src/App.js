@@ -3615,6 +3615,122 @@ for (const o of validOrders) {
 {activeTab === "purchases" && (
   <div>
     <h2>Purchases</h2>
+ {/* --- FIX: Add Purchase form that uses handleAddPurchase --- */}
+<div
+  style={{
+    padding: 10,
+    borderRadius: 8,
+    background: dark ? "#181818" : "#fafafa",
+    border: `1px solid ${cardBorder}`,
+    marginBottom: 12,
+    display: "grid",
+    gridTemplateColumns: "1.2fr 1fr 0.7fr 0.9fr 1fr 0.9fr",
+    gap: 8,
+    alignItems: "center",
+  }}
+>
+  {/* Category */}
+  <div>
+    <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Category</div>
+    <select
+      value={newPurchase.categoryId}
+      onChange={(e) =>
+        setNewPurchase((p) => ({ ...p, categoryId: e.target.value }))
+      }
+      style={{ width: "100%", padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+    >
+      <option value="">Choose…</option>
+      {purchaseCategories.map((c) => (
+        <option key={c.id} value={c.id}>{c.name}</option>
+      ))}
+    </select>
+  </div>
+
+  {/* Item name */}
+  <div>
+    <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Item</div>
+    <input
+      type="text"
+      placeholder="e.g. Buns pack"
+      value={newPurchase.itemName}
+      onChange={(e) =>
+        setNewPurchase((p) => ({ ...p, itemName: e.target.value }))
+      }
+      style={{ width: "100%", padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+    />
+  </div>
+
+  {/* Unit */}
+  <div>
+    <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Unit</div>
+    <input
+      type="text"
+      placeholder="pcs / kg / g"
+      value={newPurchase.unit}
+      onChange={(e) =>
+        setNewPurchase((p) => ({ ...p, unit: e.target.value || "pcs" }))
+      }
+      style={{ width: "100%", padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+    />
+  </div>
+
+  {/* Qty */}
+  <div>
+    <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Qty</div>
+    <input
+      type="number"
+      min={0}
+      value={newPurchase.qty}
+      onChange={(e) =>
+        setNewPurchase((p) => ({ ...p, qty: Number(e.target.value || 0) }))
+      }
+      style={{ width: "100%", padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+    />
+  </div>
+
+  {/* Unit Price */}
+  <div>
+    <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Unit Price</div>
+    <input
+      type="number"
+      min={0}
+      value={newPurchase.unitPrice}
+      onChange={(e) =>
+        setNewPurchase((p) => ({ ...p, unitPrice: Number(e.target.value || 0) }))
+      }
+      style={{ width: "100%", padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+    />
+  </div>
+
+  {/* Date + Add */}
+  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+    <input
+      type="date"
+      value={newPurchase.date}
+      onChange={(e) =>
+        setNewPurchase((p) => ({ ...p, date: e.target.value }))
+      }
+      style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+    />
+    <button
+      onClick={handleAddPurchase}
+      style={{
+        padding: "8px 12px",
+        borderRadius: 6,
+        border: "none",
+        background: "#2e7d32",
+        color: "#fff",
+        cursor: "pointer",
+        whiteSpace: "nowrap",
+      }}
+      title="Add purchase"
+    >
+      Add Purchase
+    </button>
+  </div>
+</div>
+{/* --- end FIX --- */}
+
 
     {/* KPIs (Day/Month/Year controls are inside the Net card at the top) */}
     <div
@@ -5028,6 +5144,7 @@ for (const o of validOrders) {
     </div>
   );
 }
+
 
 
 
