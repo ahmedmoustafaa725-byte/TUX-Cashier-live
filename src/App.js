@@ -102,6 +102,11 @@ function packStateForCloud(state) {
       ...e,
       date: e.date ? e.date.toISOString() : null,
     })),
+    purchases: (state.purchases || []).map((p) => ({ ...p, date: p.date ? p.date.toISOString() : null })), // ⬅️ NEW
+purchaseCategories: state.purchaseCategories || [],   // ⬅️ NEW
+customers: state.customers || [],                     // ⬅️ NEW
+deliveryZones: state.deliveryZones || [],             // ⬅️ NEW
+
     dayMeta: dayMeta
       ? {
           ...dayMeta,
@@ -142,6 +147,13 @@ function unpackStateFromCloud(data, fallbackDayMeta = {}) {
       ...e,
       date: e.date ? new Date(e.date) : new Date(),
     }));
+    if (Array.isArray(data.purchases)) {
+  out.purchases = data.purchases.map(p => ({ ...p, date: p.date ? new Date(p.date) : new Date() }));
+} // ⬅️ NEW
+if (Array.isArray(data.purchaseCategories)) out.purchaseCategories = data.purchaseCategories; // ⬅️ NEW
+if (Array.isArray(data.customers)) out.customers = data.customers;                             // ⬅️ NEW
+if (Array.isArray(data.deliveryZones)) out.deliveryZones = data.deliveryZones;                 // ⬅️ NEW
+
   }
   if (Array.isArray(data.bankTx)) {
     out.bankTx = data.bankTx.map((t) => ({
@@ -202,6 +214,7 @@ return {
   deliveryName: order.deliveryName || "",
 deliveryPhone: order.deliveryPhone || "",
 deliveryAddress: order.deliveryAddress || "",
+deliveryZoneId: order.deliveryZoneId || "",   // ⬅️ NEW
 
   total: order.total,
   itemsTotal: order.itemsTotal,
@@ -237,6 +250,7 @@ function orderFromCloudDoc(id, d) {
     deliveryName: d.deliveryName || "",
 deliveryPhone: d.deliveryPhone || "",
 deliveryAddress: d.deliveryAddress || "",
+deliveryZoneId: d.deliveryZoneId || "",       // ⬅️ NEW
 
     total: Number(d.total || 0),
     itemsTotal: Number(d.itemsTotal || 0),
@@ -301,13 +315,27 @@ const BASE_EXTRAS = [
   { id: 113, name: "Tux Hawawshi Sauce", price: 10, uses: {} },
 ];
 const DEFAULT_INVENTORY = [
-  { id: "meat", name: "Meat", unit: "g", qty: 0 },
-  { id: "cheese", name: "Cheese", unit: "slices", qty: 0 },
+  { id: "meat", name: "Meat", unit: "g", qty: 0, costPerUnit: 0 },       // ⬅️ NEW
+  { id: "cheese", name: "Cheese", unit: "slices", qty: 0, costPerUnit: 0 }, // ⬅️ NEW
 ];
+
+
 const BASE_WORKERS = ["Hassan", "Warda", "Ahmed"];
 const DEFAULT_PAYMENT_METHODS = ["Cash", "Card", "Instapay"];
 const DEFAULT_ORDER_TYPES = ["Take-Away", "Dine-in", "Delivery"];
 const DEFAULT_DELIVERY_FEE = 20;
+// ---- Delivery zones (editable in Settings) ----                         // ⬅️ NEW
+const DEFAULT_ZONES = [
+  { id: "zone-a", name: "Zone A (Nearby)", fee: 20 },
+  { id: "zone-b", name: "Zone B (Medium)", fee: 30 },
+  { id: "zone-c", name: "Zone C (Far)", fee: 40 },
+];
+
+// ---- Purchase categories (you can add more in Purchases tab) ----       // ⬅️ NEW
+const DEFAULT_PURCHASE_CATEGORIES = [
+  "Buns", "Meat", "Cheese", "Veg", "Sauces", "Packaging", "Drinks"
+];
+
 const EDITOR_PIN = "0512";
 const DEFAULT_ADMIN_PINS = {
   1: "1111",
@@ -678,6 +706,26 @@ const [deliveryFee, setDeliveryFee] = useState(0);
 const [deliveryName, setDeliveryName] = useState("");
 const [deliveryPhone, setDeliveryPhone] = useState("");
 const [deliveryAddress, setDeliveryAddress] = useState("");
+  // ───── Purchases & Zones state ─────                                     // ⬅️ NEW
+const [purchaseCategories, setPurchaseCategories] = useState(
+  DEFAULT_PURCHASE_CATEGORIES.map((name, i) => ({ id: `cat_${i+1}`, name }))
+);
+const [purchases, setPurchases] = useState([]); // {id, categoryId, ingredientId?, itemName, unit, qty, unitPrice, date: Date}
+const [purchaseFilter, setPurchaseFilter] = useState("day"); // 'day' | 'month' | 'year'
+const [openPurchaseCatId, setOpenPurchaseCatId] = useState(null);
+const [newPurchase, setNewPurchase] = useState({
+  categoryId: "",
+  ingredientId: "",
+  itemName: "",
+  unit: "pcs",
+  qty: 1,
+  unitPrice: 0,
+  date: new Date().toISOString().slice(0,10),
+});
+const [deliveryZoneId, setDeliveryZoneId] = useState("");               // ⬅️ NEW
+const [customers, setCustomers] = useState([]);                         // {phone,name,address,zoneId}
+const [deliveryZones, setDeliveryZones] = useState(DEFAULT_ZONES);      // ⬅️ NEW
+
 
 const [cashReceived, setCashReceived] = useState(0);
 const [inventory, setInventory] = useState(DEFAULT_INVENTORY);
@@ -812,6 +860,14 @@ useEffect(() => {
   if (typeof l.dark === "boolean") setDark(l.dark);
    /* === ADD BELOW THIS LINE (other tabs & settings) === */
   if (Array.isArray(l.expenses)) setExpenses(l.expenses);
+  if (Array.isArray(l.purchaseCategories)) setPurchaseCategories(l.purchaseCategories); // ⬅️ NEW
+if (Array.isArray(l.purchases)) setPurchases(
+  l.purchases.map(p => ({ ...p, date: p.date ? new Date(p.date) : new Date() }))
+); // ⬅️ NEW
+if (typeof l.purchaseFilter === "string") setPurchaseFilter(l.purchaseFilter); // ⬅️ NEW
+if (Array.isArray(l.customers)) setCustomers(l.customers);           // ⬅️ NEW
+if (Array.isArray(l.deliveryZones)) setDeliveryZones(l.deliveryZones); // ⬅️ NEW
+
   if (Array.isArray(l.bankTx)) setBankTx(l.bankTx);
   if (l.dayMeta) setDayMeta(l.dayMeta);
   if (typeof l.inventoryLocked === "boolean") setInventoryLocked(l.inventoryLocked);
@@ -839,6 +895,18 @@ useEffect(() => {
 /* === END ADD === */
 /* === MIRROR TO LOCAL (all tabs & settings) === */
 useEffect(() => { saveLocalPartial({ menu }); }, [menu]);
+  useEffect(() => {
+  saveLocalPartial({
+    purchases: purchases.map(p => ({ ...p, date: p.date ? new Date(p.date).toISOString() : null }))
+  });
+}, [purchases]); // ⬅️ NEW
+  
+
+useEffect(() => { saveLocalPartial({ purchaseCategories }); }, [purchaseCategories]); // ⬅️ NEW
+useEffect(() => { saveLocalPartial({ purchaseFilter }); }, [purchaseFilter]);        // ⬅️ NEW
+useEffect(() => { saveLocalPartial({ customers }); }, [customers]);                  // ⬅️ NEW
+useEffect(() => { saveLocalPartial({ deliveryZones }); }, [deliveryZones]);          // ⬅️ NEW
+
 useEffect(() => { saveLocalPartial({ extraList }); }, [extraList]);
 useEffect(() => { saveLocalPartial({ workers }); }, [workers]);
 useEffect(() => { saveLocalPartial({ paymentMethods }); }, [paymentMethods]);
@@ -847,6 +915,23 @@ useEffect(() => { saveLocalPartial({ defaultDeliveryFee }); }, [defaultDeliveryF
 useEffect(() => { saveLocalPartial({ inventory }); }, [inventory]);
 useEffect(() => { saveLocalPartial({ adminPins }); }, [adminPins]);
 useEffect(() => { saveLocalPartial({ dark }); }, [dark]);
+  // Auto-fill delivery name/address/zone by saved phone                  // ⬅️ NEW
+useEffect(() => {
+  if (orderType !== "Delivery") return;
+  const p = String(deliveryPhone || "").trim();
+  if (p.length !== 11) return;
+  const found = customers.find(c => c.phone === p);
+  if (found) {
+    if (!deliveryName) setDeliveryName(found.name || "");
+    if (!deliveryAddress) setDeliveryAddress(found.address || "");
+    if (!deliveryZoneId && found.zoneId) {
+      setDeliveryZoneId(found.zoneId);
+      const z = deliveryZones.find(z => z.id === found.zoneId);
+      if (z) setDeliveryFee(Number(z.fee || 0));
+    }
+  }
+}, [orderType, deliveryPhone, customers, deliveryZones, deliveryName, deliveryAddress, deliveryZoneId]);
+
 
 /* === ADD BELOW THIS LINE (mirror other tabs & settings) === */
 useEffect(() => { saveLocalPartial({ expenses }); }, [expenses]);
@@ -1185,6 +1270,43 @@ setLastAppliedCloudAt(Date.now());
     for (const item of inventory) map[item.id] = item;
     return map;
   }, [inventory]);
+  // Compute per-item COGS from its `uses` and inventory `costPerUnit`      // ⬅️ NEW
+function computeCOGSForItemDef(def, invMap) {
+  const uses = def?.uses || {};
+  let sum = 0;
+  for (const k of Object.keys(uses)) {
+    const need = Number(uses[k] || 0);
+    const cost = Number(invMap[k]?.costPerUnit || 0);
+    sum += need * cost;
+  }
+  return Number(sum.toFixed(2));
+}
+// Period helpers for Purchases                                                // ⬅️ NEW
+function getPeriodRange(kind, dayMeta) {
+  const now = new Date();
+  if (kind === "day") {
+    const start = dayMeta?.startedAt ? new Date(dayMeta.startedAt) : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const end   = dayMeta?.endedAt   ? new Date(dayMeta.endedAt)   : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    return [start, end];
+  }
+  if (kind === "month") {
+    const start = new Date(now.getFullYear(), now.getMonth(), 1, 0,0,0);
+    const end   = new Date(now.getFullYear(), now.getMonth()+1, 0, 23,59,59,999);
+    return [start, end];
+  }
+  const start = new Date(now.getFullYear(), 0, 1, 0,0,0);
+  const end   = new Date(now.getFullYear(), 11, 31, 23,59,59,999);
+  return [start, end];
+}
+function isWithin(d, start, end) {
+  const t = +d;
+  return t >= +start && t <= +end;
+}
+function sumPurchases(arr) {
+  return arr.reduce((s,p)=> s + Number(p.qty || 0) * Number(p.unitPrice || 0), 0);
+}
+
+
 
   const promptAdminAndPin = () => {
     const adminStr = window.prompt("Enter Admin number (1 to 6):", "1");
@@ -1476,6 +1598,8 @@ if (orderType === "Delivery") {
   const n = String(deliveryName || "").trim();
   const p = String(deliveryPhone || "").trim();
   const a = String(deliveryAddress || "").trim();
+  setDeliveryZoneId(""); // ⬅️ NEW
+
 
   if (!n || !/^\d{11}$/.test(p) || !a) {
     return alert("Please enter customer name, phone Number (11 digits), and address for Delivery.");
@@ -1580,6 +1704,8 @@ if (orderType === "Delivery") {
       deliveryName: (orderType === "Delivery" ? String(deliveryName || "").trim() : ""),
 deliveryPhone: (orderType === "Delivery" ? String(deliveryPhone || "").trim() : ""),
 deliveryAddress: (orderType === "Delivery" ? String(deliveryAddress || "").trim() : ""),
+      deliveryZoneId: deliveryZoneId || "",   // ⬅️ NEW
+
 
       total,
       itemsTotal,
@@ -1594,6 +1720,26 @@ deliveryAddress: (orderType === "Delivery" ? String(deliveryAddress || "").trim(
         .toString(36)
         .slice(2)}`,
     };
+
+    // Save/update customer (Delivery only)                               // ⬅️ NEW
+if (orderType === "Delivery") {
+  const rec = {
+    phone: order.deliveryPhone,
+    name: order.deliveryName,
+    address: order.deliveryAddress,
+    zoneId: deliveryZoneId || "",
+  };
+  setCustomers(prev => {
+    const i = prev.findIndex(x => x.phone === rec.phone);
+    if (i >= 0) {
+      const copy = [...prev];
+      copy[i] = rec;
+      return copy;
+    }
+    return [rec, ...prev];
+  });
+}
+
 
     // PRINT now
     if (autoPrintOnCheckout) {
@@ -2266,6 +2412,8 @@ for (const o of validOrders) {
           ["board", "Orders Board"],
           ["inventory", "Inventory"],
           ["expenses", "Expenses"],
+          ["purchases", "Purchases"], // ⬅️ NEW
+
           ["bank", "Bank"],
           ["reports", "Reports"],
           ["edit", "Edit"],            // renamed from Prices
@@ -2748,6 +2896,25 @@ for (const o of validOrders) {
         &nbsp;(Default: E£{Number(defaultDeliveryFee || 0).toFixed(2)})
       </small>
     </div>
+    <div>  {/* Zone auto-sets fee */}                                    {/* ⬅️ NEW */}
+  <label>
+    Zone:&nbsp;
+    <select
+      value={deliveryZoneId}
+      onChange={(e) => {
+        const zid = e.target.value;
+        setDeliveryZoneId(zid);
+        const z = deliveryZones.find(z => z.id === zid);
+        if (z) setDeliveryFee(Number(z.fee || 0));
+      }}
+      style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+    >
+      <option value="">Select zone</option>
+      {deliveryZones.map(z => <option key={z.id} value={z.id}>{z.name} — E£{Number(z.fee||0).toFixed(2)}</option>)}
+    </select>
+  </label>
+</div>
+
 
     {/* NEW: Customer details (only for Delivery) */}
     <input
@@ -2759,6 +2926,7 @@ for (const o of validOrders) {
     />
     <input
   type="tel"
+  list="phone-saved" 
   inputMode="numeric"
   pattern="\d{11}"
   maxLength={11}
@@ -3355,6 +3523,258 @@ for (const o of validOrders) {
           </table>
         </div>
       )}
+{/* ────────────────────────────── PURCHASES TAB ────────────────────────────── */}  {/* ⬅️ NEW */}
+{activeTab === "purchases" && (() => {
+  const [start, end] = getPeriodRange(purchaseFilter, dayMeta);
+  const inPeriod = purchases.filter(p => isWithin(new Date(p.date), start, end));
+
+  const catTotals = new Map();
+  for (const c of purchaseCategories) catTotals.set(c.id, 0);
+  for (const p of inPeriod) {
+    const k = p.categoryId;
+    if (!catTotals.has(k)) catTotals.set(k, 0);
+    catTotals.set(k, catTotals.get(k) + Number(p.qty || 0) * Number(p.unitPrice || 0));
+  }
+  const totalInPeriod = sumPurchases(inPeriod);
+  const netAfterPurchases = (totals.margin || 0) - totalInPeriod;
+
+  const toDateKey = (d) => {
+    const x = new Date(d);
+    return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`;
+  };
+  const groupedAll = inPeriod.reduce((acc, p) => {
+    const k = toDateKey(p.date);
+    (acc[k] ||= []).push(p);
+    return acc;
+  }, {});
+
+  const selectedList = openPurchaseCatId
+    ? inPeriod.filter(p => p.categoryId === openPurchaseCatId)
+    : inPeriod;
+  const groupedByCat = selectedList.reduce((acc,p)=>{
+    const k = toDateKey(p.date);
+    (acc[k] ||= []).push(p);
+    return acc;
+  }, {});
+
+  return (
+    <div>
+      <h2>Purchases</h2>
+
+      <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", marginBottom: 10 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {["day","month","year"].map(k => (
+            <button
+              key={k}
+              onClick={() => setPurchaseFilter(k)}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 6,
+                border: `1px solid ${btnBorder}`,
+                background: purchaseFilter === k ? "#ffd54f" : (dark ? "#333" : "#eee")
+              }}
+            >
+              {k.toUpperCase()}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 8, minWidth: 280, flex: 1, marginLeft: 10 }}>
+          <div style={{ padding: 10, borderRadius: 8, background: dark ? "#1b2631" : "#e3f2fd" }}>
+            <b>Total Purchases</b><br/>E£{totalInPeriod.toFixed(2)}
+          </div>
+          <div style={{ padding: 10, borderRadius: 8, background: dark ? "#1e2a1e" : "#e8f5e9" }}>
+            <b>Margin (shift)</b><br/>E£{Number(totals.margin || 0).toFixed(2)}
+          </div>
+          <div style={{ padding: 10, borderRadius: 8, background: dark ? "#2d2533" : "#f3e5f5" }}>
+            <b>Net after Purchases</b><br/>E£{netAfterPurchases.toFixed(2)}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginBottom: 12 }}>
+        {purchaseCategories.map(c => {
+          const amt = Number(catTotals.get(c.id) || 0);
+          const on = openPurchaseCatId === c.id;
+          return (
+            <button
+              key={c.id}
+              onClick={() => setOpenPurchaseCatId(on ? null : c.id)}
+              style={{
+                textAlign: "left",
+                padding: 12,
+                borderRadius: 10,
+                border: `1px solid ${btnBorder}`,
+                background: on ? "#c8e6c9" : (dark ? "#1e1e1e" : "#fff"),
+                cursor: "pointer"
+              }}
+            >
+              <div style={{ fontWeight: 700 }}>{c.name}</div>
+              <div style={{ opacity: .8 }}>E£{amt.toFixed(2)}</div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12, marginBottom: 14 }}>
+        <div style={{ padding: 10, borderRadius: 8, background: softBg }}>
+          <h4 style={{ margin: 0, marginBottom: 8 }}>Add Purchase</h4>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+            <select
+              value={newPurchase.categoryId}
+              onChange={(e)=> setNewPurchase(p => ({ ...p, categoryId: e.target.value }))}
+            >
+              <option value="">Category…</option>
+              {purchaseCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+
+            <select
+              value={newPurchase.ingredientId}
+              onChange={(e)=> {
+                const id = e.target.value;
+                setNewPurchase(p => ({
+                  ...p,
+                  ingredientId: id,
+                  itemName: id ? (inventory.find(x=>x.id===id)?.name || p.itemName) : p.itemName
+                }));
+              }}
+            >
+              <option value="">Link ingredient (optional)</option>
+              {inventory.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
+            </select>
+
+            <input
+              type="text"
+              placeholder="Item name"
+              value={newPurchase.itemName}
+              onChange={(e)=> setNewPurchase(p => ({ ...p, itemName: e.target.value }))}
+            />
+
+            <input
+              type="text"
+              placeholder="Unit"
+              value={newPurchase.unit}
+              onChange={(e)=> setNewPurchase(p => ({ ...p, unit: e.target.value }))}
+            />
+            <input
+              type="number"
+              placeholder="Qty"
+              value={newPurchase.qty}
+              onChange={(e)=> setNewPurchase(p => ({ ...p, qty: Number(e.target.value || 0) }))}
+            />
+            <input
+              type="number"
+              step="any"
+              placeholder="Unit Price (E£)"
+              value={newPurchase.unitPrice}
+              onChange={(e)=> setNewPurchase(p => ({ ...p, unitPrice: Number(e.target.value || 0) }))}
+            />
+
+            <input
+              type="date"
+              value={newPurchase.date}
+              onChange={(e)=> setNewPurchase(p => ({ ...p, date: e.target.value }))}
+            />
+
+            <button
+              onClick={() => {
+                if (!newPurchase.categoryId) return alert("Choose a category.");
+                const d = new Date(`${newPurchase.date}T12:00:00`);
+                const row = {
+                  id: `pur_${Date.now()}`,
+                  categoryId: newPurchase.categoryId,
+                  ingredientId: newPurchase.ingredientId || "",
+                  itemName: String(newPurchase.itemName || "").trim(),
+                  unit: newPurchase.unit || "pcs",
+                  qty: Math.max(0, Number(newPurchase.qty || 0)),
+                  unitPrice: Math.max(0, Number(newPurchase.unitPrice || 0)),
+                  date: d,
+                };
+                setPurchases(arr => [row, ...arr]);
+
+                // If linked to an ingredient, auto-update inventory costPerUnit   // ⬅️ NEW
+                if (row.ingredientId) {
+                  setInventory(inv => inv.map(x => x.id === row.ingredientId ? { ...x, costPerUnit: row.unitPrice } : x));
+                }
+
+                setNewPurchase(p => ({ ...p, qty: 1, unitPrice: 0, itemName: "" }));
+              }}
+              style={{ background: "#2e7d32", color: "#fff", border: "none", borderRadius: 6, padding: "8px 12px", cursor: "pointer" }}
+            >
+              Add Purchase
+            </button>
+          </div>
+        </div>
+
+        <div style={{ padding: 10, borderRadius: 8, background: softBg }}>
+          <h4 style={{ margin: 0, marginBottom: 8 }}>Add Category</h4>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input id="np-cat" type="text" placeholder="Category name" style={{ flex: 1 }} />
+            <button
+              onClick={() => {
+                const el = document.getElementById("np-cat");
+                const name = String(el.value || "").trim();
+                if (!name) return;
+                const id = `cat_${Date.now()}`;
+                setPurchaseCategories(arr => [...arr, { id, name }]);
+                el.value = "";
+              }}
+              style={{ background: "#1976d2", color: "#fff", border: "none", borderRadius: 6, padding: "8px 12px", cursor: "pointer" }}
+            >
+              Add
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 6 }}>
+        <h3 style={{ marginBottom: 8 }}>
+          {openPurchaseCatId
+            ? `Purchases: ${purchaseCategories.find(c=>c.id===openPurchaseCatId)?.name || ""}`
+            : "All Purchases (grouped by date)"
+          }
+        </h3>
+
+        {Object.entries(openPurchaseCatId ? groupedByCat : groupedAll)
+          .sort((a,b) => a[0] < b[0] ? 1 : -1)
+          .map(([dkey, rows]) => (
+          <div key={dkey} style={{ marginBottom: 10 }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>{dkey}</div>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Category</th>
+                  <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Item</th>
+                  <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit</th>
+                  <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Qty</th>
+                  <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit Price</th>
+                  <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => {
+                  const catName = purchaseCategories.find(c=>c.id===r.categoryId)?.name || "-";
+                  const tot = Number(r.qty || 0) * Number(r.unitPrice || 0);
+                  return (
+                    <tr key={r.id}>
+                      <td style={{ padding: 6 }}>{catName}</td>
+                      <td style={{ padding: 6 }}>{r.itemName || (r.ingredientId ? (inventory.find(x=>x.id===r.ingredientId)?.name || r.ingredientId) : "")}</td>
+                      <td style={{ padding: 6 }}>{r.unit}</td>
+                      <td style={{ padding: 6, textAlign: "right" }}>{r.qty}</td>
+                      <td style={{ padding: 6, textAlign: "right" }}>E£{Number(r.unitPrice || 0).toFixed(2)}</td>
+                      <td style={{ padding: 6, textAlign: "right" }}>E£{tot.toFixed(2)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ))}
+        {inPeriod.length === 0 && <p style={{ opacity: .8 }}>No purchases in selected period.</p>}
+      </div>
+    </div>
+  );
+})()}
+
 
       {/* BANK */}
       {activeTab === "bank" && (
@@ -3767,6 +4187,64 @@ for (const o of validOrders) {
               )}
             </tbody>
           </table>
+{/* ───────── Inventory Costs (E£/unit) & COGS (place right after Items/Extras) ───────── */}  {/* ⬅️ NEW */}
+<h3 style={{ marginTop: 18 }}>Inventory Costs (E£ / unit)</h3>
+<table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 12 }}>
+  <thead>
+    <tr>
+      <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Ingredient</th>
+      <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit</th>
+      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Cost / Unit (E£)</th>
+    </tr>
+  </thead>
+  <tbody>
+    {inventory.map((it) => (
+      <tr key={it.id}>
+        <td style={{ padding: 6 }}>{it.name}</td>
+        <td style={{ padding: 6 }}>{it.unit}</td>
+        <td style={{ padding: 6, textAlign: "right" }}>
+          <input
+            type="number"
+            step="any"
+            value={Number(it.costPerUnit ?? 0)}
+            onChange={(e) => {
+              const v = Number(e.target.value || 0);
+              setInventory((inv) => inv.map(x => x.id === it.id ? { ...x, costPerUnit: v } : x));
+            }}
+            style={{ width: 140, textAlign: "right" }}
+          />
+        </td>
+      </tr>
+    ))}
+  </tbody>
+</table>
+
+<h3>COGS per Menu Item (auto)</h3>
+<table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 12 }}>
+  <thead>
+    <tr>
+      <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Item</th>
+      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>COGS / unit (E£)</th>
+      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Price (E£)</th>
+      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Gross / unit (E£)</th>
+    </tr>
+  </thead>
+  <tbody>
+    {menu.map((m) => {
+      const cogs = computeCOGSForItemDef(m, invById);
+      const price = Number(m.price || 0);
+      return (
+        <tr key={m.id}>
+          <td style={{ padding: 6 }}>{m.name}</td>
+          <td style={{ padding: 6, textAlign: "right" }}>{cogs.toFixed(2)}</td>
+          <td style={{ padding: 6, textAlign: "right" }}>{price.toFixed(2)}</td>
+          <td style={{ padding: 6, textAlign: "right" }}>{(price - cogs).toFixed(2)}</td>
+        </tr>
+      );
+    })}
+  </tbody>
+</table>
+
 
           {/* Add item */}
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 18 }}>
@@ -4266,6 +4744,63 @@ for (const o of validOrders) {
   </div>
 </div>
 
+<h3>Delivery Zones & Fees</h3>   {/* ⬅️ NEW */}
+<table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 10 }}>
+  <thead>
+    <tr>
+      <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Name</th>
+      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Fee (E£)</th>
+      <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {deliveryZones.map(z => (
+      <tr key={z.id}>
+        <td style={{ padding: 6 }}>
+          <input
+            type="text"
+            value={z.name}
+            onChange={(e)=> setDeliveryZones(arr => arr.map(x => x.id === z.id ? { ...x, name: e.target.value } : x))}
+            style={{ width: "100%" }}
+          />
+        </td>
+        <td style={{ padding: 6, textAlign: "right" }}>
+          <input
+            type="number"
+            value={z.fee}
+            onChange={(e)=> setDeliveryZones(arr => arr.map(x => x.id === z.id ? { ...x, fee: Number(e.target.value || 0) } : x))}
+            style={{ width: 140, textAlign: "right" }}
+          />
+        </td>
+        <td style={{ padding: 6 }}>
+          <button
+            onClick={()=> setDeliveryZones(arr => arr.filter(x => x.id !== z.id))}
+            style={{ background: "#c62828", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
+          >
+            Remove
+          </button>
+        </td>
+      </tr>
+    ))}
+  </tbody>
+</table>
+<div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+  <input id="new-zone-name" type="text" placeholder="Zone name" style={{ flex: 1 }} />
+  <input id="new-zone-fee" type="number" placeholder="Fee" style={{ width: 160 }} />
+  <button
+    onClick={() => {
+      const n = String(document.getElementById("new-zone-name").value || "").trim();
+      const f = Number(document.getElementById("new-zone-fee").value || 0);
+      if (!n) return;
+      setDeliveryZones(arr => [...arr, { id: `z_${Date.now()}`, name: n, fee: Math.max(0, f) }]);
+      document.getElementById("new-zone-name").value = "";
+      document.getElementById("new-zone-fee").value = "";
+    }}
+    style={{ background: "#1976d2", color: "#fff", border: "none", borderRadius: 6, padding: "8px 12px", cursor: "pointer" }}
+  >
+    Add Zone
+  </button>
+</div>
 
 
         
