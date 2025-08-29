@@ -2126,10 +2126,7 @@ const byCategory = useMemo(() => {
 
 
 // KPI: Net after Purchases
-const netAfterPurchases = useMemo(() => {
-  const rev = Number(totals?.revenueTotal || 0);
-  return rev - Number(totalPurchasesInPeriod || 0);
-}, [totals, totalPurchasesInPeriod]);
+
 const handleAddPurchase = () => {
   const { categoryId, itemName, unit, qty, unitPrice, date } = newPurchase;
 
@@ -3620,7 +3617,33 @@ const prettyDate = (d) => {
   <div>
     <h2>Purchases</h2>
 
-    {/* === KPI ROW ===================================================== */}
+    {/* DAY / MONTH / YEAR buttons under title (right) */}
+    <div style={{
+      display: "flex",
+      justifyContent: "flex-end",
+      gap: 8,
+      margin: "6px 0 10px"
+    }}>
+      {["day","month","year"].map((k) => (
+        <button
+          key={k}
+          onClick={() => setPurchaseFilter(k)}
+          style={{
+            padding: "6px 10px",
+            borderRadius: 8,
+            border: `1px solid ${btnBorder}`,
+            background: purchaseFilter === k ? "#ffd54f" : (dark ? "#2b2b2b" : "#f2f2f2"),
+            fontWeight: 700,
+            cursor: "pointer"
+          }}
+          aria-pressed={purchaseFilter === k}
+        >
+          {k.toUpperCase()}
+        </button>
+      ))}
+    </div>
+
+    {/* === KPI ROW (only Total Purchases now) ========================= */}
     <div
       style={{
         display: "grid",
@@ -3629,7 +3652,6 @@ const prettyDate = (d) => {
         marginBottom: 12,
       }}
     >
-      {/* Total Purchases */}
       <div
         style={{
           position: "relative",
@@ -3644,54 +3666,9 @@ const prettyDate = (d) => {
           {currency(totalPurchasesInPeriod)}
         </div>
       </div>
-
-      {/* Net after Purchases with DAY/MONTH/YEAR at upper top */}
-      <div
-        style={{
-          position: "relative",
-          padding: 16,
-          paddingTop: 56,
-          borderRadius: 12,
-          background: dark ? "#1e1e1e" : "#fff",
-          border: `1px solid ${cardBorder}`,
-        }}
-      >
-        {/* Toggle anchored at the upper-top (right) */}
-        <div
-          style={{
-            position: "absolute",
-            top: 12,
-            right: 12,
-            display: "flex",
-            gap: 8,
-          }}
-        >
-          {["day", "month", "year"].map((k) => (
-            <button
-              key={k}
-              onClick={() => setPurchaseFilter(k)}
-              style={{
-                padding: "6px 10px",
-                borderRadius: 8,
-                border: `1px solid ${btnBorder}`,
-                background:
-                  purchaseFilter === k ? "#ffd54f" : dark ? "#2b2b2b" : "#f2f2f2",
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-              aria-pressed={purchaseFilter === k}
-            >
-              {k.toUpperCase()}
-            </button>
-          ))}
-        </div>
-
-        <div style={{ fontWeight: 600, opacity: 0.9 }}>Net after Purchases</div>
-        <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>
-          {currency(netAfterPurchases)}
-        </div>
-      </div>
     </div>
+
+   
 
     {/* === ADD PURCHASE CARD ========================================== */}
     <div
@@ -5225,6 +5202,7 @@ const prettyDate = (d) => {
     </div>
   );
 }
+
 
 
 
