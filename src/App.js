@@ -722,9 +722,6 @@ const [newPurchase, setNewPurchase] = useState({
   unitPrice: 0,
   date: new Date().toISOString().slice(0,10),
 });
-// Purchases state (keep with the others)
-const [newCategoryName, setNewCategoryName] = useState("");
-
 const [deliveryZoneId, setDeliveryZoneId] = useState("");               // ⬅️ NEW
 const [customers, setCustomers] = useState([]);                         // {phone,name,address,zoneId}
 const [deliveryZones, setDeliveryZones] = useState(DEFAULT_ZONES);      // ⬅️ NEW
@@ -1308,88 +1305,6 @@ function isWithin(d, start, end) {
 function sumPurchases(arr) {
   return arr.reduce((s,p)=> s + Number(p.qty || 0) * Number(p.unitPrice || 0), 0);
 }
-// ⬇️⬇️ NEW: small helpers for Purchases tab
-function prettyDate(d) {
-  const x = d instanceof Date ? d : new Date(d);
-  return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
-}
-function currency(n) {
-  return `E£${Number(n || 0).toFixed(2)}`;
-}
-// ⬆️⬆️ END: small helpers
-
-// ⬇️⬇️ NEW: memo’d derived data for Purchases tab
-const [startP, endP] = useMemo(
-  () => getPeriodRange(purchaseFilter, dayMeta),
-  [purchaseFilter, dayMeta]
-);
-
-const purchasesInPeriod = useMemo(
-  () => purchases.filter((p) => isWithin(new Date(p.date), startP, endP)),
-  [purchases, startP, endP]
-);
-
-const catTotals = useMemo(() => {
-  const m = new Map();
-  purchaseCategories.forEach((c) => m.set(c.id, 0));
-  for (const p of purchasesInPeriod) {
-    const k = p.categoryId;
-    m.set(k, (m.get(k) || 0) + Number(p.qty || 0) * Number(p.unitPrice || 0));
-  }
-  return m;
-}, [purchasesInPeriod, purchaseCategories]);
-
-const byCategory = useMemo(() => {
-  const m = new Map();
-  purchaseCategories.forEach((c) => m.set(c.id, []));
-  for (const p of purchasesInPeriod) {
-    if (!m.has(p.categoryId)) m.set(p.categoryId, []);
-    m.get(p.categoryId).push(p);
-  }
-  // sort rows by date DESC
-  for (const [, rows] of m) {
-    rows.sort((a, b) => new Date(b.date) - new Date(a.date));
-  }
-  return m;
-}, [purchasesInPeriod, purchaseCategories]);
-
-const totalPurchasesInPeriod = useMemo(
-  () => sumPurchases(purchasesInPeriod),
-  [purchasesInPeriod]
-);
-
-
-
-function handleAddPurchase() {
-  if (!newPurchase.categoryId) {
-    alert("Choose a category.");
-    return;
-  }
-  const d = new Date(`${newPurchase.date}T12:00:00`);
-  const row = {
-    id: `pur_${Date.now()}`,
-    categoryId: newPurchase.categoryId,
-    ingredientId: newPurchase.ingredientId || "",
-    itemName: String(newPurchase.itemName || "").trim(),
-    unit: newPurchase.unit || "pcs",
-    qty: Math.max(0, Number(newPurchase.qty || 0)),
-    unitPrice: Math.max(0, Number(newPurchase.unitPrice || 0)),
-    date: d,
-  };
-
-  setPurchases((arr) => [row, ...arr]);
-
-  // update inventory costPerUnit when linked
-  if (row.ingredientId) {
-    setInventory((inv) =>
-      inv.map((x) => (x.id === row.ingredientId ? { ...x, costPerUnit: row.unitPrice } : x))
-    );
-  }
-
-  // reset fields (keep category/date)
-  setNewPurchase((p) => ({ ...p, ingredientId: "", itemName: "", qty: 1, unitPrice: 0 }));
-}
-// ⬆️⬆️ END handler
 
 
 
@@ -1401,9 +1316,6 @@ function handleAddPurchase() {
       alert("Please enter a number from 1 to 6.");
       return null;
     }
-    
-
-
 
     const entered = window.prompt(`Enter PIN for Admin ${n}:`, "");
     if (entered == null) return null;
@@ -2121,7 +2033,6 @@ for (const o of validOrders) {
     const margin = revenueTotal - expensesTotal;
     return { revenueTotal, byPay, byType, deliveryFeesTotal, expensesTotal, margin };
   }, [orders, paymentMethods, orderTypes, expenses]);
-  const netAfterPurchases = (totals.margin || 0) - totalPurchasesInPeriod;
 
   const salesStats = useMemo(() => {
     const itemMap = new Map();
@@ -3615,129 +3526,13 @@ for (const o of validOrders) {
 {activeTab === "purchases" && (
   <div>
     <h2>Purchases</h2>
- {/* --- FIX: Add Purchase form that uses handleAddPurchase --- */}
-<div
-  style={{
-    padding: 10,
-    borderRadius: 8,
-    background: dark ? "#181818" : "#fafafa",
-    border: `1px solid ${cardBorder}`,
-    marginBottom: 12,
-    display: "grid",
-    gridTemplateColumns: "1.2fr 1fr 0.7fr 0.9fr 1fr 0.9fr",
-    gap: 8,
-    alignItems: "center",
-  }}
->
-  {/* Category */}
-  <div>
-    <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Category</div>
-    <select
-      value={newPurchase.categoryId}
-      onChange={(e) =>
-        setNewPurchase((p) => ({ ...p, categoryId: e.target.value }))
-      }
-      style={{ width: "100%", padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-    >
-      <option value="">Choose…</option>
-      {purchaseCategories.map((c) => (
-        <option key={c.id} value={c.id}>{c.name}</option>
-      ))}
-    </select>
-  </div>
 
-  {/* Item name */}
-  <div>
-    <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Item</div>
-    <input
-      type="text"
-      placeholder="e.g. Buns pack"
-      value={newPurchase.itemName}
-      onChange={(e) =>
-        setNewPurchase((p) => ({ ...p, itemName: e.target.value }))
-      }
-      style={{ width: "100%", padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-    />
-  </div>
-
-  {/* Unit */}
-  <div>
-    <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Unit</div>
-    <input
-      type="text"
-      placeholder="pcs / kg / g"
-      value={newPurchase.unit}
-      onChange={(e) =>
-        setNewPurchase((p) => ({ ...p, unit: e.target.value || "pcs" }))
-      }
-      style={{ width: "100%", padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-    />
-  </div>
-
-  {/* Qty */}
-  <div>
-    <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Qty</div>
-    <input
-      type="number"
-      min={0}
-      value={newPurchase.qty}
-      onChange={(e) =>
-        setNewPurchase((p) => ({ ...p, qty: Number(e.target.value || 0) }))
-      }
-      style={{ width: "100%", padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-    />
-  </div>
-
-  {/* Unit Price */}
-  <div>
-    <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Unit Price</div>
-    <input
-      type="number"
-      min={0}
-      value={newPurchase.unitPrice}
-      onChange={(e) =>
-        setNewPurchase((p) => ({ ...p, unitPrice: Number(e.target.value || 0) }))
-      }
-      style={{ width: "100%", padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-    />
-  </div>
-
-  {/* Date + Add */}
-  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-    <input
-      type="date"
-      value={newPurchase.date}
-      onChange={(e) =>
-        setNewPurchase((p) => ({ ...p, date: e.target.value }))
-      }
-      style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-    />
-    <button
-      onClick={handleAddPurchase}
-      style={{
-        padding: "8px 12px",
-        borderRadius: 6,
-        border: "none",
-        background: "#2e7d32",
-        color: "#fff",
-        cursor: "pointer",
-        whiteSpace: "nowrap",
-      }}
-      title="Add purchase"
-    >
-      Add Purchase
-    </button>
-  </div>
-</div>
-{/* --- end FIX --- */}
-
-
-    {/* KPIs (Day/Month/Year controls are inside the Net card at the top) */}
+    {/* === KPI ROW ===================================================== */}
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-        gap: 8,
+        gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+        gap: 12,
         marginBottom: 12,
       }}
     >
@@ -3745,38 +3540,37 @@ for (const o of validOrders) {
       <div
         style={{
           position: "relative",
-          padding: 14,
-          borderRadius: 8,
+          padding: 16,
+          borderRadius: 12,
           background: dark ? "#1e1e1e" : "#fff",
           border: `1px solid ${cardBorder}`,
         }}
       >
         <div style={{ fontWeight: 600, opacity: 0.9 }}>Total Purchases</div>
-        <div style={{ marginTop: 6, fontSize: 22, fontWeight: 800 }}>
+        <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>
           {currency(totalPurchasesInPeriod)}
         </div>
       </div>
 
-      {/* Net after Purchases (filters at the upper-top of this box) */}
+      {/* Net after Purchases with DAY/MONTH/YEAR at upper top */}
       <div
         style={{
           position: "relative",
-          padding: 14,
-          paddingTop: 46, // extra space for the filter buttons at top
-          borderRadius: 8,
+          padding: 16,
+          paddingTop: 56,
+          borderRadius: 12,
           background: dark ? "#1e1e1e" : "#fff",
           border: `1px solid ${cardBorder}`,
         }}
       >
-        {/* Day/Month/Year controls anchored at the upper top */}
+        {/* Toggle anchored at the upper-top (right) */}
         <div
           style={{
             position: "absolute",
-            top: 10,
-            right: 10,
+            top: 12,
+            right: 12,
             display: "flex",
-            gap: 6,
-            flexWrap: "wrap",
+            gap: 8,
           }}
         >
           {["day", "month", "year"].map((k) => (
@@ -3785,14 +3579,14 @@ for (const o of validOrders) {
               onClick={() => setPurchaseFilter(k)}
               style={{
                 padding: "6px 10px",
-                borderRadius: 6,
+                borderRadius: 8,
                 border: `1px solid ${btnBorder}`,
                 background:
-                  purchaseFilter === k ? "#ffd54f" : dark ? "#333" : "#eee",
+                  purchaseFilter === k ? "#ffd54f" : dark ? "#2b2b2b" : "#f2f2f2",
+                fontWeight: 700,
                 cursor: "pointer",
               }}
               aria-pressed={purchaseFilter === k}
-              title={`Show ${k} purchases`}
             >
               {k.toUpperCase()}
             </button>
@@ -3800,39 +3594,262 @@ for (const o of validOrders) {
         </div>
 
         <div style={{ fontWeight: 600, opacity: 0.9 }}>Net after Purchases</div>
-        <div style={{ marginTop: 6, fontSize: 22, fontWeight: 800 }}>
+        <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>
           {currency(netAfterPurchases)}
         </div>
       </div>
     </div>
 
-    {/* Categories group */}
+    {/* === ADD PURCHASE CARD ========================================== */}
     <div
       style={{
-        padding: 10,
-        borderRadius: 8,
-        background: dark ? "#181818" : "#fafafa",
+        padding: 14,
+        borderRadius: 12,
+        background: dark ? "#1a1a1a" : "#fff",
         border: `1px solid ${cardBorder}`,
         marginBottom: 12,
       }}
     >
       <div
         style={{
-          display: "flex",
+          display: "grid",
+          gridTemplateColumns:
+            "minmax(160px, 1fr) minmax(210px, 1fr) minmax(200px, 1.2fr) 100px 100px 140px 160px",
+          gap: 10,
           alignItems: "center",
-          justifyContent: "space-between",
-          gap: 8,
-          flexWrap: "wrap",
-          marginBottom: 8,
         }}
       >
-        <h3 style={{ margin: 0 }}>Categories</h3>
+        {/* Category */}
+        <select
+          value={newPurchase.categoryId}
+          onChange={(e) =>
+            setNewPurchase((p) => ({ ...p, categoryId: e.target.value }))
+          }
+          style={{
+            padding: 10,
+            borderRadius: 10,
+            border: `1px solid ${btnBorder}`,
+            background: dark ? "#121212" : "#fff",
+            color: dark ? "#eee" : "#000",
+          }}
+        >
+          <option value="">Category…</option>
+          {purchaseCategories.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
 
-        {/* Add Category (inside the Categories group) */}
+        {/* Link ingredient (optional) */}
+        <select
+          value={newPurchase.ingredientId}
+          onChange={(e) =>
+            setNewPurchase((p) => ({ ...p, ingredientId: e.target.value }))
+          }
+          style={{
+            padding: 10,
+            borderRadius: 10,
+            border: `1px solid ${btnBorder}`,
+            background: dark ? "#121212" : "#fff",
+            color: dark ? "#eee" : "#000",
+          }}
+        >
+          <option value="">Link ingredient (optional)</option>
+          {inventory.map((i) => (
+            <option key={i.id} value={i.id}>
+              {i.name} ({i.unit})
+            </option>
+          ))}
+        </select>
+
+        {/* Item name */}
+        <input
+          type="text"
+          placeholder="Item name"
+          value={newPurchase.itemName}
+          onChange={(e) =>
+            setNewPurchase((p) => ({ ...p, itemName: e.target.value }))
+          }
+          style={{
+            padding: 10,
+            borderRadius: 10,
+            border: `1px solid ${btnBorder}`,
+            background: dark ? "#121212" : "#fff",
+            color: dark ? "#eee" : "#000",
+          }}
+        />
+
+        {/* Unit */}
+        <input
+          type="text"
+          placeholder="pcs"
+          value={newPurchase.unit}
+          onChange={(e) =>
+            setNewPurchase((p) => ({ ...p, unit: e.target.value || "pcs" }))
+          }
+          style={{
+            padding: 10,
+            borderRadius: 10,
+            border: `1px solid ${btnBorder}`,
+            textAlign: "center",
+          }}
+        />
+
+        {/* Qty */}
+        <input
+          type="number"
+          min={0}
+          value={newPurchase.qty}
+          onChange={(e) =>
+            setNewPurchase((p) => ({ ...p, qty: Number(e.target.value || 0) }))
+          }
+          style={{
+            padding: 10,
+            borderRadius: 10,
+            border: `1px solid ${btnBorder}`,
+            textAlign: "center",
+          }}
+        />
+
+        {/* Unit price */}
+        <input
+          type="number"
+          min={0}
+          value={newPurchase.unitPrice}
+          onChange={(e) =>
+            setNewPurchase((p) => ({
+              ...p,
+              unitPrice: Number(e.target.value || 0),
+            }))
+          }
+          style={{
+            padding: 10,
+            borderRadius: 10,
+            border: `1px solid ${btnBorder}`,
+            textAlign: "center",
+          }}
+        />
+
+        {/* Date + Add */}
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <input
+            type="date"
+            value={newPurchase.date}
+            onChange={(e) =>
+              setNewPurchase((p) => ({ ...p, date: e.target.value }))
+            }
+            style={{
+              padding: 10,
+              borderRadius: 10,
+              border: `1px solid ${btnBorder}`,
+              background: dark ? "#121212" : "#fff",
+              color: dark ? "#eee" : "#000",
+              width: "100%",
+            }}
+          />
+          <button
+            onClick={handleAddPurchase}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "none",
+              background: "#000",
+              color: "#fff",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Add Purchase
+          </button>
+        </div>
+      </div>
+    </div>
+
+    {/* === CATEGORY TILES + ADD CATEGORY =============================== */}
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+        gap: 12,
+        marginBottom: 14,
+      }}
+    >
+      {/* Category tiles with 📦 icon */}
+      {purchaseCategories.map((cat) => {
+        const total = catTotals.get(cat.id) || 0;
+        const active = openPurchaseCatId === cat.id;
+        return (
+          <button
+            key={cat.id}
+            onClick={() =>
+              setOpenPurchaseCatId((id) => (id === cat.id ? null : cat.id))
+            }
+            style={{
+              textAlign: "left",
+              padding: 14,
+              borderRadius: 12,
+              border: `1px solid ${cardBorder}`,
+              background: active ? (dark ? "#222" : "#fff8e1") : dark ? "#1e1e1e" : "#fff",
+              color: dark ? "#eee" : "#000",
+              cursor: "pointer",
+            }}
+            title="Show category details below"
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span
+                style={{
+                  display: "inline-flex",
+                  width: 28,
+                  height: 28,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 8,
+                  border: `1px solid ${btnBorder}`,
+                  fontSize: 16,
+                }}
+              >
+                📦
+              </span>
+              <div style={{ fontWeight: 700 }}>{cat.name}</div>
+            </div>
+            <div style={{ marginTop: 6, opacity: 0.8 }}>
+              {currency(total)}
+            </div>
+          </button>
+        );
+      })}
+
+      {/* Add Category tile (inside the categories group) */}
+      <div
+        style={{
+          padding: 14,
+          borderRadius: 12,
+          border: `1px solid ${cardBorder}`,
+          background: dark ? "#1a1a1a" : "#fff",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span
+            style={{
+              display: "inline-flex",
+              width: 28,
+              height: 28,
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: 8,
+              border: `1px solid ${btnBorder}`,
+              fontWeight: 800,
+            }}
+          >
+            +
+          </span>
+          <div style={{ fontWeight: 700 }}>Add Category</div>
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+          <input
             type="text"
-            placeholder="Add category…"
+            placeholder="Category name"
             value={newCategoryName}
             onChange={(e) => setNewCategoryName(e.target.value)}
             onKeyDown={(e) => {
@@ -3845,11 +3862,11 @@ for (const o of validOrders) {
               }
             }}
             style={{
-              padding: 6,
-              borderRadius: 6,
+              flex: 1,
+              padding: 10,
+              borderRadius: 10,
               border: `1px solid ${btnBorder}`,
-              minWidth: 200,
-              background: dark ? "#1e1e1e" : "#fff",
+              background: dark ? "#121212" : "#fff",
               color: dark ? "#eee" : "#000",
             }}
           />
@@ -3862,137 +3879,127 @@ for (const o of validOrders) {
               setNewCategoryName("");
             }}
             style={{
-              padding: "8px 12px",
-              borderRadius: 6,
+              padding: "10px 14px",
+              borderRadius: 10,
               border: "none",
-              background: "#1976d2",
+              background: "#000",
               color: "#fff",
               cursor: "pointer",
             }}
           >
-            Add Category
+            Add
           </button>
         </div>
-      </div>
-
-      {/* Category tiles with 📦 icons */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
-          gap: 8,
-        }}
-      >
-        {purchaseCategories.map((cat) => {
-          const total = catTotals.get(cat.id) || 0;
-          const isOpen = openPurchaseCatId === cat.id;
-          return (
-            <button
-              key={cat.id}
-              onClick={() =>
-                setOpenPurchaseCatId(isOpen ? null : cat.id)
-              }
-              style={{
-                textAlign: "left",
-                padding: 12,
-                borderRadius: 10,
-                border: `1px solid ${btnBorder}`,
-                background: isOpen ? (dark ? "#232323" : "#fffbe6") : (dark ? "#1e1e1e" : "#fff"),
-                color: dark ? "#eee" : "#000",
-                cursor: "pointer",
-              }}
-              title="Open category"
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
-                  <span aria-hidden>📦</span>
-                  <span>{cat.name}</span>
-                </div>
-                <div style={{ opacity: 0.8 }}>{currency(total)}</div>
-              </div>
-              <div style={{ marginTop: 4, fontSize: 12, opacity: 0.7 }}>
-                {byCategory.get(cat.id)?.length || 0} purchase(s)
-              </div>
-            </button>
-          );
-        })}
       </div>
     </div>
 
-    {/* Rows for the opened category (optional detail) */}
-    {openPurchaseCatId && (
-      <div
-        style={{
-          padding: 10,
-          borderRadius: 8,
-          background: dark ? "#101010" : "#fff",
-          border: `1px solid ${cardBorder}`,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 8,
-            marginBottom: 8,
-          }}
-        >
-          <h3 style={{ margin: 0 }}>
-            {purchaseCategories.find((c) => c.id === openPurchaseCatId)?.name ||
-              "Category"}
-          </h3>
-          <button
-            onClick={() => setOpenPurchaseCatId(null)}
+    {/* === DETAILS LIST ================================================= */}
+    <div style={{ marginTop: 4 }}>
+      <div style={{ fontWeight: 700, marginBottom: 8 }}>All Categories</div>
+
+      {purchaseCategories.map((cat) => {
+        const rows = byCategory.get(cat.id) || [];
+        const total = catTotals.get(cat.id) || 0;
+        return (
+          <div
+            key={cat.id}
             style={{
-              padding: "6px 10px",
-              borderRadius: 6,
-              border: `1px solid ${btnBorder}`,
-              background: dark ? "#333" : "#eee",
-              cursor: "pointer",
+              border: `1px solid ${cardBorder}`,
+              borderRadius: 12,
+              background: dark ? "#141414" : "#fff",
+              marginBottom: 12,
+              overflow: "hidden",
             }}
           >
-            Close
-          </button>
-        </div>
+            {/* Section header */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "10px 12px",
+                background: dark ? "#1c1c1c" : "#fafafa",
+                borderBottom: `1px solid ${cardBorder}`,
+              }}
+            >
+              <span
+                style={{
+                  display: "inline-flex",
+                  width: 24,
+                  height: 24,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 6,
+                  border: `1px solid ${btnBorder}`,
+                  fontSize: 14,
+                }}
+              >
+                📦
+              </span>
+              <div style={{ fontWeight: 700 }}>{cat.name}</div>
+              <div style={{ opacity: 0.8 }}>• {currency(total)}</div>
+            </div>
 
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Item</th>
-              <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit</th>
-              <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Qty</th>
-              <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit Price</th>
-              <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Total</th>
-              <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Date</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(byCategory.get(openPurchaseCatId) || []).map((p) => (
-              <tr key={p.id}>
-                <td style={{ padding: 6 }}>{p.itemName || "-"}</td>
-                <td style={{ padding: 6 }}>{p.unit || "pcs"}</td>
-                <td style={{ padding: 6, textAlign: "right" }}>{Number(p.qty || 0)}</td>
-                <td style={{ padding: 6, textAlign: "right" }}>{currency(p.unitPrice)}</td>
-                <td style={{ padding: 6, textAlign: "right" }}>
-                  {currency(Number(p.qty || 0) * Number(p.unitPrice || 0))}
-                </td>
-                <td style={{ padding: 6 }}>{prettyDate(p.date)}</td>
-              </tr>
-            ))}
-            {!(byCategory.get(openPurchaseCatId) || []).length && (
-              <tr>
-                <td colSpan={6} style={{ padding: 8, opacity: 0.7 }}>
-                  No purchases in this period for this category.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    )}
+            {/* Table */}
+            <div style={{ padding: 12 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    {["Date", "Item", "Unit", "Qty", "Unit Price", "Total"].map(
+                      (h) => (
+                        <th
+                          key={h}
+                          style={{
+                            textAlign:
+                              h === "Qty" || h === "Unit Price" || h === "Total"
+                                ? "right"
+                                : "left",
+                            borderBottom: `1px solid ${cardBorder}`,
+                            padding: 8,
+                            fontWeight: 700,
+                          }}
+                        >
+                          {h}
+                        </th>
+                      )
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} style={{ padding: 8, opacity: 0.7 }}>
+                        No purchases in this period.
+                      </td>
+                    </tr>
+                  ) : (
+                    rows.map((r) => (
+                      <tr key={r.id}>
+                        <td style={{ padding: 8 }}>{prettyDate(r.date)}</td>
+                        <td style={{ padding: 8 }}>{r.itemName || "-"}</td>
+                        <td style={{ padding: 8 }}>{r.unit || "-"}</td>
+                        <td style={{ padding: 8, textAlign: "right" }}>
+                          {Number(r.qty || 0)}
+                        </td>
+                        <td style={{ padding: 8, textAlign: "right" }}>
+                          {currency(r.unitPrice)}
+                        </td>
+                        <td style={{ padding: 8, textAlign: "right" }}>
+                          {currency(Number(r.qty || 0) * Number(r.unitPrice || 0))}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })}
+    </div>
   </div>
 )}
+
 
 
       {/* BANK */}
@@ -5144,9 +5151,6 @@ for (const o of validOrders) {
     </div>
   );
 }
-
-
-
 
 
 
