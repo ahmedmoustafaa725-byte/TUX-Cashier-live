@@ -667,6 +667,310 @@ function printReceiptHTML(order, widthMm = 80, copy = "Customer", images) {
   setTimeout(() => { try { if (document.body.contains(ifr)) ifr.remove(); } catch {} }, 12000);
 }
 
+function PurchasesTab({
+  totals,
+  dayMeta,
+  purchaseFilter, setPurchaseFilter,
+  openPurchaseCatId, setOpenPurchaseCatId,
+  purchaseCategories, setPurchaseCategories,
+  inventory, setInventory,
+  purchases, setPurchases,
+  newPurchase, setNewPurchase,
+}) {
+  // utils
+  const currency = (n) => `E£${Number(n || 0).toFixed(2)}`;
+  const prettyDate = (d) => {
+    const x = d instanceof Date ? d : new Date(d);
+    return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`;
+  };
+  const sumRows = (rows) => rows.reduce((acc, r) => acc + Number(r.qty || 0) * Number(r.unitPrice || 0), 0);
+
+  // range + in-period
+  const [start, end] = getPeriodRange(purchaseFilter, dayMeta);
+  const inPeriod = purchases.filter((p) => {
+    const t = p.date instanceof Date ? p.date.getTime() : new Date(p.date).getTime();
+    return t >= start.getTime() && t <= end.getTime();
+  });
+
+  // category totals (for tiles)
+  const catTotals = new Map();
+  purchaseCategories.forEach((c) => catTotals.set(c.id, 0));
+  for (const p of inPeriod) {
+    const k = p.categoryId;
+    catTotals.set(k, (catTotals.get(k) || 0) + Number(p.qty || 0) * Number(p.unitPrice || 0));
+  }
+
+  const totalInPeriod = sumRows(inPeriod);
+  const netAfterPurchases = (Number(totals?.margin) || 0) - totalInPeriod;
+
+  // group rows by category (default shows ALL categories stacked)
+  const byCategory = new Map(purchaseCategories.map((c) => [c.id, []]));
+  for (const p of inPeriod) (byCategory.get(p.categoryId) || []).push(p);
+  for (const [, rows] of byCategory) rows.sort((a,b) => new Date(b.date) - new Date(a.date));
+
+  const catIdsToRender = openPurchaseCatId ? [openPurchaseCatId] : purchaseCategories.map((c) => c.id);
+
+  function handleAddPurchase() {
+    if (!newPurchase.categoryId) {
+      alert("Choose a category.");
+      return;
+    }
+    const d = new Date(`${newPurchase.date}T12:00:00`);
+    const row = {
+      id: `pur_${Date.now()}`,
+      categoryId: newPurchase.categoryId,
+      ingredientId: newPurchase.ingredientId || "",
+      itemName: String(newPurchase.itemName || "").trim(),
+      unit: newPurchase.unit || "pcs",
+      qty: Math.max(0, Number(newPurchase.qty || 0)),
+      unitPrice: Math.max(0, Number(newPurchase.unitPrice || 0)),
+      date: d,
+    };
+
+    setPurchases((arr) => [row, ...arr]);
+
+    // auto-update costPerUnit if linked to ingredient
+    if (row.ingredientId) {
+      setInventory((inv) => inv.map((x) => (x.id === row.ingredientId ? { ...x, costPerUnit: row.unitPrice } : x)));
+    }
+
+    // reset some fields (keep chosen category & date)
+    setNewPurchase((p) => ({ ...p, ingredientId: "", itemName: "", qty: 1, unitPrice: 0 }));
+  }
+
+  const [newCatName, setNewCatName] = React.useState("");
+
+  return (
+    <div className="text-neutral-900">
+      {/* Header + filter */}
+      <header className="mb-4 flex items-center justify-between gap-4">
+        <h1 className="text-2xl font-semibold tracking-tight">Purchases</h1>
+        <div className="flex items-center gap-2">
+          {["day", "month", "year"].map((k) => (
+            <button
+              key={k}
+              onClick={() => setPurchaseFilter(k)}
+              className={`px-3 py-2 rounded-lg border text-sm transition ${
+                purchaseFilter === k
+                  ? "bg-yellow-300 border-yellow-400"
+                  : "bg-white border-neutral-300 hover:bg-neutral-100"
+              }`}
+            >
+              {k.toUpperCase()}
+            </button>
+          ))}
+        </div>
+      </header>
+
+      {/* KPI cards (colorless, black text) */}
+      <section className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+        <div className="rounded-2xl p-4 bg-white border border-neutral-200 shadow-sm">
+          <div className="text-sm font-medium text-neutral-800">Total Purchases</div>
+          <div className="mt-1 text-2xl font-bold text-neutral-900">{currency(totalInPeriod)}</div>
+        </div>
+        <div className="rounded-2xl p-4 bg-white border border-neutral-200 shadow-sm">
+          <div className="text-sm font-medium text-neutral-800">Net after Purchases</div>
+          <div className="mt-1 text-2xl font-bold text-neutral-900">{currency(netAfterPurchases)}</div>
+        </div>
+      </section>
+
+      {/* Add Purchase (horizontal under KPIs) */}
+      <section className="mb-6">
+        <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+          <h3 className="font-semibold mb-3">Add Purchase</h3>
+          <div className="flex flex-wrap items-end gap-3">
+            <select
+              value={newPurchase.categoryId}
+              onChange={(e) => setNewPurchase((p) => ({ ...p, categoryId: e.target.value }))}
+              className="min-w-[160px] rounded-lg border border-neutral-300 px-3 py-2 bg-white"
+            >
+              <option value="">Category…</option>
+              {purchaseCategories.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+
+            <select
+              value={newPurchase.ingredientId}
+              onChange={(e) => {
+                const id = e.target.value;
+                setNewPurchase((p) => ({
+                  ...p,
+                  ingredientId: id,
+                  itemName: id ? inventory.find((x) => x.id === id)?.name || p.itemName : p.itemName,
+                }));
+              }}
+              className="min-w-[200px] rounded-lg border border-neutral-300 px-3 py-2 bg-white"
+            >
+              <option value="">Link ingredient (optional)</option>
+              {inventory.map((x) => (
+                <option key={x.id} value={x.id}>{x.name}</option>
+              ))}
+            </select>
+
+            <input
+              type="text"
+              placeholder="Item name"
+              value={newPurchase.itemName}
+              onChange={(e) => setNewPurchase((p) => ({ ...p, itemName: e.target.value }))}
+              className="min-w-[200px] rounded-lg border border-neutral-300 px-3 py-2"
+            />
+
+            <input
+              type="text"
+              placeholder="Unit"
+              value={newPurchase.unit}
+              onChange={(e) => setNewPurchase((p) => ({ ...p, unit: e.target.value }))}
+              className="w-24 rounded-lg border border-neutral-300 px-3 py-2"
+            />
+            <input
+              type="number"
+              placeholder="Qty"
+              value={newPurchase.qty}
+              onChange={(e) => setNewPurchase((p) => ({ ...p, qty: Number(e.target.value || 0) }))}
+              className="w-28 rounded-lg border border-neutral-300 px-3 py-2"
+            />
+            <input
+              type="number"
+              step="any"
+              placeholder="Unit Price (E£)"
+              value={newPurchase.unitPrice}
+              onChange={(e) => setNewPurchase((p) => ({ ...p, unitPrice: Number(e.target.value || 0) }))}
+              className="w-40 rounded-lg border border-neutral-300 px-3 py-2"
+            />
+
+            <input
+              type="date"
+              value={newPurchase.date}
+              onChange={(e) => setNewPurchase((p) => ({ ...p, date: e.target.value }))}
+              className="rounded-lg border border-neutral-300 px-3 py-2"
+            />
+
+            <button
+              onClick={handleAddPurchase}
+              className="inline-flex items-center justify-center rounded-lg bg-neutral-900 text-white px-4 py-2 font-medium hover:bg-neutral-800"
+            >
+              Add Purchase
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* Category boxes (with icon) + inline Add Category tile */}
+      <section className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-6">
+        {purchaseCategories.map((c) => {
+          const amt = Number(catTotals.get(c.id) || 0);
+          const on = openPurchaseCatId === c.id;
+          return (
+            <button
+              key={c.id}
+              onClick={() => setOpenPurchaseCatId(on ? null : c.id)}
+              className={`text-left rounded-2xl border p-3 shadow-sm transition ${
+                on ? "bg-neutral-50 border-neutral-300 shadow" : "bg-white border-neutral-200 hover:shadow-md"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Box className="w-4 h-4" />
+                <div className="font-semibold truncate">{c.name}</div>
+              </div>
+              <div className="opacity-90 text-sm mt-1">{currency(amt)}</div>
+            </button>
+          );
+        })}
+
+        {/* Add Category tile */}
+        <div className="rounded-2xl border border-dashed border-neutral-300 bg-white p-3 shadow-sm">
+          <div className="flex items-center gap-2 mb-2">
+            <Plus className="w-4 h-4" />
+            <span className="font-semibold">Add Category</span>
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Category name"
+              value={newCatName}
+              onChange={(e) => setNewCatName(e.target.value)}
+              className="flex-1 rounded-lg border border-neutral-300 px-3 py-2"
+            />
+            <button
+              onClick={() => {
+                const name = String(newCatName || "").trim();
+                if (!name) return;
+                const id = `cat_${Date.now()}`;
+                setPurchaseCategories((arr) => [...arr, { id, name }]);
+                setNewCatName("");
+              }}
+              className="rounded-lg bg-neutral-900 text-white px-4 py-2 font-medium hover:bg-neutral-800"
+            >
+              Add
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* Listing */}
+      <section>
+        <h3 className="font-semibold mb-2">
+          {openPurchaseCatId
+            ? `Category: ${purchaseCategories.find((c) => c.id === openPurchaseCatId)?.name || ""}`
+            : "All Categories"}
+        </h3>
+
+        {(catIdsToRender).map((catId) => {
+          const cat = purchaseCategories.find((c) => c.id === catId);
+          const rows = byCategory.get(catId) || [];
+          if (!rows.length) return null;
+          const totalCat = sumRows(rows);
+          return (
+            <div key={catId} className="mb-5">
+              <div className="flex items-center gap-2 mb-2">
+                <Box className="w-4 h-4" />
+                <div className="font-semibold">{cat?.name}</div>
+                <div className="text-sm text-neutral-600">• {currency(totalCat)}</div>
+              </div>
+              <div className="overflow-x-auto rounded-2xl border">
+                <table className="min-w-full table-auto text-sm">
+                  <thead className="bg-neutral-50">
+                    <tr className="text-left">
+                      <th className="px-3 py-2 border-b">Date</th>
+                      <th className="px-3 py-2 border-b">Item</th>
+                      <th className="px-3 py-2 border-b">Unit</th>
+                      <th className="px-3 py-2 border-b text-right">Qty</th>
+                      <th className="px-3 py-2 border-b text-right">Unit Price</th>
+                      <th className="px-3 py-2 border-b text-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((r) => {
+                      const tot = Number(r.qty || 0) * Number(r.unitPrice || 0);
+                      return (
+                        <tr key={r.id} className="odd:bg-white even:bg-neutral-50">
+                          <td className="px-3 py-2 border-b">{prettyDate(r.date)}</td>
+                          <td className="px-3 py-2 border-b">
+                            {r.itemName ||
+                              (r.ingredientId ? inventory.find((x) => x.id === r.ingredientId)?.name || r.ingredientId : "")}
+                          </td>
+                          <td className="px-3 py-2 border-b">{r.unit}</td>
+                          <td className="px-3 py-2 border-b text-right">{r.qty}</td>
+                          <td className="px-3 py-2 border-b text-right">{currency(r.unitPrice)}</td>
+                          <td className="px-3 py-2 border-b text-right">{currency(tot)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        })}
+
+        {inPeriod.length === 0 && (
+          <p className="text-neutral-500">No purchases in selected period.</p>
+        )}
+      </section>
+    </div>
+  );
+}
 
 
 export default function App() {
@@ -722,6 +1026,7 @@ const [newPurchase, setNewPurchase] = useState({
   unitPrice: 0,
   date: new Date().toISOString().slice(0,10),
 });
+  
 const [deliveryZoneId, setDeliveryZoneId] = useState("");               // ⬅️ NEW
 const [customers, setCustomers] = useState([]);                         // {phone,name,address,zoneId}
 const [deliveryZones, setDeliveryZones] = useState(DEFAULT_ZONES);      // ⬅️ NEW
@@ -3523,257 +3828,26 @@ for (const o of validOrders) {
           </table>
         </div>
       )}
-{/* ────────────────────────────── PURCHASES TAB ────────────────────────────── */}  {/* ⬅️ NEW */}
-{activeTab === "purchases" && (() => {
-  const [start, end] = getPeriodRange(purchaseFilter, dayMeta);
-  const inPeriod = purchases.filter(p => isWithin(new Date(p.date), start, end));
 
-  const catTotals = new Map();
-  for (const c of purchaseCategories) catTotals.set(c.id, 0);
-  for (const p of inPeriod) {
-    const k = p.categoryId;
-    if (!catTotals.has(k)) catTotals.set(k, 0);
-    catTotals.set(k, catTotals.get(k) + Number(p.qty || 0) * Number(p.unitPrice || 0));
-  }
-  const totalInPeriod = sumPurchases(inPeriod);
-  const netAfterPurchases = (totals.margin || 0) - totalInPeriod;
+{activeTab === "purchases" && (
+  <PurchasesTab
+    totals={totals}
+    dayMeta={dayMeta}
+    purchaseFilter={purchaseFilter}
+    setPurchaseFilter={setPurchaseFilter}
+    openPurchaseCatId={openPurchaseCatId}
+    setOpenPurchaseCatId={setOpenPurchaseCatId}
+    purchaseCategories={purchaseCategories}
+    setPurchaseCategories={setPurchaseCategories}
+    inventory={inventory}
+    setInventory={setInventory}
+    purchases={purchases}
+    setPurchases={setPurchases}
+    newPurchase={newPurchase}
+    setNewPurchase={setNewPurchase}
+  />
+)}
 
-  const toDateKey = (d) => {
-    const x = new Date(d);
-    return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`;
-  };
-  const groupedAll = inPeriod.reduce((acc, p) => {
-    const k = toDateKey(p.date);
-    (acc[k] ||= []).push(p);
-    return acc;
-  }, {});
-
-  const selectedList = openPurchaseCatId
-    ? inPeriod.filter(p => p.categoryId === openPurchaseCatId)
-    : inPeriod;
-  const groupedByCat = selectedList.reduce((acc,p)=>{
-    const k = toDateKey(p.date);
-    (acc[k] ||= []).push(p);
-    return acc;
-  }, {});
-
-  return (
-    <div>
-      <h2>Purchases</h2>
-
-      <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", marginBottom: 10 }}>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {["day","month","year"].map(k => (
-            <button
-              key={k}
-              onClick={() => setPurchaseFilter(k)}
-              style={{
-                padding: "6px 10px",
-                borderRadius: 6,
-                border: `1px solid ${btnBorder}`,
-                background: purchaseFilter === k ? "#ffd54f" : (dark ? "#333" : "#eee")
-              }}
-            >
-              {k.toUpperCase()}
-            </button>
-          ))}
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 8, minWidth: 280, flex: 1, marginLeft: 10 }}>
-          <div style={{ padding: 10, borderRadius: 8, background: dark ? "#1b2631" : "#e3f2fd" }}>
-            <b>Total Purchases</b><br/>E£{totalInPeriod.toFixed(2)}
-          </div>
-          <div style={{ padding: 10, borderRadius: 8, background: dark ? "#1e2a1e" : "#e8f5e9" }}>
-            <b>Margin (shift)</b><br/>E£{Number(totals.margin || 0).toFixed(2)}
-          </div>
-          <div style={{ padding: 10, borderRadius: 8, background: dark ? "#2d2533" : "#f3e5f5" }}>
-            <b>Net after Purchases</b><br/>E£{netAfterPurchases.toFixed(2)}
-          </div>
-        </div>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginBottom: 12 }}>
-        {purchaseCategories.map(c => {
-          const amt = Number(catTotals.get(c.id) || 0);
-          const on = openPurchaseCatId === c.id;
-          return (
-            <button
-              key={c.id}
-              onClick={() => setOpenPurchaseCatId(on ? null : c.id)}
-              style={{
-                textAlign: "left",
-                padding: 12,
-                borderRadius: 10,
-                border: `1px solid ${btnBorder}`,
-                background: on ? "#c8e6c9" : (dark ? "#1e1e1e" : "#fff"),
-                cursor: "pointer"
-              }}
-            >
-              <div style={{ fontWeight: 700 }}>{c.name}</div>
-              <div style={{ opacity: .8 }}>E£{amt.toFixed(2)}</div>
-            </button>
-          );
-        })}
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12, marginBottom: 14 }}>
-        <div style={{ padding: 10, borderRadius: 8, background: softBg }}>
-          <h4 style={{ margin: 0, marginBottom: 8 }}>Add Purchase</h4>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-            <select
-              value={newPurchase.categoryId}
-              onChange={(e)=> setNewPurchase(p => ({ ...p, categoryId: e.target.value }))}
-            >
-              <option value="">Category…</option>
-              {purchaseCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-
-            <select
-              value={newPurchase.ingredientId}
-              onChange={(e)=> {
-                const id = e.target.value;
-                setNewPurchase(p => ({
-                  ...p,
-                  ingredientId: id,
-                  itemName: id ? (inventory.find(x=>x.id===id)?.name || p.itemName) : p.itemName
-                }));
-              }}
-            >
-              <option value="">Link ingredient (optional)</option>
-              {inventory.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
-            </select>
-
-            <input
-              type="text"
-              placeholder="Item name"
-              value={newPurchase.itemName}
-              onChange={(e)=> setNewPurchase(p => ({ ...p, itemName: e.target.value }))}
-            />
-
-            <input
-              type="text"
-              placeholder="Unit"
-              value={newPurchase.unit}
-              onChange={(e)=> setNewPurchase(p => ({ ...p, unit: e.target.value }))}
-            />
-            <input
-              type="number"
-              placeholder="Qty"
-              value={newPurchase.qty}
-              onChange={(e)=> setNewPurchase(p => ({ ...p, qty: Number(e.target.value || 0) }))}
-            />
-            <input
-              type="number"
-              step="any"
-              placeholder="Unit Price (E£)"
-              value={newPurchase.unitPrice}
-              onChange={(e)=> setNewPurchase(p => ({ ...p, unitPrice: Number(e.target.value || 0) }))}
-            />
-
-            <input
-              type="date"
-              value={newPurchase.date}
-              onChange={(e)=> setNewPurchase(p => ({ ...p, date: e.target.value }))}
-            />
-
-            <button
-              onClick={() => {
-                if (!newPurchase.categoryId) return alert("Choose a category.");
-                const d = new Date(`${newPurchase.date}T12:00:00`);
-                const row = {
-                  id: `pur_${Date.now()}`,
-                  categoryId: newPurchase.categoryId,
-                  ingredientId: newPurchase.ingredientId || "",
-                  itemName: String(newPurchase.itemName || "").trim(),
-                  unit: newPurchase.unit || "pcs",
-                  qty: Math.max(0, Number(newPurchase.qty || 0)),
-                  unitPrice: Math.max(0, Number(newPurchase.unitPrice || 0)),
-                  date: d,
-                };
-                setPurchases(arr => [row, ...arr]);
-
-                // If linked to an ingredient, auto-update inventory costPerUnit   // ⬅️ NEW
-                if (row.ingredientId) {
-                  setInventory(inv => inv.map(x => x.id === row.ingredientId ? { ...x, costPerUnit: row.unitPrice } : x));
-                }
-
-                setNewPurchase(p => ({ ...p, qty: 1, unitPrice: 0, itemName: "" }));
-              }}
-              style={{ background: "#2e7d32", color: "#fff", border: "none", borderRadius: 6, padding: "8px 12px", cursor: "pointer" }}
-            >
-              Add Purchase
-            </button>
-          </div>
-        </div>
-
-        <div style={{ padding: 10, borderRadius: 8, background: softBg }}>
-          <h4 style={{ margin: 0, marginBottom: 8 }}>Add Category</h4>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input id="np-cat" type="text" placeholder="Category name" style={{ flex: 1 }} />
-            <button
-              onClick={() => {
-                const el = document.getElementById("np-cat");
-                const name = String(el.value || "").trim();
-                if (!name) return;
-                const id = `cat_${Date.now()}`;
-                setPurchaseCategories(arr => [...arr, { id, name }]);
-                el.value = "";
-              }}
-              style={{ background: "#1976d2", color: "#fff", border: "none", borderRadius: 6, padding: "8px 12px", cursor: "pointer" }}
-            >
-              Add
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ marginTop: 6 }}>
-        <h3 style={{ marginBottom: 8 }}>
-          {openPurchaseCatId
-            ? `Purchases: ${purchaseCategories.find(c=>c.id===openPurchaseCatId)?.name || ""}`
-            : "All Purchases (grouped by date)"
-          }
-        </h3>
-
-        {Object.entries(openPurchaseCatId ? groupedByCat : groupedAll)
-          .sort((a,b) => a[0] < b[0] ? 1 : -1)
-          .map(([dkey, rows]) => (
-          <div key={dkey} style={{ marginBottom: 10 }}>
-            <div style={{ fontWeight: 700, marginBottom: 4 }}>{dkey}</div>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr>
-                  <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Category</th>
-                  <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Item</th>
-                  <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit</th>
-                  <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Qty</th>
-                  <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit Price</th>
-                  <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => {
-                  const catName = purchaseCategories.find(c=>c.id===r.categoryId)?.name || "-";
-                  const tot = Number(r.qty || 0) * Number(r.unitPrice || 0);
-                  return (
-                    <tr key={r.id}>
-                      <td style={{ padding: 6 }}>{catName}</td>
-                      <td style={{ padding: 6 }}>{r.itemName || (r.ingredientId ? (inventory.find(x=>x.id===r.ingredientId)?.name || r.ingredientId) : "")}</td>
-                      <td style={{ padding: 6 }}>{r.unit}</td>
-                      <td style={{ padding: 6, textAlign: "right" }}>{r.qty}</td>
-                      <td style={{ padding: 6, textAlign: "right" }}>E£{Number(r.unitPrice || 0).toFixed(2)}</td>
-                      <td style={{ padding: 6, textAlign: "right" }}>E£{tot.toFixed(2)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ))}
-        {inPeriod.length === 0 && <p style={{ opacity: .8 }}>No purchases in selected period.</p>}
-      </div>
-    </div>
-  );
-})()}
 
 
       {/* BANK */}
@@ -4925,6 +4999,7 @@ for (const o of validOrders) {
     </div>
   );
 }
+
 
 
 
