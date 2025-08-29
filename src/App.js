@@ -1355,9 +1355,8 @@ const totalPurchasesInPeriod = useMemo(
   [purchasesInPeriod]
 );
 
-const netAfterPurchases = (totals.margin || 0) - totalPurchasesInPeriod;
-// ⬆️⬆️ END: memo’d derived data
-// ⬇️⬇️ NEW: Add Purchase handler (also updates costPerUnit if linked)
+
+
 function handleAddPurchase() {
   if (!newPurchase.categoryId) {
     alert("Choose a category.");
@@ -2119,6 +2118,7 @@ for (const o of validOrders) {
     const margin = revenueTotal - expensesTotal;
     return { revenueTotal, byPay, byType, deliveryFeesTotal, expensesTotal, margin };
   }, [orders, paymentMethods, orderTypes, expenses]);
+  const netAfterPurchases = (totals.margin || 0) - totalPurchasesInPeriod;
 
   const salesStats = useMemo(() => {
     const itemMap = new Map();
@@ -4993,6 +4993,7 @@ for (const o of validOrders) {
     </div>
   );
 }
+
 
 
 
