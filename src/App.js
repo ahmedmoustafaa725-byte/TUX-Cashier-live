@@ -938,6 +938,14 @@ useEffect(() => {
   }
 }, [orderType, deliveryPhone, customers, deliveryZones, deliveryName, deliveryAddress, deliveryZoneId]);
 
+  // === OPTIONAL: auto-select first category in add form if none selected
+useEffect(() => {
+  if (!newPurchase.categoryId && purchaseCategories.length) {
+    setNewPurchase(p => ({ ...p, categoryId: purchaseCategories[0].id }));
+  }
+}, [newPurchase.categoryId, purchaseCategories]);
+
+
 
 /* === ADD BELOW THIS LINE (mirror other tabs & settings) === */
 useEffect(() => { saveLocalPartial({ expenses }); }, [expenses]);
@@ -996,7 +1004,6 @@ useEffect(() => {
     () => (db ? collection(db, "shops", SHOP_ID, "orders") : null),
     [db]
   );
-  
   const counterDocRef = useMemo(
     () => (db ? fsDoc(db, "shops", SHOP_ID, "state", "counters") : null),
     [db]
@@ -2106,12 +2113,6 @@ const totalPurchasesInPeriod = useMemo(
   () => sumPurchases(filteredPurchases),
   [filteredPurchases]
 );
-// Currently selected category object (or null)
-const activePurchaseCat = useMemo(
-  () => purchaseCategories.find(c => c.id === purchaseCatFilterId) || null,
-  [purchaseCategories, purchaseCatFilterId]
-);
-
 
 // Map category -> total amount in period
 const catTotals = useMemo(() => {
@@ -2177,22 +2178,22 @@ const resetAllPurchases = () => {
   setPurchases([]);
   setPurchaseCatFilterId("");
 };
-// Remove a category but keep purchases (they become "Uncategorized")
-const removeCategory = (catId) => {
-  if (!window.confirm("Remove this category? Purchases will be kept and moved to 'Uncategorized' (visible in Show All).")) return;
+// === ADD BELOW: remove a single category AND all its purchases =========
+const removePurchaseCategory = (catId) => {
+  const cat = purchaseCategories.find(c => c.id === catId);
+  const name = cat?.name || "(unknown)";
+  if (!window.confirm(`Delete category "${name}" and ALL its purchases? This cannot be undone.`)) return;
 
-  // move purchases out of this category
-  setPurchases(list => list.map(p => (
-    p.categoryId === catId ? { ...p, categoryId: "" } : p
-  )));
+  // 1) drop the category itself
+  setPurchaseCategories(list => list.filter(c => c.id !== catId));
 
-  // remove the category itself
-  setPurchaseCategories(arr => arr.filter(c => c.id !== catId));
+  // 2) cascade delete purchases of this category
+  setPurchases(list => list.filter(p => p.categoryId !== catId));
 
-  // if this category was selected, clear the filter
-  setPurchaseCatFilterId(cur => (cur === catId ? "" : cur));
+  // 3) clear UI selections if they pointed to the removed id
+  setPurchaseCatFilterId(prev => (prev === catId ? "" : prev));
+  setNewPurchase(p => (p.categoryId === catId ? { ...p, categoryId: "" } : p));
 };
-
 
 
   // --------------------------- PDF: REPORT ---------------------------
@@ -2211,6 +2212,107 @@ const removeCategory = (catId) => {
         startY: 18,
         theme: "grid",
       });
+      // === ADD BELOW: Purchases PDF report =================================
+const generatePurchasesPDF = () => {
+  try {
+    const doc = new jsPDF();
+    const [start, end] = getPeriodRange(purchaseFilter, dayMeta);
+    const title = `TUX — Purchases Report (${purchaseFilter.toUpperCase()})`;
+    doc.text(title, 14, 12);
+
+    const periodStr =
+      `${start.toLocaleDateString()} → ${end.toLocaleDateString()}`;
+
+    // Build filtered rows just like the UI
+    const within = (purchases || []).filter((p) => {
+      const d = p?.date instanceof Date ? p.date : new Date(p?.date);
+      return isWithin(d, start, end);
+    });
+    const rows = purchaseCatFilterId
+      ? within.filter((p) => p.categoryId === purchaseCatFilterId)
+      : within;
+
+    const totalAll = rows.reduce(
+      (s, p) => s + Number(p.qty || 0) * Number(p.unitPrice || 0),
+      0
+    );
+
+    // Header table
+    autoTable(doc, {
+      head: [["Period", "Filter", "Total (E£)"]],
+      body: [[periodStr,
+        purchaseCatFilterId
+          ? (purchaseCategories.find(c=>c.id===purchaseCatFilterId)?.name || "(unknown)")
+          : "All categories",
+        totalAll.toFixed(2)]],
+      startY: 18,
+      theme: "grid",
+      styles: { fontSize: 10 },
+    });
+
+    // Category totals
+    const catMap = new Map();
+    for (const p of rows) {
+      const amt = Number(p.qty || 0) * Number(p.unitPrice || 0);
+      const k = p.categoryId || "";
+      catMap.set(k, (catMap.get(k) || 0) + amt);
+    }
+
+    let y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : 30;
+    doc.text("Totals by Category", 14, y);
+    const catBody = Array.from(catMap.entries())
+      .map(([cid, amt]) => [
+        purchaseCategories.find(c=>c.id===cid)?.name || "(unknown)",
+        amt.toFixed(2),
+      ])
+      .sort((a,b) => Number(b[1]) - Number(a[1])); // desc by E£
+
+    autoTable(doc, {
+      head: [["Category", "Amount (E£)"]],
+      body: catBody.length ? catBody : [["(no data)", "0.00"]],
+      startY: y + 4,
+      theme: "grid",
+      styles: { fontSize: 10 },
+    });
+
+    // Full line items
+    y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : y + 36;
+    doc.text("Line Items", 14, y);
+
+    const lineBody = rows
+      .slice()
+      .sort((a, b) => +new Date(a.date) - +new Date(b.date))
+      .map((p) => {
+        const catName = purchaseCategories.find(c => c.id === p.categoryId)?.name || "-";
+        const total = Number(p.qty || 0) * Number(p.unitPrice || 0);
+        const d = p?.date instanceof Date ? p.date : new Date(p?.date);
+        return [
+          d.toLocaleDateString(),
+          catName,
+          p.itemName || "",
+          String(p.unit || ""),
+          Number(p.qty || 0).toString(),
+          Number(p.unitPrice || 0).toFixed(2),
+          total.toFixed(2),
+        ];
+      });
+
+    autoTable(doc, {
+      head: [["Date", "Category", "Item", "Unit", "Qty", "Unit Price", "Total (E£)"]],
+      body: lineBody.length ? lineBody : [["—","—","—","—","0","0.00","0.00"]],
+      startY: y + 4,
+      theme: "grid",
+      styles: { fontSize: 9 },
+    });
+
+    doc.save("tux_purchases_report.pdf");
+    alert("Purchases PDF downloaded.");
+  } catch (e) {
+    console.error(e);
+    alert("Could not generate Purchases PDF. Ensure pop-ups are allowed.");
+  }
+};
+
 
       let y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : 28;
       doc.text("Shift Timeline", 14, y);
@@ -3698,6 +3800,14 @@ const prettyDate = (d) => {
  >
    Reset Purchases
  </button>
+     {/* === ADD: Purchases PDF === */}
+<button
+  onClick={generatePurchasesPDF}
+  style={{ padding:"6px 10px", borderRadius:8, border:"none", background:"#7e57c2", color:"#fff", fontWeight:700, cursor:"pointer" }}
+>
+  Download Purchases PDF
+</button>
+
     </div>
 
     {/* === KPI ROW (only Total Purchases now) ========================= */}
@@ -3724,6 +3834,71 @@ const prettyDate = (d) => {
         </div>
       </div>
     </div>
+{/* === ADD: Manage Categories (filter/delete) ===================== */}
+<div
+  style={{
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: 10,
+    marginBottom: 12,
+  }}
+>
+  {purchaseCategories.map(c => {
+    const amt = (function () {
+      let s = 0;
+      for (const p of filteredPurchases) {
+        if ((p.categoryId || "") === c.id) {
+          s += Number(p.qty || 0) * Number(p.unitPrice || 0);
+        }
+      }
+      return s;
+    })();
+
+    return (
+      <div
+        key={c.id}
+        style={{
+          padding: 12,
+          borderRadius: 10,
+          background: dark ? "#1a1a1a" : "#fff",
+          border: `1px solid ${cardBorder}`,
+          display: "grid",
+          gap: 8,
+        }}
+      >
+        <div style={{ fontWeight: 800 }}>{c.name}</div>
+        <div style={{ opacity: 0.9 }}>In period: <b>{currency(amt)}</b></div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button
+            onClick={() => setPurchaseCatFilterId(c.id)}
+            style={{
+              padding: "6px 10px",
+              borderRadius: 8,
+              border: `1px solid ${btnBorder}`,
+              background: purchaseCatFilterId === c.id ? "#ffd54f" : (dark ? "#2b2b2b" : "#f2f2f2"),
+              cursor: "pointer",
+            }}
+          >
+            Show
+          </button>
+          <button
+            onClick={() => removePurchaseCategory(c.id)}
+            style={{
+              padding: "6px 10px",
+              borderRadius: 8,
+              border: "none",
+              background: "#c62828",
+              color: "#fff",
+              cursor: "pointer",
+            }}
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    );
+  })}
+</div>
 
    
 
@@ -3747,6 +3922,72 @@ const prettyDate = (d) => {
         }}
       >
 
+{/* === FILTERED PURCHASES TABLE ================================== */}
+<div style={{
+  padding: 14,
+  borderRadius: 12,
+  background: dark ? "#1a1a1a" : "#fff",
+  border: `1px solid ${cardBorder}`,
+}}>
+  <div style={{ marginBottom: 8, display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:8 }}>
+    <strong>
+      Purchases {purchaseCatFilterId ? `— ${purchaseCategories.find(c=>c.id===purchaseCatFilterId)?.name || ""}` : "(all categories)"} • {filteredPurchases.length} rows
+    </strong>
+    {purchaseCatFilterId && (
+      <button
+        onClick={() => setPurchaseCatFilterId("")}
+        style={{ padding:"6px 10px", borderRadius:8, border:`1px solid ${btnBorder}`, background: dark ? "#2b2b2b" : "#f2f2f2", cursor:"pointer" }}
+      >
+        Clear category filter
+      </button>
+    )}
+  </div>
+
+  <table style={{ width:"100%", borderCollapse:"collapse" }}>
+    <thead>
+      <tr>
+        <th style={{ textAlign:"left", borderBottom:`1px solid ${cardBorder}`, padding:6 }}>Date</th>
+        <th style={{ textAlign:"left", borderBottom:`1px solid ${cardBorder}`, padding:6 }}>Category</th>
+        <th style={{ textAlign:"left", borderBottom:`1px solid ${cardBorder}`, padding:6 }}>Item</th>
+        <th style={{ textAlign:"center", borderBottom:`1px solid ${cardBorder}`, padding:6 }}>Unit</th>
+        <th style={{ textAlign:"right", borderBottom:`1px solid ${cardBorder}`, padding:6 }}>Qty</th>
+        <th style={{ textAlign:"right", borderBottom:`1px solid ${cardBorder}`, padding:6 }}>Unit Price</th>
+        <th style={{ textAlign:"right", borderBottom:`1px solid ${cardBorder}`, padding:6 }}>Total</th>
+        <th style={{ borderBottom:`1px solid ${cardBorder}`, padding:6 }}>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {filteredPurchases.map((p) => {
+        const catName = purchaseCategories.find(c => c.id === p.categoryId)?.name || "-";
+        const total = Number(p.qty || 0) * Number(p.unitPrice || 0);
+        return (
+          <tr key={p.id}>
+            <td style={{ padding:6 }}>{prettyDate(p.date)}</td>
+            <td style={{ padding:6 }}>{catName}</td>
+            <td style={{ padding:6 }}>{p.itemName}</td>
+            <td style={{ padding:6, textAlign:"center" }}>{p.unit}</td>
+            <td style={{ padding:6, textAlign:"right" }}>{p.qty}</td>
+            <td style={{ padding:6, textAlign:"right" }}>{currency(p.unitPrice)}</td>
+            <td style={{ padding:6, textAlign:"right" }}>{currency(total)}</td>
+            <td style={{ padding:6 }}>
+              <button
+                onClick={() => setPurchases((arr) => arr.filter(x => x.id !== p.id))}
+                style={{ background:"#c62828", color:"#fff", border:"none", borderRadius:6, padding:"6px 10px", cursor:"pointer" }}
+              >
+                Remove
+              </button>
+            </td>
+          </tr>
+        );
+      })}
+      {filteredPurchases.length === 0 && (
+        <tr>
+          <td colSpan={8} style={{ padding:8, opacity:0.8 }}>No purchases for this selection.</td>
+        </tr>
+      )}
+    </tbody>
+  </table>
+</div>
 
         {/* Category */}
         <select
@@ -3885,73 +4126,50 @@ const prettyDate = (d) => {
         marginBottom: 14,
       }}
     >
-{purchaseCategories.map((cat) => {
-  const total = catTotals.get(cat.id) || 0;
-  const active = purchaseCatFilterId === cat.id;
-
-  return (
-    <div
-      key={cat.id}
-      role="button"
-      tabIndex={0}
-      onClick={() =>
-        setPurchaseCatFilterId((id) => (id === cat.id ? "" : cat.id))
-      }
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          setPurchaseCatFilterId((id) => (id === cat.id ? "" : cat.id));
-        }
-      }}
-      style={{
-        textAlign: "left",
-        padding: 14,
-        borderRadius: 12,
-        border: `1px solid ${cardBorder}`,
-        background: active ? (dark ? "#222" : "#fff8e1") : (dark ? "#1e1e1e" : "#fff"),
-        color: dark ? "#eee" : "#000",
-        cursor: "pointer",
-        position: "relative",
-      }}
-      title="Show this category's purchases below"
-    >
-      {/* tiny remove button (doesn't trigger filter) */}
-      <button
-        onClick={(e) => { e.stopPropagation(); removeCategory(cat.id); }}
-        style={{
-          position: "absolute", right: 8, top: 8,
-          border: "none", borderRadius: 6, padding: "2px 6px",
-          background: "#c62828", color: "#fff", cursor: "pointer",
-        }}
-        aria-label={`Remove ${cat.name} category`}
-        title="Remove category (purchases kept as 'Uncategorized')"
-      >
-        ✕
-      </button>
-
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span
-          style={{
-            display: "inline-flex",
-            width: 28,
-            height: 28,
-            alignItems: "center",
-            justifyContent: "center",
-            borderRadius: 8,
-            border: `1px solid ${btnBorder}`,
-            fontSize: 16,
-          }}
-        >
-          📦
-        </span>
-        <div style={{ fontWeight: 700 }}>{cat.name}</div>
-      </div>
-      <div style={{ marginTop: 6, opacity: 0.8 }}>
-        {currency(total)}
-      </div>
-    </div>
-  );
-})}
-
+      {/* Category tiles with 📦 icon */}
+      {purchaseCategories.map((cat) => {
+        const total = catTotals.get(cat.id) || 0;
+        const active = purchaseCatFilterId === cat.id;
+        return (
+          <button
+            key={cat.id}
+             onClick={() =>
+   setPurchaseCatFilterId((id) => (id === cat.id ? "" : cat.id))
+ }
+            style={{
+              textAlign: "left",
+              padding: 14,
+              borderRadius: 12,
+              border: `1px solid ${cardBorder}`,
+              background: active ? (dark ? "#222" : "#fff8e1") : dark ? "#1e1e1e" : "#fff",
+              color: dark ? "#eee" : "#000",
+              cursor: "pointer",
+            }}
+            title="Show category details below"
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span
+                style={{
+                  display: "inline-flex",
+                  width: 28,
+                  height: 28,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 8,
+                  border: `1px solid ${btnBorder}`,
+                  fontSize: 16,
+                }}
+              >
+                📦
+              </span>
+              <div style={{ fontWeight: 700 }}>{cat.name}</div>
+            </div>
+            <div style={{ marginTop: 6, opacity: 0.8 }}>
+              {currency(total)}
+            </div>
+          </button>
+        );
+      })}
 
 
       {/* Add Category tile (inside the categories group) */}
@@ -4027,126 +4245,24 @@ const prettyDate = (d) => {
       </div>
     </div>
 
-  {/* === DETAILS LIST ================================================= */}
-<div style={{ marginTop: 4 }}>
-  <div style={{ fontWeight: 700, marginBottom: 8 }}>
-    {purchaseCatFilterId
-      ? `Category: ${activePurchaseCat?.name || "Uncategorized"}`
-      : "All Categories"}
-  </div>
+    {/* === DETAILS LIST ================================================= */}
+    <div style={{ marginTop: 4 }}>
+      <div style={{ fontWeight: 700, marginBottom: 8 }}>All Categories</div>
 
-  {/* Figure out which category IDs to render in the table section */}
-  {(() => {
-    const idsToRender = purchaseCatFilterId
-      ? [purchaseCatFilterId]                               // only the chosen one
-      : purchaseCategories.map(c => c.id);                   // all
-
-    // When showing ALL, also surface "Uncategorized" if any
-    const uncatRows = byCategory.get("") || [];
-    if (!purchaseCatFilterId && uncatRows.length) {
-      idsToRender.push(""); // "" means Uncategorized in our maps
-    }
-
-    return idsToRender.map((catId) => {
-      const cat = purchaseCategories.find(c => c.id === catId);
-      const name = cat ? cat.name : "Uncategorized";
-
-      const rows = byCategory.get(catId) || [];
-      const total = rows.reduce(
-        (s, r) => s + Number(r.qty || 0) * Number(r.unitPrice || 0),
-        0
-      );
-
-      return (
-        <div
-          key={catId || "uncat"}
-          style={{
-            border: `1px solid ${cardBorder}`,
-            borderRadius: 12,
-            background: dark ? "#141414" : "#fff",
-            marginBottom: 12,
-            overflow: "hidden",
-          }}
-        >
-          {/* Section header */}
+      {purchaseCategories.map((cat) => {
+        const rows = byCategory.get(cat.id) || [];
+        const total = catTotals.get(cat.id) || 0;
+        return (
           <div
+            key={cat.id}
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "10px 12px",
-              background: dark ? "#1c1c1c" : "#fafafa",
-              borderBottom: `1px solid ${cardBorder}`,
+              border: `1px solid ${cardBorder}`,
+              borderRadius: 12,
+              background: dark ? "#141414" : "#fff",
+              marginBottom: 12,
+              overflow: "hidden",
             }}
           >
-            <span
-              style={{
-                display: "inline-flex",
-                width: 24,
-                height: 24,
-                alignItems: "center",
-                justifyContent: "center",
-                borderRadius: 6,
-                border: `1px solid ${btnBorder}`,
-                fontSize: 14,
-              }}
-            >
-              📦
-            </span>
-            <div style={{ fontWeight: 700 }}>{name}</div>
-            <div style={{ opacity: 0.8 }}>• {currency(total)}</div>
-          </div>
-
-          {/* Table */}
-          <div style={{ padding: 12 }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr>
-                  {["Date", "Item", "Unit", "Qty", "Unit Price", "Total"].map((h) => (
-                    <th
-                      key={h}
-                      style={{
-                        textAlign: h === "Qty" || h === "Unit Price" || h === "Total" ? "right" : "left",
-                        borderBottom: `1px solid ${cardBorder}`,
-                        padding: 8,
-                        fontWeight: 700,
-                      }}
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} style={{ padding: 8, opacity: 0.7 }}>
-                      No purchases in this period.
-                    </td>
-                  </tr>
-                ) : (
-                  rows.map((r) => (
-                    <tr key={r.id}>
-                      <td style={{ padding: 8 }}>{prettyDate(r.date)}</td>
-                      <td style={{ padding: 8 }}>{r.itemName || "-"}</td>
-                      <td style={{ padding: 8 }}>{r.unit || "-"}</td>
-                      <td style={{ padding: 8, textAlign: "right" }}>{Number(r.qty || 0)}</td>
-                      <td style={{ padding: 8, textAlign: "right" }}>{currency(r.unitPrice)}</td>
-                      <td style={{ padding: 8, textAlign: "right" }}>
-                        {currency(Number(r.qty || 0) * Number(r.unitPrice || 0))}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      );
-    });
-  })()}
-</div>
-
             {/* Section header */}
             <div
               style={{
@@ -5387,9 +5503,6 @@ const prettyDate = (d) => {
     </div>
   );
 }
-
-
-
 
 
 
