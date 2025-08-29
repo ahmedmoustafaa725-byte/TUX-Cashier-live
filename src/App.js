@@ -2115,9 +2115,13 @@ const byCategory = useMemo(() => {
     arr.push(p);
     m.set(key, arr);
   }
-  for (const [k, arr] of m) arr.sort((a, b) => +new Date(a.date) - +new Date(b.date));
+  // ✅ no unused variable
+  for (const arr of m.values()) {
+    arr.sort((a, b) => +new Date(a.date) - +new Date(b.date));
+  }
   return m;
 }, [filteredPurchases]);
+
 
 // KPI: Net after Purchases
 const netAfterPurchases = useMemo(() => {
@@ -5240,6 +5244,7 @@ const prettyDate = (d) => {
     </div>
   );
 }
+
 
 
 
