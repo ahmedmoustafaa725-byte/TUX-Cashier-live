@@ -722,9 +722,12 @@ const [newPurchase, setNewPurchase] = useState({
   unitPrice: 0,
   date: new Date().toISOString().slice(0,10),
 });
+  
 const [deliveryZoneId, setDeliveryZoneId] = useState("");               // ⬅️ NEW
 const [customers, setCustomers] = useState([]);                         // {phone,name,address,zoneId}
 const [deliveryZones, setDeliveryZones] = useState(DEFAULT_ZONES);      // ⬅️ NEW
+const [newCategoryName, setNewCategoryName] = useState("");
+
 
 
 const [cashReceived, setCashReceived] = useState(0);
@@ -2074,6 +2077,83 @@ for (const o of validOrders) {
       return { name: it.name, unit: it.unit, start, now, used };
     });
   }, [inventory, inventorySnapshot]);
+  // --- Purchases: compute current period & filtered rows
+const [pStart, pEnd] = useMemo(
+  () => getPeriodRange(purchaseFilter, dayMeta),
+  [purchaseFilter, dayMeta]
+);
+
+const filteredPurchases = useMemo(() => {
+  return (purchases || []).filter((p) => {
+    const d = p?.date instanceof Date ? p.date : new Date(p?.date);
+    return isWithin(d, pStart, pEnd);
+  });
+}, [purchases, pStart, pEnd]);
+
+// KPI: Total Purchases for the selected period
+const totalPurchasesInPeriod = useMemo(
+  () => sumPurchases(filteredPurchases),
+  [filteredPurchases]
+);
+
+// Map category -> total amount in period
+const catTotals = useMemo(() => {
+  const m = new Map();
+  for (const p of filteredPurchases) {
+    const amt = Number(p.qty || 0) * Number(p.unitPrice || 0);
+    m.set(p.categoryId || "", (m.get(p.categoryId || "") || 0) + amt);
+  }
+  return m;
+}, [filteredPurchases]);
+
+// Map category -> rows (sorted by date)
+const byCategory = useMemo(() => {
+  const m = new Map();
+  for (const p of filteredPurchases) {
+    const key = p.categoryId || "";
+    const arr = m.get(key) || [];
+    arr.push(p);
+    m.set(key, arr);
+  }
+  for (const [k, arr] of m) arr.sort((a, b) => +new Date(a.date) - +new Date(b.date));
+  return m;
+}, [filteredPurchases]);
+
+// KPI: Net after Purchases
+const netAfterPurchases = useMemo(() => {
+  const rev = Number(totals?.revenueTotal || 0);
+  return rev - Number(totalPurchasesInPeriod || 0);
+}, [totals, totalPurchasesInPeriod]);
+const handleAddPurchase = () => {
+  const { categoryId, ingredientId, itemName, unit, qty, unitPrice, date } = newPurchase;
+
+  if (!categoryId) return alert("Select a category.");
+  const name = String(itemName || "").trim();
+  if (!name) return alert("Enter item name.");
+
+  const row = {
+    id: `p_${Date.now()}`,
+    categoryId,
+    ingredientId: ingredientId || "",
+    itemName: name,
+    unit: String(unit || "pcs"),
+    qty: Math.max(0, Number(qty || 0)),
+    unitPrice: Math.max(0, Number(unitPrice || 0)),
+    date: date ? new Date(date) : new Date(),
+  };
+
+  setPurchases((arr) => [row, ...arr]);
+  setNewPurchase({
+    categoryId: "",
+    ingredientId: "",
+    itemName: "",
+    unit: "pcs",
+    qty: 1,
+    unitPrice: 0,
+    date: new Date().toISOString().slice(0, 10),
+  });
+};
+
 
   // --------------------------- PDF: REPORT ---------------------------
   const generatePDF = (silent = false, metaOverride = null) => {
@@ -2298,6 +2378,15 @@ for (const o of validOrders) {
       return sum;
     }, 0);
   }, [bankTx]);
+  // Money formatter for Purchases KPI & tables
+const currency = (v) => `E£${Number(v || 0).toFixed(2)}`;
+
+// Date -> YYYY-MM-DD for Purchases tables
+const prettyDate = (d) => {
+  const dt = d instanceof Date ? d : new Date(d);
+  return dt.toISOString().slice(0, 10);
+};
+
 
   /* --------------------------- UI --------------------------- */
 
@@ -5151,6 +5240,7 @@ for (const o of validOrders) {
     </div>
   );
 }
+
 
 
 
