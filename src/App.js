@@ -3891,8 +3891,7 @@ const prettyDate = (d) => {
       </div>
     </div>
 
-    {/* === CATEGORY TILES + ADD CATEGORY =============================== */}
-
+   
     <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
       <input
         type="text"
@@ -5301,6 +5300,7 @@ const prettyDate = (d) => {
     </div>
   );
 }
+
 
 
 
