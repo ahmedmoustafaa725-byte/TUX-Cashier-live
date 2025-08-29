@@ -996,6 +996,7 @@ useEffect(() => {
     () => (db ? collection(db, "shops", SHOP_ID, "orders") : null),
     [db]
   );
+  
   const counterDocRef = useMemo(
     () => (db ? fsDoc(db, "shops", SHOP_ID, "state", "counters") : null),
     [db]
@@ -2105,6 +2106,12 @@ const totalPurchasesInPeriod = useMemo(
   () => sumPurchases(filteredPurchases),
   [filteredPurchases]
 );
+// Currently selected category object (or null)
+const activePurchaseCat = useMemo(
+  () => purchaseCategories.find(c => c.id === purchaseCatFilterId) || null,
+  [purchaseCategories, purchaseCatFilterId]
+);
+
 
 // Map category -> total amount in period
 const catTotals = useMemo(() => {
@@ -2170,6 +2177,22 @@ const resetAllPurchases = () => {
   setPurchases([]);
   setPurchaseCatFilterId("");
 };
+// Remove a category but keep purchases (they become "Uncategorized")
+const removeCategory = (catId) => {
+  if (!window.confirm("Remove this category? Purchases will be kept and moved to 'Uncategorized' (visible in Show All).")) return;
+
+  // move purchases out of this category
+  setPurchases(list => list.map(p => (
+    p.categoryId === catId ? { ...p, categoryId: "" } : p
+  )));
+
+  // remove the category itself
+  setPurchaseCategories(arr => arr.filter(c => c.id !== catId));
+
+  // if this category was selected, clear the filter
+  setPurchaseCatFilterId(cur => (cur === catId ? "" : cur));
+};
+
 
 
   // --------------------------- PDF: REPORT ---------------------------
@@ -3862,50 +3885,73 @@ const prettyDate = (d) => {
         marginBottom: 14,
       }}
     >
-      {/* Category tiles with 📦 icon */}
-      {purchaseCategories.map((cat) => {
-        const total = catTotals.get(cat.id) || 0;
-        const active = purchaseCatFilterId === cat.id;
-        return (
-          <button
-            key={cat.id}
-             onClick={() =>
-   setPurchaseCatFilterId((id) => (id === cat.id ? "" : cat.id))
- }
-            style={{
-              textAlign: "left",
-              padding: 14,
-              borderRadius: 12,
-              border: `1px solid ${cardBorder}`,
-              background: active ? (dark ? "#222" : "#fff8e1") : dark ? "#1e1e1e" : "#fff",
-              color: dark ? "#eee" : "#000",
-              cursor: "pointer",
-            }}
-            title="Show category details below"
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span
-                style={{
-                  display: "inline-flex",
-                  width: 28,
-                  height: 28,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderRadius: 8,
-                  border: `1px solid ${btnBorder}`,
-                  fontSize: 16,
-                }}
-              >
-                📦
-              </span>
-              <div style={{ fontWeight: 700 }}>{cat.name}</div>
-            </div>
-            <div style={{ marginTop: 6, opacity: 0.8 }}>
-              {currency(total)}
-            </div>
-          </button>
-        );
-      })}
+{purchaseCategories.map((cat) => {
+  const total = catTotals.get(cat.id) || 0;
+  const active = purchaseCatFilterId === cat.id;
+
+  return (
+    <div
+      key={cat.id}
+      role="button"
+      tabIndex={0}
+      onClick={() =>
+        setPurchaseCatFilterId((id) => (id === cat.id ? "" : cat.id))
+      }
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          setPurchaseCatFilterId((id) => (id === cat.id ? "" : cat.id));
+        }
+      }}
+      style={{
+        textAlign: "left",
+        padding: 14,
+        borderRadius: 12,
+        border: `1px solid ${cardBorder}`,
+        background: active ? (dark ? "#222" : "#fff8e1") : (dark ? "#1e1e1e" : "#fff"),
+        color: dark ? "#eee" : "#000",
+        cursor: "pointer",
+        position: "relative",
+      }}
+      title="Show this category's purchases below"
+    >
+      {/* tiny remove button (doesn't trigger filter) */}
+      <button
+        onClick={(e) => { e.stopPropagation(); removeCategory(cat.id); }}
+        style={{
+          position: "absolute", right: 8, top: 8,
+          border: "none", borderRadius: 6, padding: "2px 6px",
+          background: "#c62828", color: "#fff", cursor: "pointer",
+        }}
+        aria-label={`Remove ${cat.name} category`}
+        title="Remove category (purchases kept as 'Uncategorized')"
+      >
+        ✕
+      </button>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span
+          style={{
+            display: "inline-flex",
+            width: 28,
+            height: 28,
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 8,
+            border: `1px solid ${btnBorder}`,
+            fontSize: 16,
+          }}
+        >
+          📦
+        </span>
+        <div style={{ fontWeight: 700 }}>{cat.name}</div>
+      </div>
+      <div style={{ marginTop: 6, opacity: 0.8 }}>
+        {currency(total)}
+      </div>
+    </div>
+  );
+})}
+
 
 
       {/* Add Category tile (inside the categories group) */}
@@ -3981,24 +4027,126 @@ const prettyDate = (d) => {
       </div>
     </div>
 
-    {/* === DETAILS LIST ================================================= */}
-    <div style={{ marginTop: 4 }}>
-      <div style={{ fontWeight: 700, marginBottom: 8 }}>All Categories</div>
+  {/* === DETAILS LIST ================================================= */}
+<div style={{ marginTop: 4 }}>
+  <div style={{ fontWeight: 700, marginBottom: 8 }}>
+    {purchaseCatFilterId
+      ? `Category: ${activePurchaseCat?.name || "Uncategorized"}`
+      : "All Categories"}
+  </div>
 
-      {purchaseCategories.map((cat) => {
-        const rows = byCategory.get(cat.id) || [];
-        const total = catTotals.get(cat.id) || 0;
-        return (
+  {/* Figure out which category IDs to render in the table section */}
+  {(() => {
+    const idsToRender = purchaseCatFilterId
+      ? [purchaseCatFilterId]                               // only the chosen one
+      : purchaseCategories.map(c => c.id);                   // all
+
+    // When showing ALL, also surface "Uncategorized" if any
+    const uncatRows = byCategory.get("") || [];
+    if (!purchaseCatFilterId && uncatRows.length) {
+      idsToRender.push(""); // "" means Uncategorized in our maps
+    }
+
+    return idsToRender.map((catId) => {
+      const cat = purchaseCategories.find(c => c.id === catId);
+      const name = cat ? cat.name : "Uncategorized";
+
+      const rows = byCategory.get(catId) || [];
+      const total = rows.reduce(
+        (s, r) => s + Number(r.qty || 0) * Number(r.unitPrice || 0),
+        0
+      );
+
+      return (
+        <div
+          key={catId || "uncat"}
+          style={{
+            border: `1px solid ${cardBorder}`,
+            borderRadius: 12,
+            background: dark ? "#141414" : "#fff",
+            marginBottom: 12,
+            overflow: "hidden",
+          }}
+        >
+          {/* Section header */}
           <div
-            key={cat.id}
             style={{
-              border: `1px solid ${cardBorder}`,
-              borderRadius: 12,
-              background: dark ? "#141414" : "#fff",
-              marginBottom: 12,
-              overflow: "hidden",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "10px 12px",
+              background: dark ? "#1c1c1c" : "#fafafa",
+              borderBottom: `1px solid ${cardBorder}`,
             }}
           >
+            <span
+              style={{
+                display: "inline-flex",
+                width: 24,
+                height: 24,
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: 6,
+                border: `1px solid ${btnBorder}`,
+                fontSize: 14,
+              }}
+            >
+              📦
+            </span>
+            <div style={{ fontWeight: 700 }}>{name}</div>
+            <div style={{ opacity: 0.8 }}>• {currency(total)}</div>
+          </div>
+
+          {/* Table */}
+          <div style={{ padding: 12 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  {["Date", "Item", "Unit", "Qty", "Unit Price", "Total"].map((h) => (
+                    <th
+                      key={h}
+                      style={{
+                        textAlign: h === "Qty" || h === "Unit Price" || h === "Total" ? "right" : "left",
+                        borderBottom: `1px solid ${cardBorder}`,
+                        padding: 8,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ padding: 8, opacity: 0.7 }}>
+                      No purchases in this period.
+                    </td>
+                  </tr>
+                ) : (
+                  rows.map((r) => (
+                    <tr key={r.id}>
+                      <td style={{ padding: 8 }}>{prettyDate(r.date)}</td>
+                      <td style={{ padding: 8 }}>{r.itemName || "-"}</td>
+                      <td style={{ padding: 8 }}>{r.unit || "-"}</td>
+                      <td style={{ padding: 8, textAlign: "right" }}>{Number(r.qty || 0)}</td>
+                      <td style={{ padding: 8, textAlign: "right" }}>{currency(r.unitPrice)}</td>
+                      <td style={{ padding: 8, textAlign: "right" }}>
+                        {currency(Number(r.qty || 0) * Number(r.unitPrice || 0))}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    });
+  })()}
+</div>
+
             {/* Section header */}
             <div
               style={{
@@ -5239,6 +5387,7 @@ const prettyDate = (d) => {
     </div>
   );
 }
+
 
 
 
