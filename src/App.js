@@ -722,6 +722,9 @@ const [newPurchase, setNewPurchase] = useState({
   unitPrice: 0,
   date: new Date().toISOString().slice(0,10),
 });
+// Purchases state (keep with the others)
+const [newCategoryName, setNewCategoryName] = useState("");
+
 const [deliveryZoneId, setDeliveryZoneId] = useState("");               // ⬅️ NEW
 const [customers, setCustomers] = useState([]);                         // {phone,name,address,zoneId}
 const [deliveryZones, setDeliveryZones] = useState(DEFAULT_ZONES);      // ⬅️ NEW
@@ -3609,237 +3612,269 @@ for (const o of validOrders) {
           </table>
         </div>
       )}
-{/* ────────────────────────────── PURCHASES TAB (new) ────────────────────────────── */}
 {activeTab === "purchases" && (
   <div>
     <h2>Purchases</h2>
 
-    {/* Period buttons & KPIs */}
-    <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", marginBottom: 10 }}>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {["day","month","year"].map((k) => (
+    {/* KPIs (Day/Month/Year controls are inside the Net card at the top) */}
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+        gap: 8,
+        marginBottom: 12,
+      }}
+    >
+      {/* Total Purchases */}
+      <div
+        style={{
+          position: "relative",
+          padding: 14,
+          borderRadius: 8,
+          background: dark ? "#1e1e1e" : "#fff",
+          border: `1px solid ${cardBorder}`,
+        }}
+      >
+        <div style={{ fontWeight: 600, opacity: 0.9 }}>Total Purchases</div>
+        <div style={{ marginTop: 6, fontSize: 22, fontWeight: 800 }}>
+          {currency(totalPurchasesInPeriod)}
+        </div>
+      </div>
+
+      {/* Net after Purchases (filters at the upper-top of this box) */}
+      <div
+        style={{
+          position: "relative",
+          padding: 14,
+          paddingTop: 46, // extra space for the filter buttons at top
+          borderRadius: 8,
+          background: dark ? "#1e1e1e" : "#fff",
+          border: `1px solid ${cardBorder}`,
+        }}
+      >
+        {/* Day/Month/Year controls anchored at the upper top */}
+        <div
+          style={{
+            position: "absolute",
+            top: 10,
+            right: 10,
+            display: "flex",
+            gap: 6,
+            flexWrap: "wrap",
+          }}
+        >
+          {["day", "month", "year"].map((k) => (
+            <button
+              key={k}
+              onClick={() => setPurchaseFilter(k)}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 6,
+                border: `1px solid ${btnBorder}`,
+                background:
+                  purchaseFilter === k ? "#ffd54f" : dark ? "#333" : "#eee",
+                cursor: "pointer",
+              }}
+              aria-pressed={purchaseFilter === k}
+              title={`Show ${k} purchases`}
+            >
+              {k.toUpperCase()}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ fontWeight: 600, opacity: 0.9 }}>Net after Purchases</div>
+        <div style={{ marginTop: 6, fontSize: 22, fontWeight: 800 }}>
+          {currency(netAfterPurchases)}
+        </div>
+      </div>
+    </div>
+
+    {/* Categories group */}
+    <div
+      style={{
+        padding: 10,
+        borderRadius: 8,
+        background: dark ? "#181818" : "#fafafa",
+        border: `1px solid ${cardBorder}`,
+        marginBottom: 12,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          flexWrap: "wrap",
+          marginBottom: 8,
+        }}
+      >
+        <h3 style={{ margin: 0 }}>Categories</h3>
+
+        {/* Add Category (inside the Categories group) */}
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input
+            type="text"
+            placeholder="Add category…"
+            value={newCategoryName}
+            onChange={(e) => setNewCategoryName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                const name = String(newCategoryName || "").trim();
+                if (!name) return;
+                const id = `cat_${Date.now()}`;
+                setPurchaseCategories((arr) => [...arr, { id, name }]);
+                setNewCategoryName("");
+              }
+            }}
+            style={{
+              padding: 6,
+              borderRadius: 6,
+              border: `1px solid ${btnBorder}`,
+              minWidth: 200,
+              background: dark ? "#1e1e1e" : "#fff",
+              color: dark ? "#eee" : "#000",
+            }}
+          />
           <button
-            key={k}
-            onClick={() => setPurchaseFilter(k)}
+            onClick={() => {
+              const name = String(newCategoryName || "").trim();
+              if (!name) return;
+              const id = `cat_${Date.now()}`;
+              setPurchaseCategories((arr) => [...arr, { id, name }]);
+              setNewCategoryName("");
+            }}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 6,
+              border: "none",
+              background: "#1976d2",
+              color: "#fff",
+              cursor: "pointer",
+            }}
+          >
+            Add Category
+          </button>
+        </div>
+      </div>
+
+      {/* Category tiles with 📦 icons */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+          gap: 8,
+        }}
+      >
+        {purchaseCategories.map((cat) => {
+          const total = catTotals.get(cat.id) || 0;
+          const isOpen = openPurchaseCatId === cat.id;
+          return (
+            <button
+              key={cat.id}
+              onClick={() =>
+                setOpenPurchaseCatId(isOpen ? null : cat.id)
+              }
+              style={{
+                textAlign: "left",
+                padding: 12,
+                borderRadius: 10,
+                border: `1px solid ${btnBorder}`,
+                background: isOpen ? (dark ? "#232323" : "#fffbe6") : (dark ? "#1e1e1e" : "#fff"),
+                color: dark ? "#eee" : "#000",
+                cursor: "pointer",
+              }}
+              title="Open category"
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
+                  <span aria-hidden>📦</span>
+                  <span>{cat.name}</span>
+                </div>
+                <div style={{ opacity: 0.8 }}>{currency(total)}</div>
+              </div>
+              <div style={{ marginTop: 4, fontSize: 12, opacity: 0.7 }}>
+                {byCategory.get(cat.id)?.length || 0} purchase(s)
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+
+    {/* Rows for the opened category (optional detail) */}
+    {openPurchaseCatId && (
+      <div
+        style={{
+          padding: 10,
+          borderRadius: 8,
+          background: dark ? "#101010" : "#fff",
+          border: `1px solid ${cardBorder}`,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 8,
+            marginBottom: 8,
+          }}
+        >
+          <h3 style={{ margin: 0 }}>
+            {purchaseCategories.find((c) => c.id === openPurchaseCatId)?.name ||
+              "Category"}
+          </h3>
+          <button
+            onClick={() => setOpenPurchaseCatId(null)}
             style={{
               padding: "6px 10px",
               borderRadius: 6,
               border: `1px solid ${btnBorder}`,
-              background: purchaseFilter === k ? "#ffd54f" : (dark ? "#333" : "#eee"),
-              cursor: "pointer"
+              background: dark ? "#333" : "#eee",
+              cursor: "pointer",
             }}
           >
-            {k.toUpperCase()}
+            Close
           </button>
-        ))}
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 8, minWidth: 280, flex: 1, marginLeft: 10 }}>
-        <div style={{ padding: 10, borderRadius: 8, background: dark ? "#1e1e1e" : "#fff", border: `1px solid ${cardBorder}` }}>
-          <div style={{ fontWeight: 600, opacity: .9 }}>Total Purchases</div>
-          <div style={{ marginTop: 4, fontSize: 20, fontWeight: 800 }}>{currency(totalPurchasesInPeriod)}</div>
         </div>
-        <div style={{ padding: 10, borderRadius: 8, background: dark ? "#1e1e1e" : "#fff", border: `1px solid ${cardBorder}` }}>
-          <div style={{ fontWeight: 600, opacity: .9 }}>Net after Purchases</div>
-          <div style={{ marginTop: 4, fontSize: 20, fontWeight: 800 }}>{currency(netAfterPurchases)}</div>
-        </div>
-      </div>
-    </div>
 
-    {/* Category tiles */}
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginBottom: 12 }}>
-      {purchaseCategories.map((c) => {
-        const amt = Number(catTotals.get(c.id) || 0);
-        const on = openPurchaseCatId === c.id;
-        return (
-          <button
-            key={c.id}
-            onClick={() => setOpenPurchaseCatId(on ? null : c.id)}
-            style={{
-              textAlign: "left",
-              padding: 12,
-              borderRadius: 10,
-              border: `1px solid ${btnBorder}`,
-              background: on ? (dark ? "#222" : "#f8f8f8") : (dark ? "#1e1e1e" : "#fff"),
-              boxShadow: dark ? "none" : "0 1px 3px rgba(0,0,0,.06)",
-              cursor: "pointer"
-            }}
-          >
-            <div style={{ fontWeight: 700 }}>{c.name}</div>
-            <div style={{ opacity: .8 }}>{currency(amt)}</div>
-          </button>
-        );
-      })}
-    </div>
-
-    {/* Add purchase + Add category */}
-    <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12, marginBottom: 14 }}>
-      <div style={{ padding: 10, borderRadius: 8, background: softBg }}>
-        <h4 style={{ margin: 0, marginBottom: 8 }}>Add Purchase</h4>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "flex-end" }}>
-          <select
-            value={newPurchase.categoryId}
-            onChange={(e) => setNewPurchase((p) => ({ ...p, categoryId: e.target.value }))}
-            style={{ minWidth: 160, padding: 6, borderRadius: 8, border: `1px solid ${btnBorder}` }}
-          >
-            <option value="">Category…</option>
-            {purchaseCategories.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Item</th>
+              <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit</th>
+              <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Qty</th>
+              <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit Price</th>
+              <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Total</th>
+              <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(byCategory.get(openPurchaseCatId) || []).map((p) => (
+              <tr key={p.id}>
+                <td style={{ padding: 6 }}>{p.itemName || "-"}</td>
+                <td style={{ padding: 6 }}>{p.unit || "pcs"}</td>
+                <td style={{ padding: 6, textAlign: "right" }}>{Number(p.qty || 0)}</td>
+                <td style={{ padding: 6, textAlign: "right" }}>{currency(p.unitPrice)}</td>
+                <td style={{ padding: 6, textAlign: "right" }}>
+                  {currency(Number(p.qty || 0) * Number(p.unitPrice || 0))}
+                </td>
+                <td style={{ padding: 6 }}>{prettyDate(p.date)}</td>
+              </tr>
             ))}
-          </select>
-
-          <select
-            value={newPurchase.ingredientId}
-            onChange={(e) => {
-              const id = e.target.value;
-              setNewPurchase((p) => ({
-                ...p,
-                ingredientId: id,
-                itemName: id ? (inventory.find((x) => x.id === id)?.name || p.itemName) : p.itemName,
-              }));
-            }}
-            style={{ minWidth: 200, padding: 6, borderRadius: 8, border: `1px solid ${btnBorder}` }}
-          >
-            <option value="">Link ingredient (optional)</option>
-            {inventory.map((x) => (
-              <option key={x.id} value={x.id}>{x.name}</option>
-            ))}
-          </select>
-
-          <input
-            type="text"
-            placeholder="Item name"
-            value={newPurchase.itemName}
-            onChange={(e) => setNewPurchase((p) => ({ ...p, itemName: e.target.value }))}
-            style={{ minWidth: 200, padding: 6, borderRadius: 8, border: `1px solid ${btnBorder}` }}
-          />
-
-          <input
-            type="text"
-            placeholder="Unit"
-            value={newPurchase.unit}
-            onChange={(e) => setNewPurchase((p) => ({ ...p, unit: e.target.value }))}
-            style={{ width: 90, padding: 6, borderRadius: 8, border: `1px solid ${btnBorder}` }}
-          />
-          <input
-            type="number"
-            placeholder="Qty"
-            value={newPurchase.qty}
-            onChange={(e) => setNewPurchase((p) => ({ ...p, qty: Number(e.target.value || 0) }))}
-            style={{ width: 120, padding: 6, borderRadius: 8, border: `1px solid ${btnBorder}` }}
-          />
-          <input
-            type="number"
-            step="any"
-            placeholder="Unit Price (E£)"
-            value={newPurchase.unitPrice}
-            onChange={(e) => setNewPurchase((p) => ({ ...p, unitPrice: Number(e.target.value || 0) }))}
-            style={{ width: 160, padding: 6, borderRadius: 8, border: `1px solid ${btnBorder}` }}
-          />
-
-          <input
-            type="date"
-            value={newPurchase.date}
-            onChange={(e) => setNewPurchase((p) => ({ ...p, date: e.target.value }))}
-            style={{ padding: 6, borderRadius: 8, border: `1px solid ${btnBorder}` }}
-          />
-
-          <button
-            onClick={handleAddPurchase}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 8,
-              border: "none",
-              background: "#111",
-              color: "#fff",
-              cursor: "pointer"
-            }}
-          >
-            Add Purchase
-          </button>
-        </div>
+            {!(byCategory.get(openPurchaseCatId) || []).length && (
+              <tr>
+                <td colSpan={6} style={{ padding: 8, opacity: 0.7 }}>
+                  No purchases in this period for this category.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
-
-      <div style={{ padding: 10, borderRadius: 8, background: softBg }}>
-        <h4 style={{ margin: 0, marginBottom: 8 }}>Add Category</h4>
-        <div style={{ display: "flex", gap: 8 }}>
-          <input id="np-cat" type="text" placeholder="Category name" style={{ flex: 1, padding: 6, borderRadius: 8, border: `1px solid ${btnBorder}` }} />
-          <button
-            onClick={() => {
-              const el = document.getElementById("np-cat");
-              const name = String(el.value || "").trim();
-              if (!name) return;
-              const id = `cat_${Date.now()}`;
-              setPurchaseCategories((arr) => [...arr, { id, name }]);
-              el.value = "";
-            }}
-            style={{ background: "#1976d2", color: "#fff", border: "none", borderRadius: 8, padding: "8px 12px", cursor: "pointer" }}
-          >
-            Add
-          </button>
-        </div>
-      </div>
-    </div>
-
-    {/* Listing (by category; click a tile to filter) */}
-    <div>
-      <h3 style={{ marginBottom: 8 }}>
-        {openPurchaseCatId
-          ? `Category: ${purchaseCategories.find((c) => c.id === openPurchaseCatId)?.name || ""}`
-          : "All Categories"}
-      </h3>
-
-      {(openPurchaseCatId ? [openPurchaseCatId] : purchaseCategories.map((c) => c.id)).map((catId) => {
-        const cat = purchaseCategories.find((c) => c.id === catId);
-        const rows = byCategory.get(catId) || [];
-        if (!rows.length) return null;
-        const totalCat = sumPurchases(rows);
-        return (
-          <div key={catId} style={{ marginBottom: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-              <span>🧰</span>
-              <div style={{ fontWeight: 700 }}>{cat?.name}</div>
-              <div style={{ fontSize: 13, color: dark ? "#bbb" : "#666" }}>• {currency(totalCat)}</div>
-            </div>
-            <div style={{ overflowX: "auto", border: `1px solid ${cardBorder}`, borderRadius: 12 }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-                <thead style={{ background: dark ? "#141414" : "#fafafa" }}>
-                  <tr style={{ textAlign: "left" }}>
-                    <th style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Date</th>
-                    <th style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Item</th>
-                    <th style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Unit</th>
-                    <th style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>Qty</th>
-                    <th style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>Unit Price</th>
-                    <th style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r, i) => {
-                    const tot = Number(r.qty || 0) * Number(r.unitPrice || 0);
-                    return (
-                      <tr key={r.id} style={{ background: i % 2 ? (dark ? "#181818" : "#fafafa") : "transparent" }}>
-                        <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{prettyDate(r.date)}</td>
-                        <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>
-                          {r.itemName || (r.ingredientId ? (inventory.find((x) => x.id === r.ingredientId)?.name || r.ingredientId) : "")}
-                        </td>
-                        <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{r.unit}</td>
-                        <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{r.qty}</td>
-                        <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{currency(r.unitPrice)}</td>
-                        <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{currency(tot)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        );
-      })}
-
-      {purchasesInPeriod.length === 0 && (
-        <p style={{ color: dark ? "#bbb" : "#666" }}>No purchases in selected period.</p>
-      )}
-    </div>
+    )}
   </div>
 )}
 
@@ -4993,6 +5028,7 @@ for (const o of validOrders) {
     </div>
   );
 }
+
 
 
 
