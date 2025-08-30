@@ -739,7 +739,7 @@ const [adminSubTab, setAdminSubTab] = useState("inventory");
 
   const [menu, setMenu] = useState(BASE_MENU);
   const [extraList, setExtraList] = useState(BASE_EXTRAS);
-
+ 
   const [workers, setWorkers] = useState(BASE_WORKERS);
   const [newWorker, setNewWorker] = useState("");
   const [paymentMethods, setPaymentMethods] = useState(DEFAULT_PAYMENT_METHODS);
@@ -811,8 +811,30 @@ const [inventorySnapshot, setInventorySnapshot] = useState([]);
 const [inventoryLockedAt, setInventoryLockedAt] = useState(null);
 
   const [adminPins, setAdminPins] = useState({ ...DEFAULT_ADMIN_PINS });
-  const [unlockedPins, setUnlockedPins] = useState({}); 
+  // Simple PIN check for a specific Admin number (1..6)
+const verifyAdminPin = (n) => {
+  const expected = norm(adminPins[n] || "");
+  if (!expected) {
+    alert(`Admin ${n} has no PIN set; add it in Settings → Admin PINs.`);
+    return false;
+  }
+  const entered = window.prompt(`Enter PIN for Admin ${n}:`, "");
+  if (entered == null) return false;
+  return norm(entered) === expected;
+};
 
+// Lock/unlock a specific Admin "slot" (if your UI uses per-admin locks)
+const lockAdminPin = (n) => {
+  setUnlockedPins((u) => ({ ...u, [n]: false }));
+};
+
+const unlockAdminPin = (n) => {
+  if (!verifyAdminPin(n)) return;
+  setUnlockedPins((u) => ({ ...u, [n]: true }));
+};
+
+  const [unlockedPins, setUnlockedPins] = useState({}); 
+  
   const [orders, setOrders] = useState([]);
   const [nextOrderNo, setNextOrderNo] = useState(1);
 
@@ -2114,6 +2136,19 @@ if (!reason) return alert("A reason is required.");
   }
 };
 
+const byCategory = useMemo(() => {
+  const m = new Map();
+  for (const p of filteredPurchases) {
+    const key = p.categoryId || "";
+    const arr = m.get(key) || [];
+    arr.push(p);
+    m.set(key, arr);
+  }
+  for (const arr of m.values()) {
+    arr.sort((a, b) => +new Date(a.date) - +new Date(b.date));
+  }
+  return m;
+}, [filteredPurchases]);
 
 
 
@@ -2242,7 +2277,6 @@ const categoriesForGrid = useMemo(() => {
   const used = new Set(filteredPurchases.map(p => p.categoryId));
   return purchaseCategories.filter(c => used.has(c.id));
 }, [showAllCats, filteredPurchases, purchaseCategories]);
-
 
 // KPI: Total Purchases for the selected period
 const totalPurchasesInPeriod = useMemo(
@@ -5535,6 +5569,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
