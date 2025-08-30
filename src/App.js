@@ -3839,7 +3839,7 @@ const generatePurchasesPDF = () => {
 
    
 
-    {/* === ADD PURCHASE CARD ========================================== */}
+  {/* === ADD PURCHASE CARD ========================================== */}
 <div
   style={{
     padding: 14,
@@ -3847,20 +3847,20 @@ const generatePurchasesPDF = () => {
     background: dark ? "#1a1a1a" : "#fff",
     border: `1px solid ${cardBorder}`,
     marginBottom: 12,
- width: 1200,            // CHANGED: fixed card width (px)
-    maxWidth: 1200,         // CHANGED: keep fixed
-    margin: "0 auto",       // ADDED: center the card
-    boxSizing: "border-box",// ADDED: include padding/border in width
+    width: 1160,             // fits columns + gaps + padding + borders
+    maxWidth: 1160,
+    margin: "0 auto",
+    boxSizing: "border-box",
   }}
 >
   <div
     style={{
       display: "grid",
-       gridTemplateColumns:
-      "180px 220px 220px 100px 100px 140px 140px", 
-      gap: 10,
+      gridTemplateColumns:
+        "180px 220px 220px 100px 100px 260px", // 6 columns, last for date+button
+      gap: 10,                                  // constant gap
       alignItems: "center",
-      overflowX: "auto",        // ADDED: keep button inside (scroll if too narrow)
+      // overflowX removed (not needed with fixed width)
     }}
   >
 
@@ -3878,8 +3878,8 @@ const generatePurchasesPDF = () => {
         border: `1px solid ${btnBorder}`,
         background: dark ? "#121212" : "#fff",
         color: dark ? "#eee" : "#000",
-        minWidth: 0,            // ADDED
-        width: "100%",          // ADDED
+        minWidth: 0,
+        width: "100%",
       }}
     >
       <option value="">Category…</option>
@@ -3904,12 +3904,12 @@ const generatePurchasesPDF = () => {
         border: `1px solid ${btnBorder}`,
         background: dark ? "#121212" : "#fff",
         color: dark ? "#eee" : "#000",
-        minWidth: 0,            // ADDED
-        width: "100%",          // ADDED
+        minWidth: 0,
+        width: "100%",
       }}
     />
 
-    {/* Unit (fixed list)  — CHANGED from <input> to <select> */}
+    {/* Unit (fixed list) */}
     <select
       value={newPurchase.unit}
       onChange={(e) =>
@@ -3922,11 +3922,11 @@ const generatePurchasesPDF = () => {
         textAlign: "center",
         background: dark ? "#121212" : "#fff",
         color: dark ? "#eee" : "#000",
-        minWidth: 0,            // ADDED
-        width: "100%",          // ADDED
+        minWidth: 0,
+        width: "100%",
       }}
     >
-      {["kg", "g", "L", "ml", "piece", "pack", "dozen", "bottle", "can", "bag", "box", "carton", "slice", "block","Paper"].map((u) => (
+      {["kg", "g", "L", "ml", "piece", "pack", "dozen", "bottle", "can", "bag", "box", "carton", "slice", "block", "Paper"].map((u) => (
         <option key={u} value={u}>{u}</option>
       ))}
     </select>
@@ -3934,7 +3934,7 @@ const generatePurchasesPDF = () => {
     {/* Qty */}
     <input
       type="number"
-      step="any"                 // ADDED: allow decimals
+      step="any"
       min={0}
       value={newPurchase.qty}
       onChange={(e) =>
@@ -3945,15 +3945,15 @@ const generatePurchasesPDF = () => {
         borderRadius: 10,
         border: `1px solid ${btnBorder}`,
         textAlign: "center",
-        minWidth: 0,            // ADDED
-        width: "100%",          // ADDED
+        minWidth: 0,
+        width: "100%",
       }}
     />
 
     {/* Unit price */}
     <input
       type="number"
-      step="0.01"                // ADDED: cents
+      step="0.01"
       min={0}
       value={newPurchase.unitPrice}
       onChange={(e) =>
@@ -3967,13 +3967,13 @@ const generatePurchasesPDF = () => {
         borderRadius: 10,
         border: `1px solid ${btnBorder}`,
         textAlign: "center",
-        minWidth: 0,            // ADDED
-        width: "100%",          // ADDED
+        minWidth: 0,
+        width: "100%",
       }}
     />
 
     {/* Date + Add */}
-    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+    <div style={{ display: "flex", gap: 10, alignItems: "center", minWidth: 0 }}>
       <input
         type="date"
         value={newPurchase.date}
@@ -3986,8 +3986,8 @@ const generatePurchasesPDF = () => {
           border: `1px solid ${btnBorder}`,
           background: dark ? "#121212" : "#fff",
           color: dark ? "#eee" : "#000",
-          width: "100%",
-          minWidth: 0,          // ADDED
+          flex: "1 1 auto",
+          minWidth: 150,
         }}
       />
       <button
@@ -4000,6 +4000,7 @@ const generatePurchasesPDF = () => {
           color: "#fff",
           cursor: "pointer",
           whiteSpace: "nowrap",
+          flex: "0 0 auto",
         }}
       >
         Add Purchase
@@ -4007,6 +4008,7 @@ const generatePurchasesPDF = () => {
     </div>
   </div>
 </div>
+
 
 
     {/* === CATEGORY TILES + ADD CATEGORY =============================== */}
@@ -5427,6 +5429,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
