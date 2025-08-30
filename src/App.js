@@ -995,7 +995,8 @@ useEffect(() => {
   inventory, adminPins, dark,
   // added:
   expenses, bankTx, dayMeta, inventoryLocked, inventorySnapshot, inventoryLockedAt,
-  autoPrintOnCheckout, preferredPaperWidthMm, cloudEnabled, realtimeOrders, nextOrderNo
+  autoPrintOnCheckout, preferredPaperWidthMm, cloudEnabled, realtimeOrders, nextOrderNo,
+   purchases, purchaseCategories, customers, deliveryZones, purchaseFilter, purchaseDay, purchaseMonth
   // (intentionally NOT including `orders`; realtime listener drives those)
 ]);
 
@@ -1183,29 +1184,17 @@ if (ts && lastLocalEditAt && ts < lastLocalEditAt) return;
   const saveToCloudNow = async () => {
   if (!stateDocRef || !fbUser) return alert("Firebase not ready.");
   try {
+    
     const body = packStateForCloud({
-      menu,
-      extraList,
-      orders: realtimeOrders ? [] : orders,
-      inventory,
-      nextOrderNo,
-      dark,
-      workers,
-      paymentMethods,
-      inventoryLocked,
-      inventorySnapshot,
-      inventoryLockedAt,
-      adminPins,
-      orderTypes,
-      defaultDeliveryFee,
-      expenses,
-       purchases,
-    purchaseCategories,
-     customers,
-     deliveryZones,      
-      dayMeta,
-      bankTx,
-    });
+   menu, extraList, orders: realtimeOrders ? [] : orders, inventory,
+   nextOrderNo, dark, workers, paymentMethods,
+   inventoryLocked, inventorySnapshot, inventoryLockedAt,
+   adminPins, orderTypes, defaultDeliveryFee,
+   expenses,
+   purchases, purchaseCategories, customers, deliveryZones,   // ⬅️ add these
+   dayMeta, bankTx,
+ });
+    
     await setDoc(stateDocRef, body, { merge: true });
     // mark latest timestamps so the cloud listener won't re-apply this back onto us
 setLastLocalEditAt(Date.now());
@@ -1328,6 +1317,15 @@ function computeCOGSForItemDef(def, invMap) {
   }
   return Number(sum.toFixed(2));
 }
+
+   function isWithin(d, start, end) {
+  const t = +new Date(d);
+  return t >= +start && t <= +end;
+}
+
+const sumPurchases = (rows = []) =>
+  rows.reduce((s, p) => s + Number(p.qty || 0) * Number(p.unitPrice || 0), 0);
+  
 function getPeriodRange(kind, dayMeta, dayStr, monthStr) {
   // kind: 'day' | 'month' | 'year'
   // dayStr: 'YYYY-MM-DD' when kind === 'day'
@@ -1346,13 +1344,6 @@ function getPeriodRange(kind, dayMeta, dayStr, monthStr) {
     const end   = new Date(y, m, 0, 23, 59, 59, 999); // last day of month
     return [start, end];
   }
-    function isWithin(d, start, end) {
-  const t = +new Date(d);
-  return t >= +start && t <= +end;
-}
-
-const sumPurchases = (rows = []) =>
-  rows.reduce((s, p) => s + Number(p.qty || 0) * Number(p.unitPrice || 0), 0);
 
   // Fallbacks (keep your previous behavior)
   if (kind === "day") {
@@ -3820,7 +3811,7 @@ const generatePurchasesPDF = () => {
         </div>
       )}
 
-        // Purchase Tab
+       {/* Purchase Tab */}
 {activeTab === "purchases" && (
   <div>
     <h2>Purchases</h2>
@@ -5440,6 +5431,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
