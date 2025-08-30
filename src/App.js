@@ -767,6 +767,13 @@ const [customers, setCustomers] = useState([]);                         // {phon
 const [deliveryZones, setDeliveryZones] = useState(DEFAULT_ZONES);      // ⬅️ NEW
 const [newCategoryName, setNewCategoryName] = useState("");
 
+// Local clock (date + time)
+const [nowStr, setNowStr] = useState(fmtDateTime(new Date()));
+
+useEffect(() => {
+  const id = setInterval(() => setNowStr(fmtDateTime(new Date())), 1000);
+  return () => clearInterval(id);
+}, []);
 
 
 const [cashReceived, setCashReceived] = useState(0);
@@ -5466,6 +5473,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
