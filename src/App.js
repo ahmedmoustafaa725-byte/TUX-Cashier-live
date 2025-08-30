@@ -4517,7 +4517,13 @@ const generatePurchasesPDF = () => {
     ))}
   </select>
 </div>
-    </button>
+    <button
+  type="button"
+  onClick={addPurchaseCategory}
+  style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+>
+  Add Category
+</button>
   );
 })}
 
@@ -5848,6 +5854,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
