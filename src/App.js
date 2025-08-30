@@ -3839,7 +3839,7 @@ const generatePurchasesPDF = () => {
 
    
 
- {/* === ADD PURCHASE CARD ========================================== */}
+ {/* === ADD PURCHASE ========================================== */}
 <div
   style={{
     padding: 14,
@@ -3847,19 +3847,22 @@ const generatePurchasesPDF = () => {
     background: dark ? "#1a1a1a" : "#fff",
     border: `1px solid ${cardBorder}`,
     marginBottom: 12,
-    width: 1200,            // fixed card width
-    maxWidth: 1200,
+    width: 940,            // fits columns + gaps + padding/borders
+    maxWidth: 940,
     margin: "0 auto",
     boxSizing: "border-box",
   }}
 >
+  <div style={{ fontWeight: 700, marginBottom: 8, color: dark ? "#eee" : "#111" }}>
+    Add Purchase
+  </div>
+
   <div
     style={{
       display: "grid",
-      // 7 columns: Category | Item | Unit | Qty | Unit Price | Date | Add button
-      // Columns sum = 1110px, gaps = 6*10=60px, padding+border = 30px -> total 1200px
-      gridTemplateColumns: "180px 220px 220px 100px 100px 170px 120px",
-      gap: 10,
+      // Row 1: Category | Item | Unit | Qty | Unit Price
+      gridTemplateColumns: "200px 340px 100px 100px 120px",
+      gap: 12,                 // constant space between all fields
       alignItems: "center",
     }}
   >
@@ -3883,9 +3886,7 @@ const generatePurchasesPDF = () => {
     >
       <option value="">Category…</option>
       {purchaseCategories.map((c) => (
-        <option key={c.id} value={c.id}>
-          {c.name}
-        </option>
+        <option key={c.id} value={c.id}>{c.name}</option>
       ))}
     </select>
 
@@ -3911,9 +3912,7 @@ const generatePurchasesPDF = () => {
     {/* Unit (fixed list) */}
     <select
       value={newPurchase.unit}
-      onChange={(e) =>
-        setNewPurchase((p) => ({ ...p, unit: e.target.value }))
-      }
+      onChange={(e) => setNewPurchase((p) => ({ ...p, unit: e.target.value }))}
       style={{
         padding: 10,
         borderRadius: 10,
@@ -3925,7 +3924,7 @@ const generatePurchasesPDF = () => {
         width: "100%",
       }}
     >
-      {["kg","g","L","ml","piece","pack","dozen","bottle","can","bag","box","carton","slice","block","Paper"].map((u) => (
+      {["pcs","kg","g","L","ml","pack","box","bag","dozen","bottle","can","carton","slice","block","Paper"].map((u) => (
         <option key={u} value={u}>{u}</option>
       ))}
     </select>
@@ -3956,10 +3955,7 @@ const generatePurchasesPDF = () => {
       min={0}
       value={newPurchase.unitPrice}
       onChange={(e) =>
-        setNewPurchase((p) => ({
-          ...p,
-          unitPrice: Number(e.target.value || 0),
-        }))
+        setNewPurchase((p) => ({ ...p, unitPrice: Number(e.target.value || 0) }))
       }
       style={{
         padding: 10,
@@ -3971,14 +3967,13 @@ const generatePurchasesPDF = () => {
       }}
     />
 
-    {/* Date (own column) */}
+    {/* Row 2: Date (col 1) + Add button (col 2) */}
     <input
       type="date"
       value={newPurchase.date}
-      onChange={(e) =>
-        setNewPurchase((p) => ({ ...p, date: e.target.value }))
-      }
+      onChange={(e) => setNewPurchase((p) => ({ ...p, date: e.target.value }))}
       style={{
+        gridColumn: "1 / 2",
         padding: 10,
         borderRadius: 10,
         border: `1px solid ${btnBorder}`,
@@ -3989,10 +3984,10 @@ const generatePurchasesPDF = () => {
       }}
     />
 
-    {/* Add button (own column) */}
     <button
       onClick={handleAddPurchase}
       style={{
+        gridColumn: "2 / 3",
         padding: "10px 14px",
         borderRadius: 10,
         border: "none",
@@ -4000,176 +3995,14 @@ const generatePurchasesPDF = () => {
         color: "#fff",
         cursor: "pointer",
         whiteSpace: "nowrap",
-        width: "100%", // fills its 120px column, keeping the 10px gaps consistent
+        width: "100%",
       }}
     >
-      Add
+      Add Purchase
     </button>
   </div>
 </div>
 
-
-
-
-    {/* === CATEGORY TILES + ADD CATEGORY =============================== */}
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-        gap: 12,
-        marginBottom: 14,
-      }}
-    >
-     {purchaseCategories.map((cat) => {
-  const total = catTotals.get(cat.id) || 0;
-  const active = purchaseCatFilterId === cat.id;
-  return (
-    <button
-      key={cat.id}
-      onClick={() =>
-        setPurchaseCatFilterId((id) => (id === cat.id ? "" : cat.id))
-      }
-      style={{
-        position: "relative",                  // ⬅️ add
-        textAlign: "left",
-        padding: 14,
-        borderRadius: 12,
-        border: `1px solid ${cardBorder}`,
-        background: active ? (dark ? "#222" : "#fff8e1") : (dark ? "#1e1e1e" : "#fff"),
-        color: dark ? "#eee" : "#000",
-        cursor: "pointer",
-      }}
-      title="Show category details below"
-    >
-      {/* tiny X in the top-right */}
-      <span
-        title={`Delete ${cat.name}`}
-        aria-label={`Delete ${cat.name}`}
-        onClick={(e) => {
-          e.stopPropagation();   // don't toggle selection
-          e.preventDefault();
-          removePurchaseCategory(cat.id);
-        }}
-        style={{
-          position: "absolute",
-          top: 6,
-          right: 6,
-          width: 22,
-          height: 22,
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          borderRadius: "50%",
-          border: `1px solid ${btnBorder}`,
-          background: dark ? "#2a2a2a" : "#fff",
-          color: dark ? "#eee" : "#000",
-          fontSize: 14,
-          fontWeight: 700,
-          lineHeight: 1,
-          cursor: "pointer",
-          opacity: 0.9,
-        }}
-      >
-        ×
-      </span>
-
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span
-          style={{
-            display: "inline-flex",
-            width: 28,
-            height: 28,
-            alignItems: "center",
-            justifyContent: "center",
-            borderRadius: 8,
-            border: `1px solid ${btnBorder}`,
-            fontSize: 16,
-          }}
-        >
-          📦
-        </span>
-        <div style={{ fontWeight: 700 }}>{cat.name}</div>
-      </div>
-      <div style={{ marginTop: 6, opacity: 0.8 }}>
-        {currency(total)}
-      </div>
-    </button>
-  );
-})}
-
-
-      {/* Add Category tile (inside the categories group) */}
-      <div
-        style={{
-          padding: 14,
-          borderRadius: 12,
-          border: `1px solid ${cardBorder}`,
-          background: dark ? "#1a1a1a" : "#fff",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span
-            style={{
-              display: "inline-flex",
-              width: 28,
-              height: 28,
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: 8,
-              border: `1px solid ${btnBorder}`,
-              fontWeight: 800,
-            }}
-          >
-            +
-          </span>
-          <div style={{ fontWeight: 700 }}>Add Category</div>
-        </div>
-        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-          <input
-            type="text"
-            placeholder="Category name"
-            value={newCategoryName}
-            onChange={(e) => setNewCategoryName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                const name = String(newCategoryName || "").trim();
-                if (!name) return;
-                const id = `cat_${Date.now()}`;
-                setPurchaseCategories((arr) => [...arr, { id, name }]);
-                setNewCategoryName("");
-              }
-            }}
-            style={{
-              flex: 1,
-              padding: 10,
-              borderRadius: 10,
-              border: `1px solid ${btnBorder}`,
-              background: dark ? "#121212" : "#fff",
-              color: dark ? "#eee" : "#000",
-            }}
-          />
-          <button
-            onClick={() => {
-              const name = String(newCategoryName || "").trim();
-              if (!name) return;
-              const id = `cat_${Date.now()}`;
-              setPurchaseCategories((arr) => [...arr, { id, name }]);
-              setNewCategoryName("");
-            }}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 10,
-              border: "none",
-              background: "#000",
-              color: "#fff",
-              cursor: "pointer",
-            }}
-          >
-            Add
-          </button>
-        </div>
-      </div>
-    </div>
 
     {/* === DETAILS LIST ================================================= */}
     <div style={{ marginTop: 4 }}>
@@ -5429,6 +5262,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
