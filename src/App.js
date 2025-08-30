@@ -3866,29 +3866,54 @@ const generatePurchasesPDF = () => {
       alignItems: "center",
     }}
   >
-    {/* Category */}
-    <select
-      value={newPurchase.categoryId}
-      onChange={(e) => {
-        const id = e.target.value;
-        setNewPurchase((p) => ({ ...p, categoryId: id }));
-        setPurchaseCatFilterId(id);
-      }}
-      style={{
-        padding: 10,
-        borderRadius: 10,
-        border: `1px solid ${btnBorder}`,
-        background: dark ? "#121212" : "#fff",
-        color: dark ? "#eee" : "#000",
-        minWidth: 0,
-        width: "100%",
-      }}
-    >
-      <option value="">Category…</option>
-      {purchaseCategories.map((c) => (
-        <option key={c.id} value={c.id}>{c.name}</option>
-      ))}
-    </select>
+   {/* Category + Delete */}
+<div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+  <select
+    value={newPurchase.categoryId}
+    onChange={(e) => {
+      const id = e.target.value;
+      setNewPurchase((p) => ({ ...p, categoryId: id }));
+      setPurchaseCatFilterId(id);
+    }}
+    style={{
+      padding: 10,
+      borderRadius: 10,
+      border: `1px solid ${btnBorder}`,
+      background: dark ? "#121212" : "#fff",
+      color: dark ? "#eee" : "#000",
+      minWidth: 0,
+      width: "100%",
+    }}
+  >
+    <option value="">Category…</option>
+    {purchaseCategories.map((c) => (
+      <option key={c.id} value={c.id}>{c.name}</option>
+    ))}
+  </select>
+
+  {/* Delete current category (uses removePurchaseCategory) */}
+  <button
+    type="button"
+    title="Delete selected category"
+    onClick={() => {
+      if (!newPurchase.categoryId) return;
+      removePurchaseCategory(newPurchase.categoryId);
+    }}
+    style={{
+      padding: "10px 12px",
+      borderRadius: 10,
+      border: `1px solid ${btnBorder}`,
+      background: dark ? "#2a2a2a" : "#fff",
+      color: dark ? "#eee" : "#000",
+      cursor: newPurchase.categoryId ? "pointer" : "not-allowed",
+      opacity: newPurchase.categoryId ? 1 : 0.5,
+      whiteSpace: "nowrap",
+    }}
+  >
+    🗑
+  </button>
+</div>
+
 
     {/* Item name */}
     <input
@@ -5262,6 +5287,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
