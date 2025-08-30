@@ -940,6 +940,9 @@ useEffect(() => {
   if (l.inventory) setInventory(l.inventory);
   if (l.adminPins) setAdminPins((prev) => ({ ...prev, ...l.adminPins }));
   if (typeof l.dark === "boolean") setDark(l.dark);
+
+  
+
    /* === ADD BELOW THIS LINE (other tabs & settings) === */
   if (Array.isArray(l.expenses)) setExpenses(l.expenses);
    if (Array.isArray(l.purchaseCategories)) setPurchaseCategories(normalizePurchaseCategories(l.purchaseCategories)); // ⬅️ NEW
@@ -947,7 +950,7 @@ if (Array.isArray(l.purchases)) setPurchases(
   l.purchases.map(p => ({ ...p, date: p.date ? new Date(p.date) : new Date() }))
 ); // ⬅️ NEW
 if (typeof l.purchaseFilter === "string") setPurchaseFilter(l.purchaseFilter); // ⬅️ NEW
-if (Array.isArray(l.customers)) setCustomers(l.customers);           // ⬅️ NEW
+if (Array.isArray(l.customers)) setCustomers(dedupeCustomers(l.customers));
 if (Array.isArray(l.deliveryZones)) setDeliveryZones(l.deliveryZones); // ⬅️ NEW
 
   if (Array.isArray(l.bankTx)) setBankTx(l.bankTx);
@@ -1119,6 +1122,8 @@ useEffect(() => {
           if (unpacked.dark != null) setDark(unpacked.dark);
           if (unpacked.workers) setWorkers(unpacked.workers);
           if (unpacked.paymentMethods) setPaymentMethods(unpacked.paymentMethods);
+          if (unpacked.customers) setCustomers(dedupeCustomers(unpacked.customers));
+
           if (unpacked.inventoryLocked != null)
             setInventoryLocked(unpacked.inventoryLocked);
           if (unpacked.inventorySnapshot)
@@ -1238,6 +1243,8 @@ if (ts && lastLocalEditAt && ts < lastLocalEditAt) return;
       if (unpacked.expenses) setExpenses(unpacked.expenses);
       if (unpacked.dayMeta) setDayMeta(unpacked.dayMeta);
       if (unpacked.bankTx) setBankTx(unpacked.bankTx);
+      if (unpacked.customers) setCustomers(dedupeCustomers(unpacked.customers));
+
        if (unpacked.purchases) setPurchases(unpacked.purchases);
    if (unpacked.purchaseCategories) {
    setPurchaseCategories(normalizePurchaseCategories(unpacked.purchaseCategories));
@@ -1715,6 +1722,28 @@ const multiplyUses = (uses = {}, factor = 1) => {
       };
     })
   );
+// Keep only one customer per phone. Replaces old entry for that phone.
+const normalizePhone = (s) => String(s || "").replace(/\D/g, "").slice(0, 11);
+
+const upsertCustomer = (list, rec) => {
+  const phone = normalizePhone(rec.phone);
+  const without = (list || []).filter(c => normalizePhone(c.phone) !== phone);
+  // New record first; any previous records for that phone are dropped
+  return [{ ...rec, phone }, ...without];
+};
+
+// (Optional) Clean existing duplicates once (keeps first/newest only)
+const dedupeCustomers = (list = []) => {
+  const seen = new Set();
+  const out = [];
+  for (const c of list) {
+    const p = normalizePhone(c.phone);
+    if (seen.has(p)) continue;   // skip older duplicates
+    seen.add(p);
+    out.push({ ...c, phone: p });
+  }
+  return out;
+};
 
 
  const checkout = async () => {
@@ -1866,17 +1895,8 @@ if (orderType === "Delivery") {
     address: order.deliveryAddress,
     zoneId: deliveryZoneId || "",
   };
-  setCustomers(prev => {
-    const i = prev.findIndex(x => x.phone === rec.phone);
-    if (i >= 0) {
-      const copy = [...prev];
-      copy[i] = rec;
-      return copy;
-    }
-    return [rec, ...prev];
-  });
+   setCustomers(prev => upsertCustomer(prev, rec));
 }
-
 
     // PRINT now
     if (autoPrintOnCheckout) {
@@ -5510,6 +5530,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
