@@ -2508,8 +2508,6 @@ const handleAddPurchase = () => {
   });
 };
 
-
-};
   // Admin-protected: wipe all purchases
 const resetAllPurchases = () => {
   const okAdmin = !!promptAdminAndPin();
@@ -5767,6 +5765,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
