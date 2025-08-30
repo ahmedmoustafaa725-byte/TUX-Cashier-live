@@ -3998,68 +3998,6 @@ const generatePurchasesPDF = () => {
 
     </div>
 
-       {/* Add Category Box */}
-<div
-  style={{
-    border: `1px solid ${btnBorder}`,
-    borderRadius: 16,
-    padding: 16,
-    background: dark ? "#1a1a1a" : "#fff",
-    marginBottom: 12,
-  }}
->
-  <div
-    style={{
-      display: "grid",
-      gridTemplateColumns: "48px 1fr 160px",
-      gap: 12,
-      alignItems: "center",
-    }}
-  >
-    {/* Plus badge */}
-    <div
-      style={{
-        width: 48, height: 48, borderRadius: 12, border: `1px solid ${btnBorder}`,
-        display: "grid", placeItems: "center", fontSize: 24,
-        background: dark ? "#333" : "#f9f9f9",
-      }}
-    >
-      +
-    </div>
-
-    {/* Input */}
-    <input
-      type="text"
-      placeholder="New category name"
-      value={newCategoryName}
-      onChange={(e) => setNewCategoryName(e.target.value)}
-      style={{ padding: 8, borderRadius: 8, border: `1px solid ${btnBorder}` }}
-    />
-
-    {/* Button */}
-    <button
-      onClick={() => {
-        const name = (newCategoryName || "").trim();
-        if (!name) return alert("Enter a category name.");
-        const id = `cat_${Date.now()}`;
-        setPurchaseCategories((list) => [...list, { id, name }]);
-        setNewCategoryName("");
-      }}
-      style={{
-        padding: "10px 12px",
-        borderRadius: 10,
-        border: "none",
-        background: "#1976d2",
-        color: "#fff",
-        fontWeight: 700,
-        cursor: "pointer",
-      }}
-    >
-      Add Category
-    </button>
-  </div>
-</div>
-
 
     /* === DETAILS LIST ================================================= */
     <div style={{ marginTop: 4 }}>
@@ -5319,6 +5257,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
