@@ -998,21 +998,26 @@ useEffect(() => { saveLocalPartial({ inventory }); }, [inventory]);
 useEffect(() => { saveLocalPartial({ adminPins }); }, [adminPins]);
 useEffect(() => { saveLocalPartial({ dark }); }, [dark]);
   // Auto-fill delivery name/address/zone by saved phone                  // ⬅️ NEW
+// Auto-fill delivery name/address/zone by saved phone (no overwrite on manual edits)
 useEffect(() => {
   if (orderType !== "Delivery") return;
   const p = String(deliveryPhone || "").trim();
   if (p.length !== 11) return;
-  const found = customers.find(c => c.phone === p);
-  if (found) {
-    if (!deliveryName) setDeliveryName(found.name || "");
-    if (!deliveryAddress) setDeliveryAddress(found.address || "");
-    if (!deliveryZoneId && found.zoneId) {
-      setDeliveryZoneId(found.zoneId);
-      const z = deliveryZones.find(z => z.id === found.zoneId);
-      if (z) setDeliveryFee(Number(z.fee || 0));
-    }
+
+  const found = customers.find((c) => c.phone === p);
+  if (!found) return;
+
+  // only fill if the current field is empty
+  setDeliveryName((v) => v || found.name || "");
+  setDeliveryAddress((v) => v || found.address || "");
+  if (found.zoneId) {
+    setDeliveryZoneId((v) => v || found.zoneId);
+    const z = deliveryZones.find((z) => z.id === found.zoneId);
+    if (z) setDeliveryFee(Number(z.fee || 0));
   }
-}, [orderType, deliveryPhone, customers, deliveryZones, deliveryName, deliveryAddress, deliveryZoneId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [orderType, deliveryPhone, customers, deliveryZones]);
+
 
   // === OPTIONAL: auto-select first category in add form if none selected
 useEffect(() => {
@@ -5505,6 +5510,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
