@@ -2695,8 +2695,8 @@ const generatePurchasesPDF = () => {
 
   return (
     <div style={containerStyle}>
-      {/* Header */}
-    <div
+   {/* Header */}
+<div
   style={{
     display: "flex",
     justifyContent: "space-between",
@@ -2707,8 +2707,27 @@ const generatePurchasesPDF = () => {
   }}
 >
   <h1 style={{ margin: 0 }}>🍔 TUX — Burger Truck POS</h1>
-  <div style={{ fontSize: 12 }}>{localDateTime}</div>
+
+  {/* Right side: date/time + theme toggle */}
+  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+    <div style={{ fontSize: 12 }}>{localDateTime}</div>
+    <button
+      onClick={() => setDark((d) => !d)}
+      title={dark ? "Switch to Light" : "Switch to Dark"}
+      style={{
+        padding: "4px 10px",
+        borderRadius: 6,
+        border: `1px solid ${btnBorder}`,
+        background: dark ? "#2c2c2c" : "#f1f1f1",
+        color: dark ? "#fff" : "#000",
+        cursor: "pointer",
+      }}
+    >
+      {dark ? "☀ Light" : "🌙 Dark"}
+    </button>
+  </div>
 </div>
+
 
 
 
@@ -5523,13 +5542,7 @@ const generatePurchasesPDF = () => {
               </div>
             </div>
 
-            <div style={{ padding: 10, borderRadius: 6, border: `1px solid ${cardBorder}` }}>
-              <h4 style={{ marginTop: 0 }}>Display</h4>
-              <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <input type="checkbox" checked={dark} onChange={(e) => setDark(e.target.checked)} />
-                Dark theme
-              </label>
-            </div>
+            
 
             <div style={{ padding: 10, borderRadius: 6, border: `1px solid ${cardBorder}` }}>
               <h4 style={{ marginTop: 0 }}>Cloud</h4>
@@ -5571,6 +5584,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
