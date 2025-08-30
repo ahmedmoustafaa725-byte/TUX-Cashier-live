@@ -763,6 +763,7 @@ const upsertCustomer = (list, rec) => {
   return [{ ...rec, phone }, ...without];
 };
 
+
 function dedupeCustomers(list = []) {
   const seen = new Set();
   const out = [];
@@ -774,6 +775,44 @@ function dedupeCustomers(list = []) {
   }
   return out;
 }
+
+const DEFAULT_INV_UNIT_BY_CATNAME = {
+  buns: "piece",
+  meat: "g",
+  cheese: "slice",
+  veg: "g",
+  vegetables: "g",
+  sauces: "ml",
+  drinks: "bottle",
+  packaging: "piece",
+};
+
+const slug = (s) =>
+  String(s || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "") || `inv_${Date.now()}`;
+
+const ensureInvIdUnique = (id, list) => {
+  let out = id, n = 1;
+  while (list.some((it) => it.id === out)) out = `${id}-${++n}`;
+  return out;
+};
+
+const inferUnitFromCategoryName = (name) =>
+  DEFAULT_INV_UNIT_BY_CATNAME[String(name || "").toLowerCase()] || "piece";
+
+
+const ensureInvIdUnique = (id, list) => {
+  let out = id, n = 1;
+  while (list.some((it) => it.id === out)) out = `${id}-${++n}`;
+  return out;
+};
+
+const inferUnitFromCategoryName = (name) =>
+  DEFAULT_INV_UNIT_BY_CATNAME[String(name || "").toLowerCase()] || "piece";
+
 
 
 export default function App() {
@@ -986,6 +1025,37 @@ useEffect(() => {
     setNewPurchase(p => ({ ...p, ingredientId: match.id, unit: p.unit || match.unit }));
   }
 }, [newPurchase.categoryId, newPurchase.ingredientId, purchaseCategories, inventory]);
+
+  useEffect(() => {
+  if (!Array.isArray(purchaseCategories)) return;
+  setInventory((prev) => {
+    let changed = false;
+    let out = [...prev];
+
+    for (const c of purchaseCategories) {
+      const catName = String(c?.name || "").trim();
+      if (!catName) continue;
+
+      const exists = out.some(
+        (it) => it.name.toLowerCase() === catName.toLowerCase()
+      );
+      if (!exists) {
+        const idBase = slug(catName);
+        const id = ensureInvIdUnique(idBase, out);
+        out.push({
+          id,
+          name: catName,
+          unit: inferUnitFromCategoryName(catName),
+          qty: 0,
+          costPerUnit: 0,
+        });
+        changed = true;
+      }
+    }
+    return changed ? out : prev;
+  });
+}, [purchaseCategories]);
+
 
 
   const [localDateTime, setLocalDateTime] = useState(() => {
@@ -2376,6 +2446,94 @@ const handleAddPurchase = () => {
   date: date ? new Date(date) : new Date(),
   ingredientId: String(newPurchase.ingredientId || ""), // <-- NEW
 };
+
+  function inferInvUnitFromPurchaseUnit(u) {
+  const m = UNIT_MAP[String(u || "").toLowerCase()];
+  return m ? m.base : "piece";
+}
+
+const handleAddPurchase = () => {
+  // ...your existing validation...
+
+  const row = {
+    id: `p_${Date.now()}`,
+    categoryId,
+    itemName: name,
+    unit: String(unit || "piece"),
+    qty: Math.max(0, Number(qty || 0)),
+    unitPrice: Math.max(0, Number(unitPrice || 0)),
+    date: date ? new Date(date) : new Date(),
+    ingredientId: String(newPurchase.ingredientId || ""),
+  };
+
+  // 🔗 Ensure there is a linked inventory item
+  let targetInvId = findInventoryIdForPurchase(row, inventory, purchaseCategories);
+
+  setInventory((prev) => {
+    let list = [...prev];
+
+    // Create inventory item if not found
+    if (!targetInvId) {
+      const catName =
+        purchaseCategories.find((c) => c.id === row.categoryId)?.name ||
+        row.itemName ||
+        "Item";
+      const invUnit = inferInvUnitFromPurchaseUnit(row.unit);
+      const id = ensureInvIdUnique(slug(catName), list);
+      list.push({
+        id,
+        name: catName,
+        unit: invUnit,
+        qty: 0,
+        costPerUnit: 0,
+      });
+      targetInvId = id;
+      // also tag the purchase row so future matches are explicit
+      row.ingredientId = id;
+    }
+
+    // Add the purchased quantity (converted) to inventory
+    const invItem = list.find((it) => it.id === targetInvId);
+    const delta = convertToInventoryUnit(row.qty, row.unit, invItem?.unit);
+    if (delta != null) {
+      list = list.map((it) =>
+        it.id === targetInvId ? { ...it, qty: Number(it.qty || 0) + Number(delta) } : it
+      );
+    } else {
+      // Units incompatible → switch item’s unit if safe (qty==0), else warn
+      if (invItem && Number(invItem.qty || 0) === 0) {
+        const newUnit = inferInvUnitFromPurchaseUnit(row.unit);
+        list = list.map((it) =>
+          it.id === targetInvId ? { ...it, unit: newUnit } : it
+        );
+        const delta2 = convertToInventoryUnit(row.qty, row.unit, newUnit) || 0;
+        list = list.map((it) =>
+          it.id === targetInvId ? { ...it, qty: Number(it.qty || 0) + delta2 } : it
+        );
+      } else {
+        alert(
+          `Purchase saved, but units incompatible (${row.unit} vs ${invItem?.unit}). Update the inventory unit first.`
+        );
+      }
+    }
+    return list;
+  });
+
+  // Save purchase AFTER we possibly set row.ingredientId
+  setPurchases((arr) => [row, ...arr]);
+
+  // reset form…
+  setNewPurchase({
+    categoryId: "",
+    itemName: "",
+    unit: "piece",
+    qty: 1,
+    unitPrice: 0,
+    date: new Date().toISOString().slice(0, 10),
+    ingredientId: "",
+  });
+};
+
 
 
   setPurchases((arr) => [row, ...arr]);
@@ -5667,6 +5825,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
