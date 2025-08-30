@@ -733,9 +733,7 @@ export default function App() {
   const [selectedExtras, setSelectedExtras] = useState([]);
   const [selectedQty, setSelectedQty] = useState(1);
   const [cart, setCart] = useState([]);
-  const [cairoTime, setCairoTime] = useState(
-  fmtTimeTZ(new Date(), "Africa/Cairo")
-);
+  
   const [worker, setWorker] = useState("");
   const [payment, setPayment] = useState("");
   // Split payment support
@@ -852,14 +850,8 @@ const lockAdminPin = (n) => {
   const sortBy = "date-desc";
 
   
- useEffect(() => {
-  const id = setInterval(
-    () => setCairoTime(fmtTimeTZ(new Date(), "Africa/Cairo")),
-    1000
-  );
-  return () => clearInterval(id);
-}, []);
 
+  
 
   const [newMenuName, setNewMenuName] = useState("");
   const [newMenuPrice, setNewMenuPrice] = useState(0);
@@ -5512,6 +5504,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
