@@ -723,7 +723,7 @@ const [newPurchase, setNewPurchase] = useState({
   itemName: "",
   unit: "piece",
   qty: 1,
-  unitPrice: 0,
+  unitPrice:"",
   date: new Date().toISOString().slice(0,10),
 });
   
@@ -5347,6 +5347,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
