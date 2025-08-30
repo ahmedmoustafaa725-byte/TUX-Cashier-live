@@ -2287,8 +2287,10 @@ const removePurchaseCategory = (catId) => {
       const doc = new jsPDF();
       doc.text("TUX — Shift Report", 14, 12);
 
-      const startedStr = m.startedAt ? new Date(m.startedAt).toLocaleString() : "—";
-      const endedStr = m.endedAt ? new Date(m.endedAt).toLocaleString() : "—";
+      const startedStr = m.startedAt ? fmtDateTime(m.startedAt) : "—";
+const endedStr   = m.endedAt   ? fmtDateTime(m.endedAt)   : "—";
+
+      
 
       autoTable(doc, {
         head: [["Start By", "Start At", "Current Worker", "End At"]],
@@ -2303,7 +2305,7 @@ const removePurchaseCategory = (catId) => {
       const timelineRows = [];
       timelineRows.push(["Started", startedStr, m.startedBy || "—"]);
       (m.shiftChanges || []).forEach((c, i) => {
-        const when = c?.at ? new Date(c.at).toLocaleString() : "—";
+        const when = c?.at ? fmtDateTime(c.at) : "—";
         timelineRows.push([`Changed #${i + 1}`, when, `${c.from || "?"} → ${c.to || "?"}`]);
       });
       timelineRows.push(["Day Ended", endedStr, m.endedBy || "—"]);
@@ -2321,7 +2323,7 @@ const removePurchaseCategory = (catId) => {
    head: [["#", "Date", "Worker", "Payment", "Type", "Delivery (E£)", "Total (E£)", "Status", "Reason"]],
    body: getSortedOrders().map((o) => [
   o.orderNo,
-  o.date.toLocaleString(),
+  fmtDateTime(o.date),
   o.worker,
   o.payment,
   o.orderType || "",
@@ -2415,7 +2417,7 @@ const removePurchaseCategory = (catId) => {
           String(e.qty),
           Number(e.unitPrice || 0).toFixed(2),
           (Number(e.qty || 0) * Number(e.unitPrice || 0)).toFixed(2),
-          e.date ? new Date(e.date).toLocaleString() : "",
+          e.date ? fmtDateTime(e.date) : "",
           e.note || "",
         ]),
         startY: y + 4,
@@ -3812,7 +3814,7 @@ const generatePurchasesPDF = () => {
                   <td style={{ padding: 6, textAlign: "right" }}>
                     E£{(Number(e.qty || 0) * Number(e.unitPrice || 0)).toFixed(2)}
                   </td>
-                  <td style={{ padding: 6 }}>{e.date ? new Date(e.date).toLocaleString() : ""}</td>
+                  <td style={{ padding: 6 }}>{e.date ? fmtDateTime(e.date) : ""}</td>
                   <td style={{ padding: 6 }}>{e.note}</td>
                   <td style={{ padding: 6 }}>
                     <button
@@ -5464,6 +5466,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
