@@ -913,6 +913,32 @@ const [lastLocalEditAt, setLastLocalEditAt] = useState(0);
   }
 }, [purchaseFilter, purchaseDay]);
 
+  const [localDateTime, setLocalDateTime] = useState(() => {
+  const now = new Date();
+  return `${fmtDate(now)} ${now.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    // second: "2-digit", // ← uncomment if you want seconds
+    hour12: false,        // 24-hour like your Cairo clock
+  })}`;
+});
+
+useEffect(() => {
+  const id = setInterval(() => {
+    const now = new Date();
+    setLocalDateTime(
+      `${fmtDate(now)} ${now.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+        // second: "2-digit",
+        hour12: false,
+      })}`
+    );
+  }, 1000);
+  return () => clearInterval(id);
+}, []);
+
+
 
   /* === ADD BELOW THIS LINE (hydrate from local) === */
 useEffect(() => {
@@ -2655,7 +2681,7 @@ const generatePurchasesPDF = () => {
   }}
 >
   <h1 style={{ margin: 0 }}>🍔 TUX — Burger Truck POS</h1>
-  <div style={{ fontSize: 12 }}>{cairoTime}</div>
+  <div style={{ fontSize: 12 }}>{localDateTime}</div>
 </div>
 
 
@@ -5486,6 +5512,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
