@@ -918,8 +918,8 @@ const [lastLocalEditAt, setLastLocalEditAt] = useState(0);
   return `${fmtDate(now)} ${now.toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
-    // second: "2-digit", // ← uncomment if you want seconds
-    hour12: false,        // 24-hour like your Cairo clock
+     second: "2-digit", // ← uncomment if you want seconds
+    hour12: true,        // 24-hour like your Cairo clock
   })}`;
 });
 
@@ -5512,6 +5512,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
