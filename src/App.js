@@ -2136,19 +2136,6 @@ if (!reason) return alert("A reason is required.");
   }
 };
 
-const byCategory = useMemo(() => {
-  const m = new Map();
-  for (const p of filteredPurchases) {
-    const key = p.categoryId || "";
-    const arr = m.get(key) || [];
-    arr.push(p);
-    m.set(key, arr);
-  }
-  for (const arr of m.values()) {
-    arr.sort((a, b) => +new Date(a.date) - +new Date(b.date));
-  }
-  return m;
-}, [filteredPurchases]);
 
 
 
@@ -5569,6 +5556,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
