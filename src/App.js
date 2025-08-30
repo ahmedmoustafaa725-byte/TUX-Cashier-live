@@ -851,11 +851,6 @@ const lockAdminPin = (n) => {
 
   const sortBy = "date-desc";
 
-  const [nowStr, setNowStr] = useState(fmtDate(new Date()));
-useEffect(() => {
-  const t = setInterval(() => setNowStr(fmtDate(new Date())), 1000);
-  return () => clearInterval(t);
-}, []);
   
  useEffect(() => {
   const id = setInterval(
@@ -5491,6 +5486,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
