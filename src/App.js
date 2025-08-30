@@ -431,6 +431,20 @@ function fmtDate(d) {
   const yy = String(dt.getFullYear()).slice(-2);
   return `${dd}/${mm}/${yy}`;
 }
+// Date+time in a specific IANA timezone (e.g. "Africa/Cairo")
+function fmtDateTimeTZ(d, timeZone) {
+  const dt = d instanceof Date ? d : new Date(d);
+  const date = dt.toLocaleDateString("en-GB", { timeZone }); // dd/mm/yyyy
+  const time = dt.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    // second: "2-digit", // ← uncomment if you want seconds
+    hour12: false,
+    timeZone,
+  });
+  return `${date} ${time}`;
+}
+
 
 // If you ever need date + time later, you can use this:
 function fmtDateTime(d) {
@@ -720,7 +734,10 @@ export default function App() {
   const [selectedExtras, setSelectedExtras] = useState([]);
   const [selectedQty, setSelectedQty] = useState(1);
   const [cart, setCart] = useState([]);
-
+  // 🇪🇬 Cairo world clock
+const [cairoStr, setCairoStr] = useState(
+  fmtDateTimeTZ(new Date(), "Africa/Cairo")
+);
   const [worker, setWorker] = useState("");
   const [payment, setPayment] = useState("");
   // Split payment support
@@ -767,13 +784,6 @@ const [customers, setCustomers] = useState([]);                         // {phon
 const [deliveryZones, setDeliveryZones] = useState(DEFAULT_ZONES);      // ⬅️ NEW
 const [newCategoryName, setNewCategoryName] = useState("");
 
-// Local clock (date + time)
-const [nowStr, setNowStr] = useState(fmtDateTime(new Date()));
-
-useEffect(() => {
-  const id = setInterval(() => setNowStr(fmtDateTime(new Date())), 1000);
-  return () => clearInterval(id);
-}, []);
 
 
 const [cashReceived, setCashReceived] = useState(0);
@@ -847,6 +857,13 @@ const lockAdminPin = (n) => {
 useEffect(() => {
   const t = setInterval(() => setNowStr(fmtDate(new Date())), 1000);
   return () => clearInterval(t);
+}, []);
+  useEffect(() => {
+  const id = setInterval(
+    () => setCairoStr(fmtDateTimeTZ(new Date(), "Africa/Cairo")),
+    1000
+  );
+  return () => clearInterval(id);
 }, []);
 
 
@@ -2634,18 +2651,24 @@ const generatePurchasesPDF = () => {
     <div style={containerStyle}>
       {/* Header */}
       <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 8,
-          gap: 8,
-          flexWrap: "wrap",
-        }}
-      >
-        <h1 style={{ margin: 0 }}>🍔 TUX — Burger Truck POS</h1>
-        <small>{nowStr}</small>
-      </div>
+  style={{
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+    gap: 8,
+    flexWrap: "wrap",
+  }}
+>
+  <h1 style={{ margin: 0 }}>🍔 TUX — Burger Truck POS</h1>
+
+  <div style={{ display: "flex", gap: 10, alignItems: "baseline" }}>
+    <small title="Your device time">{nowStr}</small>
+    <small>•</small>
+    <small title="Africa/Cairo">🇪🇬 {cairoStr}</small>
+  </div>
+</div>
+
 
       {/* Shift Control Bar */}
       <div
@@ -5473,6 +5496,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
