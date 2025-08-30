@@ -4069,7 +4069,7 @@ const generatePurchasesPDF = () => {
 
     </div>
 
-    {/* === DETAILS LIST ================================================= */}
+    /* === DETAILS LIST ================================================= */
     <div style={{ marginTop: 4 }}>
       <div style={{ fontWeight: 700, marginBottom: 8 }}>All Categories</div>
 
@@ -4087,7 +4087,7 @@ const generatePurchasesPDF = () => {
               overflow: "hidden",
             }}
           >
-            {/* Section header */}
+            /* Section header */
             <div
               style={{
                 display: "flex",
@@ -4116,7 +4116,7 @@ const generatePurchasesPDF = () => {
               <div style={{ opacity: 0.8 }}>• {currency(total)}</div>
             </div>
 
-            {/* Table */}
+            /* Table */
             <div style={{ padding: 12 }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
@@ -4178,7 +4178,7 @@ const generatePurchasesPDF = () => {
 
 
 
-      {/* BANK */}
+      /* BANK */
       {activeTab === "bank" && (
         <div>
           <h2>Bank / Cashbox</h2>
@@ -4320,12 +4320,12 @@ const generatePurchasesPDF = () => {
         </div>
       )}
 
-      {/* REPORTS */}
+      /* REPORTS */
       {activeTab === "reports" && (
         <div>
           <h2>Reports</h2>
 
-          {/* Totals overview */}
+          /* Totals overview */
           <div
             style={{
               marginBottom: 12,
@@ -4374,7 +4374,7 @@ const generatePurchasesPDF = () => {
             </tbody>
           </table>
 
-          {/* Extras summary */}
+          /* Extras summary */
           <h3>Extras Sold</h3>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
@@ -5327,6 +5327,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
