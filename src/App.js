@@ -1,3 +1,4 @@
+
 import React, { useEffect, useMemo, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -406,10 +407,14 @@ const slug = (s) =>
     .replace(/(^-|-$)/g, "") || `inv_${Date.now()}`;
 
 const ensureInvIdUnique = (id, list) => {
-  let out = id, n = 1;
-  while (list.some((it) => it.id === out)) out = `${id}-${++n}`;
-  return out;
+  const ids = new Set((list || []).map(it => it.id));
+  let candidate = id, n = 1;
+  while (ids.has(candidate)) {
+    candidate = `${id}-${++n}`;
+  }
+  return candidate;
 };
+
 
 const inferUnitFromCategoryName = (name) =>
   DEFAULT_INV_UNIT_BY_CATNAME[String(name || "").toLowerCase()] || "piece";
@@ -5767,6 +5772,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
