@@ -431,17 +431,7 @@ function fmtDate(d) {
   const yy = String(dt.getFullYear()).slice(-2);
   return `${dd}/${mm}/${yy}`;
 }
-// Time (24h) in a specific IANA timezone (e.g. "Africa/Cairo")
-function fmtTimeTZ(d, timeZone, withSeconds = false) {
-  const dt = d instanceof Date ? d : new Date(d);
-  return dt.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: withSeconds ? "2-digit" : undefined,
-    hour12: false,
-    timeZone,
-  });
-}
+
 
 
 
@@ -5504,6 +5494,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
