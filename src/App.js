@@ -337,8 +337,19 @@ const DEFAULT_ZONES = [
 const DEFAULT_PURCHASE_CATEGORIES = [
   "Buns", "Meat", "Cheese", "Veg", "Sauces", "Packaging", "Drinks"
 ];
+
+// Normalizes categories that might be strings or objects
+function normalizePurchaseCategories(arr = []) {
+  return (arr || []).map((c, i) =>
+    typeof c === "string"
+      ? { id: `cat_${i + 1}`, name: c }
+      : { id: c.id || `cat_${i + 1}`, name: c.name || String(c.id || `Cat ${i + 1}`) }
+  );
+}
+
 // Allowed units for Purchases
 const PURCHASE_UNITS = ["kg", "g", "L", "ml", "piece", "pack", "dozen", "bottle", "can", "bag", "box", "carton", "slice", "block"];
+
 
 
 const EDITOR_PIN = "0512";
@@ -712,9 +723,9 @@ const [deliveryName, setDeliveryName] = useState("");
 const [deliveryPhone, setDeliveryPhone] = useState("");
 const [deliveryAddress, setDeliveryAddress] = useState("");
   // ───── Purchases & Zones state ─────                                     // ⬅️ NEW
-const [purchaseCategories, setPurchaseCategories] = useState(
-  DEFAULT_PURCHASE_CATEGORIES.map((name, i) => ({ id: `cat_${i+1}`, name }))
-);
+ const [purchaseCategories, setPurchaseCategories] = useState(
+  normalizePurchaseCategories(DEFAULT_PURCHASE_CATEGORIES)
+ );
 const [purchases, setPurchases] = useState([]); // {id, categoryId, ingredientId?, itemName, unit, qty, unitPrice, date: Date}
 const [purchaseFilter, setPurchaseFilter] = useState("day"); // 'day' | 'month' | 'year'
 const [purchaseCatFilterId, setPurchaseCatFilterId] = useState("");
@@ -1174,7 +1185,9 @@ if (ts && lastLocalEditAt && ts < lastLocalEditAt) return;
       if (unpacked.dayMeta) setDayMeta(unpacked.dayMeta);
       if (unpacked.bankTx) setBankTx(unpacked.bankTx);
        if (unpacked.purchases) setPurchases(unpacked.purchases);
-    if (unpacked.purchaseCategories) setPurchaseCategories(unpacked.purchaseCategories);
+   if (unpacked.purchaseCategories) {
+   setPurchaseCategories(normalizePurchaseCategories(unpacked.purchaseCategories));
+ }
     if (unpacked.customers) setCustomers(unpacked.customers);
     if (unpacked.deliveryZones) setDeliveryZones(unpacked.deliveryZones);
 
@@ -5436,6 +5449,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
