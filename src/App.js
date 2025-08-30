@@ -431,19 +431,18 @@ function fmtDate(d) {
   const yy = String(dt.getFullYear()).slice(-2);
   return `${dd}/${mm}/${yy}`;
 }
-// Date+time in a specific IANA timezone (e.g. "Africa/Cairo")
-function fmtDateTimeTZ(d, timeZone) {
+// Time (24h) in a specific IANA timezone (e.g. "Africa/Cairo")
+function fmtTimeTZ(d, timeZone, withSeconds = false) {
   const dt = d instanceof Date ? d : new Date(d);
-  const date = dt.toLocaleDateString("en-GB", { timeZone }); // dd/mm/yyyy
-  const time = dt.toLocaleTimeString([], {
+  return dt.toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
-    // second: "2-digit", // ← uncomment if you want seconds
+    second: withSeconds ? "2-digit" : undefined,
     hour12: false,
     timeZone,
   });
-  return `${date} ${time}`;
 }
+
 
 
 // If you ever need date + time later, you can use this:
@@ -734,9 +733,8 @@ export default function App() {
   const [selectedExtras, setSelectedExtras] = useState([]);
   const [selectedQty, setSelectedQty] = useState(1);
   const [cart, setCart] = useState([]);
-  // 🇪🇬 Cairo world clock
-const [cairoStr, setCairoStr] = useState(
-  fmtDateTimeTZ(new Date(), "Africa/Cairo")
+  const [cairoTime, setCairoTime] = useState(
+  fmtTimeTZ(new Date(), "Africa/Cairo")
 );
   const [worker, setWorker] = useState("");
   const [payment, setPayment] = useState("");
@@ -858,9 +856,10 @@ useEffect(() => {
   const t = setInterval(() => setNowStr(fmtDate(new Date())), 1000);
   return () => clearInterval(t);
 }, []);
-  useEffect(() => {
+  
+ useEffect(() => {
   const id = setInterval(
-    () => setCairoStr(fmtDateTimeTZ(new Date(), "Africa/Cairo")),
+    () => setCairoTime(fmtTimeTZ(new Date(), "Africa/Cairo")),
     1000
   );
   return () => clearInterval(id);
@@ -2650,7 +2649,7 @@ const generatePurchasesPDF = () => {
   return (
     <div style={containerStyle}>
       {/* Header */}
-      <div
+    <div
   style={{
     display: "flex",
     justifyContent: "space-between",
@@ -2661,13 +2660,9 @@ const generatePurchasesPDF = () => {
   }}
 >
   <h1 style={{ margin: 0 }}>🍔 TUX — Burger Truck POS</h1>
-
-  <div style={{ display: "flex", gap: 10, alignItems: "baseline" }}>
-    <small title="Your device time">{nowStr}</small>
-    <small>•</small>
-    <small title="Africa/Cairo">🇪🇬 {cairoStr}</small>
-  </div>
+  <div style={{ fontSize: 12 }}>{cairoTime}</div>
 </div>
+
 
 
       {/* Shift Control Bar */}
@@ -5496,6 +5491,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
