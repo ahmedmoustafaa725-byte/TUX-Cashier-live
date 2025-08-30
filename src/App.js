@@ -3842,8 +3842,20 @@ const generatePurchasesPDF = () => {
 
    
 
-   {/* ── Add Purchase row ───────────────────────────────────────────── */}
-<div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 10 }}>
+  {/* ── Add Purchase row (bordered) ───────────────────────────────── */}
+<div
+  style={{
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 8,
+    alignItems: "center",
+    marginBottom: 10,
+    padding: 10,
+    border: `1px solid ${btnBorder}`,   // ← border line
+    borderRadius: 8,
+    background: dark ? "#1b1b1b" : "#fafafa",
+  }}
+>
   {/* Category */}
   <select
     value={newPurchase.categoryId}
@@ -3863,7 +3875,7 @@ const generatePurchasesPDF = () => {
     style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 220 }}
   />
 
-  {/* Unit (new dropdown) */}
+  {/* Unit dropdown */}
   <select
     value={newPurchase.unit}
     onChange={(e) => setNewPurchase(p => ({ ...p, unit: e.target.value }))}
@@ -3898,14 +3910,23 @@ const generatePurchasesPDF = () => {
     style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
   />
 
-  {/* Add */}
+  {/* Add (black text) */}
   <button
     onClick={handleAddPurchase}
-    style={{ background: "#2e7d32", color: "#fff", border: "none", borderRadius: 6, padding: "8px 12px", cursor: "pointer" }}
+    style={{
+      background: "#2e7d32",
+      color: "#000",                  // ← make text black
+      border: "none",
+      borderRadius: 6,
+      padding: "8px 12px",
+      cursor: "pointer",
+      fontWeight: 700,
+    }}
   >
     Add Purchase
   </button>
 </div>
+
 
 
     {/* === CATEGORY TILES + ADD CATEGORY =============================== */}
@@ -5326,6 +5347,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
