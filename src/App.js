@@ -727,7 +727,7 @@ const [newPurchase, setNewPurchase] = useState({
 const [deliveryZoneId, setDeliveryZoneId] = useState("");               // ⬅️ NEW
 const [customers, setCustomers] = useState([]);                         // {phone,name,address,zoneId}
 const [deliveryZones, setDeliveryZones] = useState(DEFAULT_ZONES);      // ⬅️ NEW
-
+const [newCategoryName, setNewCategoryName] = useState("");
 
 
 
@@ -3839,195 +3839,314 @@ const generatePurchasesPDF = () => {
 
    
 
- {/* === ADD PURCHASE ========================================== */}
-<div
-  style={{
-    padding: 14,
-    borderRadius: 12,
-    background: dark ? "#1a1a1a" : "#fff",
-    border: `1px solid ${cardBorder}`,
-    marginBottom: 12,
-    width: 940,            // fits columns + gaps + padding/borders
-    maxWidth: 940,
-    margin: "0 auto",
-    boxSizing: "border-box",
-  }}
->
-  <div style={{ fontWeight: 700, marginBottom: 8, color: dark ? "#eee" : "#111" }}>
-    Add Purchase
-  </div>
-
-  <div
-    style={{
-      display: "grid",
-      // Row 1: Category | Item | Unit | Qty | Unit Price
-      gridTemplateColumns: "200px 340px 100px 100px 120px",
-      gap: 12,                 // constant space between all fields
-      alignItems: "center",
-    }}
-  >
-   {/* Category + Delete */}
-<div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-  <select
-    value={newPurchase.categoryId}
-    onChange={(e) => {
-      const id = e.target.value;
-      setNewPurchase((p) => ({ ...p, categoryId: id }));
-      setPurchaseCatFilterId(id);
-    }}
-    style={{
-      padding: 10,
-      borderRadius: 10,
-      border: `1px solid ${btnBorder}`,
-      background: dark ? "#121212" : "#fff",
-      color: dark ? "#eee" : "#000",
-      minWidth: 0,
-      width: "100%",
-    }}
-  >
-    <option value="">Category…</option>
-    {purchaseCategories.map((c) => (
-      <option key={c.id} value={c.id}>{c.name}</option>
-    ))}
-  </select>
-
-  {/* Delete current category (uses removePurchaseCategory) */}
-  <button
-    type="button"
-    title="Delete selected category"
-    onClick={() => {
-      if (!newPurchase.categoryId) return;
-      removePurchaseCategory(newPurchase.categoryId);
-    }}
-    style={{
-      padding: "10px 12px",
-      borderRadius: 10,
-      border: `1px solid ${btnBorder}`,
-      background: dark ? "#2a2a2a" : "#fff",
-      color: dark ? "#eee" : "#000",
-      cursor: newPurchase.categoryId ? "pointer" : "not-allowed",
-      opacity: newPurchase.categoryId ? 1 : 0.5,
-      whiteSpace: "nowrap",
-    }}
-  >
-    🗑
-  </button>
-</div>
-
-
-    {/* Item name */}
-    <input
-      type="text"
-      placeholder="Item name"
-      value={newPurchase.itemName}
-      onChange={(e) =>
-        setNewPurchase((p) => ({ ...p, itemName: e.target.value }))
-      }
+    {/* === ADD PURCHASE CARD ========================================== */}
+    <div
       style={{
-        padding: 10,
-        borderRadius: 10,
-        border: `1px solid ${btnBorder}`,
-        background: dark ? "#121212" : "#fff",
-        color: dark ? "#eee" : "#000",
-        minWidth: 0,
-        width: "100%",
-      }}
-    />
-
-    {/* Unit (fixed list) */}
-    <select
-      value={newPurchase.unit}
-      onChange={(e) => setNewPurchase((p) => ({ ...p, unit: e.target.value }))}
-      style={{
-        padding: 10,
-        borderRadius: 10,
-        border: `1px solid ${btnBorder}`,
-        textAlign: "center",
-        background: dark ? "#121212" : "#fff",
-        color: dark ? "#eee" : "#000",
-        minWidth: 0,
-        width: "100%",
+        padding: 14,
+        borderRadius: 12,
+        background: dark ? "#1a1a1a" : "#fff",
+        border: `1px solid ${cardBorder}`,
+        marginBottom: 12,
       }}
     >
-      {["pcs","kg","g","L","ml","pack","box","bag","dozen","bottle","can","carton","slice","block","Paper"].map((u) => (
-        <option key={u} value={u}>{u}</option>
-      ))}
-    </select>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns:
+            "minmax(160px, 1fr) minmax(210px, 1fr) minmax(200px, 1.2fr) 100px 100px 140px 160px",
+          gap: 10,
+          alignItems: "center",
+        }}
+      >
 
-    {/* Qty */}
-    <input
-      type="number"
-      step="any"
-      min={0}
-      value={newPurchase.qty}
-      onChange={(e) =>
-        setNewPurchase((p) => ({ ...p, qty: Number(e.target.value || 0) }))
-      }
+
+        {/* Category */}
+        <select
+          value={newPurchase.categoryId}
+          onChange={(e) => {
+ const id = e.target.value;
+   setNewPurchase((p) => ({ ...p, categoryId: id }));
+   setPurchaseCatFilterId(id);   }}
+          style={{
+            padding: 10,
+            borderRadius: 10,
+            border: `1px solid ${btnBorder}`,
+            background: dark ? "#121212" : "#fff",
+            color: dark ? "#eee" : "#000",
+          }}
+        >
+          <option value="">Category…</option>
+          {purchaseCategories.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+
+       
+
+        {/* Item name */}
+        <input
+          type="text"
+          placeholder="Item name"
+          value={newPurchase.itemName}
+          onChange={(e) =>
+            setNewPurchase((p) => ({ ...p, itemName: e.target.value }))
+          }
+          style={{
+            padding: 10,
+            borderRadius: 10,
+            border: `1px solid ${btnBorder}`,
+            background: dark ? "#121212" : "#fff",
+            color: dark ? "#eee" : "#000",
+          }}
+        />
+
+        {/* Unit */}
+        <input
+          type="text"
+          placeholder="pcs"
+          value={newPurchase.unit}
+          onChange={(e) =>
+            setNewPurchase((p) => ({ ...p, unit: e.target.value || "pcs" }))
+          }
+          style={{
+            padding: 10,
+            borderRadius: 10,
+            border: `1px solid ${btnBorder}`,
+            textAlign: "center",
+          }}
+        />
+
+        {/* Qty */}
+        <input
+          type="number"
+          min={0}
+          value={newPurchase.qty}
+          onChange={(e) =>
+            setNewPurchase((p) => ({ ...p, qty: Number(e.target.value || 0) }))
+          }
+          style={{
+            padding: 10,
+            borderRadius: 10,
+            border: `1px solid ${btnBorder}`,
+            textAlign: "center",
+          }}
+        />
+
+        {/* Unit price */}
+        <input
+          type="number"
+          min={0}
+          value={newPurchase.unitPrice}
+          onChange={(e) =>
+            setNewPurchase((p) => ({
+              ...p,
+              unitPrice: Number(e.target.value || 0),
+            }))
+          }
+          style={{
+            padding: 10,
+            borderRadius: 10,
+            border: `1px solid ${btnBorder}`,
+            textAlign: "center",
+          }}
+        />
+
+        {/* Date + Add */}
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input
+            type="date"
+            value={newPurchase.date}
+            onChange={(e) =>
+              setNewPurchase((p) => ({ ...p, date: e.target.value }))
+            }
+            style={{
+              padding: 10,
+              borderRadius: 10,
+              border: `1px solid ${btnBorder}`,
+              background: dark ? "#121212" : "#fff",
+              color: dark ? "#eee" : "#000",
+              width: "100%",
+            }}
+          />
+          <button
+            onClick={handleAddPurchase}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "none",
+              background: "#000",
+              color: "#fff",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Add Purchase
+          </button>
+        </div>
+      </div>
+    </div>
+
+    {/* === CATEGORY TILES + ADD CATEGORY =============================== */}
+    <div
       style={{
-        padding: 10,
-        borderRadius: 10,
-        border: `1px solid ${btnBorder}`,
-        textAlign: "center",
-        minWidth: 0,
-        width: "100%",
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+        gap: 12,
+        marginBottom: 14,
       }}
-    />
-
-    {/* Unit price */}
-    <input
-      type="number"
-      step="0.01"
-      min={0}
-      value={newPurchase.unitPrice}
-      onChange={(e) =>
-        setNewPurchase((p) => ({ ...p, unitPrice: Number(e.target.value || 0) }))
-      }
-      style={{
-        padding: 10,
-        borderRadius: 10,
-        border: `1px solid ${btnBorder}`,
-        textAlign: "center",
-        minWidth: 0,
-        width: "100%",
-      }}
-    />
-
-    {/* Row 2: Date (col 1) + Add button (col 2) */}
-    <input
-      type="date"
-      value={newPurchase.date}
-      onChange={(e) => setNewPurchase((p) => ({ ...p, date: e.target.value }))}
-      style={{
-        gridColumn: "1 / 2",
-        padding: 10,
-        borderRadius: 10,
-        border: `1px solid ${btnBorder}`,
-        background: dark ? "#121212" : "#fff",
-        color: dark ? "#eee" : "#000",
-        minWidth: 0,
-        width: "100%",
-      }}
-    />
-
+    >
+     {purchaseCategories.map((cat) => {
+  const total = catTotals.get(cat.id) || 0;
+  const active = purchaseCatFilterId === cat.id;
+  return (
     <button
-      onClick={handleAddPurchase}
+      key={cat.id}
+      onClick={() =>
+        setPurchaseCatFilterId((id) => (id === cat.id ? "" : cat.id))
+      }
       style={{
-        gridColumn: "2 / 3",
-        padding: "10px 14px",
-        borderRadius: 10,
-        border: "none",
-        background: "#000",
-        color: "#fff",
+        position: "relative",                  // ⬅️ add
+        textAlign: "left",
+        padding: 14,
+        borderRadius: 12,
+        border: `1px solid ${cardBorder}`,
+        background: active ? (dark ? "#222" : "#fff8e1") : (dark ? "#1e1e1e" : "#fff"),
+        color: dark ? "#eee" : "#000",
         cursor: "pointer",
-        whiteSpace: "nowrap",
-        width: "100%",
       }}
+      title="Show category details below"
     >
-      Add Purchase
-    </button>
-  </div>
-</div>
+      {/* tiny X in the top-right */}
+      <span
+        title={`Delete ${cat.name}`}
+        aria-label={`Delete ${cat.name}`}
+        onClick={(e) => {
+          e.stopPropagation();   // don't toggle selection
+          e.preventDefault();
+          removePurchaseCategory(cat.id);
+        }}
+        style={{
+          position: "absolute",
+          top: 6,
+          right: 6,
+          width: 22,
+          height: 22,
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          borderRadius: "50%",
+          border: `1px solid ${btnBorder}`,
+          background: dark ? "#2a2a2a" : "#fff",
+          color: dark ? "#eee" : "#000",
+          fontSize: 14,
+          fontWeight: 700,
+          lineHeight: 1,
+          cursor: "pointer",
+          opacity: 0.9,
+        }}
+      >
+        ×
+      </span>
 
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span
+          style={{
+            display: "inline-flex",
+            width: 28,
+            height: 28,
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 8,
+            border: `1px solid ${btnBorder}`,
+            fontSize: 16,
+          }}
+        >
+          📦
+        </span>
+        <div style={{ fontWeight: 700 }}>{cat.name}</div>
+      </div>
+      <div style={{ marginTop: 6, opacity: 0.8 }}>
+        {currency(total)}
+      </div>
+    </button>
+  );
+})}
+
+
+      {/* Add Category tile (inside the categories group) */}
+      <div
+        style={{
+          padding: 14,
+          borderRadius: 12,
+          border: `1px solid ${cardBorder}`,
+          background: dark ? "#1a1a1a" : "#fff",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span
+            style={{
+              display: "inline-flex",
+              width: 28,
+              height: 28,
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: 8,
+              border: `1px solid ${btnBorder}`,
+              fontWeight: 800,
+            }}
+          >
+            +
+          </span>
+          <div style={{ fontWeight: 700 }}>Add Category</div>
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+          <input
+            type="text"
+            placeholder="Category name"
+            value={newCategoryName}
+            onChange={(e) => setNewCategoryName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                const name = String(newCategoryName || "").trim();
+                if (!name) return;
+                const id = `cat_${Date.now()}`;
+                setPurchaseCategories((arr) => [...arr, { id, name }]);
+                setNewCategoryName("");
+              }
+            }}
+            style={{
+              flex: 1,
+              padding: 10,
+              borderRadius: 10,
+              border: `1px solid ${btnBorder}`,
+              background: dark ? "#121212" : "#fff",
+              color: dark ? "#eee" : "#000",
+            }}
+          />
+          <button
+            onClick={() => {
+              const name = String(newCategoryName || "").trim();
+              if (!name) return;
+              const id = `cat_${Date.now()}`;
+              setPurchaseCategories((arr) => [...arr, { id, name }]);
+              setNewCategoryName("");
+            }}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "none",
+              background: "#000",
+              color: "#fff",
+              cursor: "pointer",
+            }}
+          >
+            Add
+          </button>
+        </div>
+      </div>
+    </div>
 
     {/* === DETAILS LIST ================================================= */}
     <div style={{ marginTop: 4 }}>
@@ -5287,12 +5406,6 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
-
-
-
-
-
-
 
 
 
