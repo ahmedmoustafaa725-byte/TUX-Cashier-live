@@ -337,6 +337,9 @@ const DEFAULT_ZONES = [
 const DEFAULT_PURCHASE_CATEGORIES = [
   "Buns", "Meat", "Cheese", "Veg", "Sauces", "Packaging", "Drinks"
 ];
+// Allowed units for Purchases
+const PURCHASE_UNITS = ["kg", "g", "L", "ml", "piece", "pack", "dozen", "bottle", "can", "bag", "box", "carton", "slice", "block"];
+
 
 const EDITOR_PIN = "0512";
 const DEFAULT_ADMIN_PINS = {
@@ -718,7 +721,7 @@ const [purchaseCatFilterId, setPurchaseCatFilterId] = useState("");
 const [newPurchase, setNewPurchase] = useState({
   categoryId: "",
   itemName: "",
-  unit: "pcs",
+  unit: "piece",
   qty: 1,
   unitPrice: 0,
   date: new Date().toISOString().slice(0,10),
@@ -2154,7 +2157,7 @@ const handleAddPurchase = () => {
     id: `p_${Date.now()}`,
     categoryId,
     itemName: name,
-    unit: String(unit || "pcs"),
+    unit: String(unit || "piece"),
     qty: Math.max(0, Number(qty || 0)),
     unitPrice: Math.max(0, Number(unitPrice || 0)),
     date: date ? new Date(date) : new Date(),
@@ -2164,7 +2167,7 @@ const handleAddPurchase = () => {
   setNewPurchase({
     categoryId: "",
     itemName: "",
-    unit: "pcs",
+    unit: "piece",
     qty: 1,
     unitPrice: 0,
     date: new Date().toISOString().slice(0, 10),
@@ -3839,154 +3842,71 @@ const generatePurchasesPDF = () => {
 
    
 
-    {/* === ADD PURCHASE CARD ========================================== */}
-    <div
-      style={{
-        padding: 14,
-        borderRadius: 12,
-        background: dark ? "#1a1a1a" : "#fff",
-        border: `1px solid ${cardBorder}`,
-        marginBottom: 12,
-      }}
-    >
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns:
-            "minmax(160px, 1fr) minmax(210px, 1fr) minmax(200px, 1.2fr) 100px 100px 140px 160px",
-          gap: 10,
-          alignItems: "center",
-        }}
-      >
+   {/* ── Add Purchase row ───────────────────────────────────────────── */}
+<div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 10 }}>
+  {/* Category */}
+  <select
+    value={newPurchase.categoryId}
+    onChange={(e) => setNewPurchase(p => ({ ...p, categoryId: e.target.value }))}
+    style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 180 }}
+  >
+    <option value="">Select category</option>
+    {purchaseCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+  </select>
 
+  {/* Item name */}
+  <input
+    type="text"
+    placeholder="Item name"
+    value={newPurchase.itemName}
+    onChange={(e) => setNewPurchase(p => ({ ...p, itemName: e.target.value }))}
+    style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 220 }}
+  />
 
-        {/* Category */}
-        <select
-          value={newPurchase.categoryId}
-          onChange={(e) => {
- const id = e.target.value;
-   setNewPurchase((p) => ({ ...p, categoryId: id }));
-   setPurchaseCatFilterId(id);   }}
-          style={{
-            padding: 10,
-            borderRadius: 10,
-            border: `1px solid ${btnBorder}`,
-            background: dark ? "#121212" : "#fff",
-            color: dark ? "#eee" : "#000",
-          }}
-        >
-          <option value="">Category…</option>
-          {purchaseCategories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
+  {/* Unit (new dropdown) */}
+  <select
+    value={newPurchase.unit}
+    onChange={(e) => setNewPurchase(p => ({ ...p, unit: e.target.value }))}
+    style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 140 }}
+  >
+    {PURCHASE_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+  </select>
 
-       
+  {/* Qty */}
+  <input
+    type="number"
+    placeholder="Qty"
+    value={newPurchase.qty}
+    onChange={(e) => setNewPurchase(p => ({ ...p, qty: Math.max(0, Number(e.target.value || 0)) }))}
+    style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 120 }}
+  />
 
-        {/* Item name */}
-        <input
-          type="text"
-          placeholder="Item name"
-          value={newPurchase.itemName}
-          onChange={(e) =>
-            setNewPurchase((p) => ({ ...p, itemName: e.target.value }))
-          }
-          style={{
-            padding: 10,
-            borderRadius: 10,
-            border: `1px solid ${btnBorder}`,
-            background: dark ? "#121212" : "#fff",
-            color: dark ? "#eee" : "#000",
-          }}
-        />
+  {/* Unit price */}
+  <input
+    type="number"
+    placeholder="Unit Price (E£)"
+    value={newPurchase.unitPrice}
+    onChange={(e) => setNewPurchase(p => ({ ...p, unitPrice: Math.max(0, Number(e.target.value || 0)) }))}
+    style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 160 }}
+  />
 
-        {/* Unit */}
-        <input
-          type="text"
-          placeholder="pcs"
-          value={newPurchase.unit}
-          onChange={(e) =>
-            setNewPurchase((p) => ({ ...p, unit: e.target.value || "pcs" }))
-          }
-          style={{
-            padding: 10,
-            borderRadius: 10,
-            border: `1px solid ${btnBorder}`,
-            textAlign: "center",
-          }}
-        />
+  {/* Date */}
+  <input
+    type="date"
+    value={newPurchase.date}
+    onChange={(e) => setNewPurchase(p => ({ ...p, date: e.target.value }))}
+    style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+  />
 
-        {/* Qty */}
-        <input
-          type="number"
-          min={0}
-          value={newPurchase.qty}
-          onChange={(e) =>
-            setNewPurchase((p) => ({ ...p, qty: Number(e.target.value || 0) }))
-          }
-          style={{
-            padding: 10,
-            borderRadius: 10,
-            border: `1px solid ${btnBorder}`,
-            textAlign: "center",
-          }}
-        />
+  {/* Add */}
+  <button
+    onClick={handleAddPurchase}
+    style={{ background: "#2e7d32", color: "#fff", border: "none", borderRadius: 6, padding: "8px 12px", cursor: "pointer" }}
+  >
+    Add Purchase
+  </button>
+</div>
 
-        {/* Unit price */}
-        <input
-          type="number"
-          min={0}
-          value={newPurchase.unitPrice}
-          onChange={(e) =>
-            setNewPurchase((p) => ({
-              ...p,
-              unitPrice: Number(e.target.value || 0),
-            }))
-          }
-          style={{
-            padding: 10,
-            borderRadius: 10,
-            border: `1px solid ${btnBorder}`,
-            textAlign: "center",
-          }}
-        />
-
-        {/* Date + Add */}
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <input
-            type="date"
-            value={newPurchase.date}
-            onChange={(e) =>
-              setNewPurchase((p) => ({ ...p, date: e.target.value }))
-            }
-            style={{
-              padding: 10,
-              borderRadius: 10,
-              border: `1px solid ${btnBorder}`,
-              background: dark ? "#121212" : "#fff",
-              color: dark ? "#eee" : "#000",
-              width: "100%",
-            }}
-          />
-          <button
-            onClick={handleAddPurchase}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 10,
-              border: "none",
-              background: "#000",
-              color: "#fff",
-              cursor: "pointer",
-              whiteSpace: "nowrap",
-            }}
-          >
-            Add Purchase
-          </button>
-        </div>
-      </div>
-    </div>
 
     {/* === CATEGORY TILES + ADD CATEGORY =============================== */}
     <div
@@ -5406,6 +5326,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
