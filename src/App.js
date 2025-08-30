@@ -106,7 +106,12 @@ function packStateForCloud(state) {
 purchaseCategories: state.purchaseCategories || [],   // ⬅️ NEW
 customers: state.customers || [],                     // ⬅️ NEW
 deliveryZones: state.deliveryZones || [],             // ⬅️ NEW
-
+...(Array.isArray(state.purchases) ? {
+  purchases: state.purchases.map(p => ({ ...p, date: p.date ? p.date.toISOString() : null })),
+ } : {}),
+ ...(Array.isArray(state.purchaseCategories) ? { purchaseCategories: state.purchaseCategories } : {}),
+ ...(Array.isArray(state.customers) ? { customers: state.customers } : {}),
+ ...(Array.isArray(state.deliveryZones) ? { deliveryZones: state.deliveryZones } : {}),
     dayMeta: dayMeta
       ? {
           ...dayMeta,
@@ -1127,7 +1132,8 @@ useEffect(() => {
        if (unpacked.purchaseCategories) {
    setPurchaseCategories(normalizePurchaseCategories(unpacked.purchaseCategories));
 }
-        if (unpacked.customers) setCustomers(unpacked.customers);
+          if (unpacked.customers) setCustomers(unpacked.customers);
+        if ('customers' in data) setCustomers(unpacked.customers || []);
         if (unpacked.deliveryZones) setDeliveryZones(unpacked.deliveryZones);
           setCloudStatus((s) => ({ ...s, lastLoadAt: new Date(), error: null }));
         }
@@ -1288,6 +1294,10 @@ setLastAppliedCloudAt(Date.now());
           orderTypes,
           defaultDeliveryFee,
           expenses,
+           purchases,
+        purchaseCategories,
+        customers,
+        deliveryZones,
           dayMeta,
           bankTx,
         });
@@ -1318,6 +1328,7 @@ setLastAppliedCloudAt(Date.now());
     orderTypes,
     defaultDeliveryFee,
     expenses,
+    purchases, purchaseCategories, customers, deliveryZones,
     dayMeta,
     bankTx,
     realtimeOrders,
@@ -5494,6 +5505,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
