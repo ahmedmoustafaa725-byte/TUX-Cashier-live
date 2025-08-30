@@ -160,7 +160,7 @@ function unpackStateFromCloud(data, fallbackDayMeta = {}) {
       date: p.date ? new Date(p.date) : new Date(),
     }));
   }
-  if (Array.isArray(data.purchaseCategories)) out.purchaseCategories = normalizePurchaseCategories(data.purchaseCategories);
+  if (Array.isArray(data.purchaseCategories)) out.purchaseCategories = data.purchaseCategories;
   if (Array.isArray(data.customers)) out.customers = data.customers;
   if (Array.isArray(data.deliveryZones)) out.deliveryZones = data.deliveryZones;
   if (Array.isArray(data.bankTx)) {
@@ -346,19 +346,12 @@ const DEFAULT_PURCHASE_CATEGORIES = [
 
 // Normalizes categories that might be strings or objects
 function normalizePurchaseCategories(arr = []) {
-  return (arr || []).map((c, i) => {
-    if (typeof c === "string") {
-      // old data: just names -> give them a default unit
-      return { id: `cat_${i + 1}`, name: c, unit: "piece" };
-    }
-    return {
-      id: c.id || `cat_${i + 1}`,
-      name: c.name || String(c.id || `Cat ${i + 1}`),
-      unit: c.unit || "piece", // <— NEW
-    };
-  });
+  return (arr || []).map((c, i) =>
+    typeof c === "string"
+      ? { id: `cat_${i + 1}`, name: c }
+      : { id: c.id || `cat_${i + 1}`, name: c.name || String(c.id || `Cat ${i + 1}`) }
+  );
 }
-
 
 // Allowed units for Purchases
 const PURCHASE_UNITS = ["kg", "g", "L", "ml", "piece", "pack", "dozen", "bottle", "can", "bag", "box", "carton", "slice", "block"];
@@ -888,7 +881,9 @@ const [deliveryZoneId, setDeliveryZoneId] = useState("");               // ⬅�
 const [customers, setCustomers] = useState([]);                         // {phone,name,address,zoneId}
 const [deliveryZones, setDeliveryZones] = useState(DEFAULT_ZONES);      // ⬅️ NEW
 const [newCategoryName, setNewCategoryName] = useState("");
-  const [newCategoryUnit, setNewCategoryUnit] = useState("piece"); // <— NEW
+
+
+
 const [cashReceived, setCashReceived] = useState(0);
 const [inventory, setInventory] = useState(DEFAULT_INVENTORY);
 const [newInvName, setNewInvName] = useState("");
@@ -1035,27 +1030,18 @@ const [lastLocalEditAt, setLastLocalEditAt] = useState(0);
         const idBase = slug(catName);
         const id = ensureInvIdUnique(idBase, out);
         out.push({
-  id,
-  name: catName,
-  unit: c.unit || inferUnitFromCategoryName(catName), // <— use the category unit if set
-  qty: 0,
-  costPerUnit: 0,
-});
-
+          id,
+          name: catName,
+          unit: inferUnitFromCategoryName(catName),
+          qty: 0,
+          costPerUnit: 0,
+        });
         changed = true;
       }
     }
     return changed ? out : prev;
   });
 }, [purchaseCategories]);
-
-  // When category changes, default the purchase unit to the category's unit
-useEffect(() => {
-  const cat = purchaseCategories.find(c => c.id === newPurchase.categoryId);
-  if (cat?.unit && newPurchase.unit !== cat.unit) {
-    setNewPurchase(p => ({ ...p, unit: cat.unit }));
-  }
-}, [newPurchase.categoryId, purchaseCategories]);
 
   // Auto-link purchase to an inventory item by category name (if possible)
 useEffect(() => {
@@ -2773,28 +2759,6 @@ const handleAdminSubTabClick = (sub) => {
   setAdminSubTab(sub); // no PIN checks here anymore
 };
 
-const addPurchaseCategory = () => {
-  const name = String(newCategoryName || "").trim();
-  const unit = String(newCategoryUnit || "piece").trim();
-  if (!name) return alert("Enter a category name.");
-  // prevent duplicates by name (case-insensitive)
-  if (purchaseCategories.some(c => c.name.toLowerCase() === name.toLowerCase())) {
-    return alert("Category already exists.");
-  }
-  const next = [
-    ...purchaseCategories,
-    { id: `cat_${Date.now()}`, name, unit }
-  ];
-  setPurchaseCategories(next);
-  setNewCategoryName("");
-  setNewCategoryUnit("piece");
-};
-
-const updatePurchaseCategoryUnit = (catId, unit) => {
-  setPurchaseCategories(list =>
-    list.map(c => c.id === catId ? { ...c, unit } : c)
-  );
-};
 
 
   const bankBalance = useMemo(() => {
@@ -4477,41 +4441,6 @@ const generatePurchasesPDF = () => {
       <div style={{ marginTop: 6, opacity: 0.8 }}>
         {currency(total)}
       </div>
-        {/* ADD: Unit editor (inside the button, but isolated from its click) */}
-<div
-  onClick={(e) => e.stopPropagation()}        // don't toggle the category
-  onMouseDown={(e) => e.stopPropagation()}    // don't "press" the button
-  style={{
-    marginTop: 8,
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-  }}
->
-  <label style={{ fontSize: 12, opacity: 0.9 }}>Unit:</label>
-  <select
-    value={cat.unit || "piece"}               // fallback for old data
-    onChange={(e) => {
-      const u = e.target.value;
-      setPurchaseCategories(prev =>
-        prev.map(c => (c.id === cat.id ? { ...c, unit: u } : c))
-      );
-    }}
-    onClick={(e) => e.stopPropagation()}      // extra safety
-    style={{
-      padding: 4,
-      borderRadius: 6,
-      border: `1px solid ${btnBorder}`,
-      background: dark ? "#2a2a2a" : "#fff",
-      color: dark ? "#eee" : "#000",
-    }}
-    title="Change the default unit for this category"
-  >
-    {PURCHASE_UNITS.map(u => (
-      <option key={u} value={u}>{u}</option>
-    ))}
-  </select>
-</div>
     </button>
   );
 })}
@@ -5843,23 +5772,6 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
