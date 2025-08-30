@@ -887,8 +887,8 @@ const [newPurchase, setNewPurchase] = useState({
 const [deliveryZoneId, setDeliveryZoneId] = useState("");               // ⬅️ NEW
 const [customers, setCustomers] = useState([]);                         // {phone,name,address,zoneId}
 const [deliveryZones, setDeliveryZones] = useState(DEFAULT_ZONES);      // ⬅️ NEW
-
-
+const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryUnit, setNewCategoryUnit] = useState("piece"); // <— NEW
 const [cashReceived, setCashReceived] = useState(0);
 const [inventory, setInventory] = useState(DEFAULT_INVENTORY);
 const [newInvName, setNewInvName] = useState("");
@@ -961,29 +961,7 @@ const [adminUnlocked, setAdminUnlocked] = useState(false);
 
   const sortBy = "date-desc";
 
-  // --- simple "Add Category" state + handler (restore) ---
-const [newCategoryName, setNewCategoryName] = useState("");
-const [newCategoryUnit, setNewCategoryUnit] = useState("piece");
-
-const addPurchaseCategory = () => {
-  const name = String(newCategoryName || "").trim();
-  const unit = String(newCategoryUnit || "piece").trim();
-
-  if (!name) return; // ignore empty
-  setPurchaseCategories((list) => {
-    // prevent duplicates by name (case-insensitive)
-    if (list.some((c) => c.name.toLowerCase() === name.toLowerCase())) return list;
-    const id = `cat_${Date.now()}`;
-    return [...list, { id, name, unit }];
-  });
-
-  // reset inputs
-  setNewCategoryName("");
-  setNewCategoryUnit("piece");
-};
-// keep ESLint happy until it's wired in the UI
-void addPurchaseCategory;
-
+  
 
   
 
@@ -1077,8 +1055,7 @@ useEffect(() => {
   if (cat?.unit && newPurchase.unit !== cat.unit) {
     setNewPurchase(p => ({ ...p, unit: cat.unit }));
   }
-}, [newPurchase.categoryId, newPurchase.unit, purchaseCategories]);
-
+}, [newPurchase.categoryId, purchaseCategories]);
 
   // Auto-link purchase to an inventory item by category name (if possible)
 useEffect(() => {
@@ -2796,7 +2773,22 @@ const handleAdminSubTabClick = (sub) => {
   setAdminSubTab(sub); // no PIN checks here anymore
 };
 
-
+const addPurchaseCategory = () => {
+  const name = String(newCategoryName || "").trim();
+  const unit = String(newCategoryUnit || "piece").trim();
+  if (!name) return alert("Enter a category name.");
+  // prevent duplicates by name (case-insensitive)
+  if (purchaseCategories.some(c => c.name.toLowerCase() === name.toLowerCase())) {
+    return alert("Category already exists.");
+  }
+  const next = [
+    ...purchaseCategories,
+    { id: `cat_${Date.now()}`, name, unit }
+  ];
+  setPurchaseCategories(next);
+  setNewCategoryName("");
+  setNewCategoryUnit("piece");
+};
 
 const updatePurchaseCategoryUnit = (catId, unit) => {
   setPurchaseCategories(list =>
@@ -4147,55 +4139,57 @@ const generatePurchasesPDF = () => {
             </button>
           </div>
 
-   <table style={{ width: "100%", borderCollapse: "collapse" }}>
-  <thead>
-    <tr>
-      <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Name</th>
-      <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit</th>
-      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Qty</th>
-      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit Price</th>
-      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Total</th>
-      <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Date</th>
-      <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Note</th>
-      <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Actions</th>
-    </tr>
-  </thead>
-  <tbody>
-    {expenses.map((e) => {
-      const total = Number(e.qty || 0) * Number(e.unitPrice || 0);
-      return (
-        <tr key={e.id}>
-          <td style={{ padding: 6 }}>{e.name}</td>
-          <td style={{ padding: 6 }}>{e.unit}</td>
-          <td style={{ padding: 6, textAlign: "right" }}>{e.qty}</td>
-          <td style={{ padding: 6, textAlign: "right" }}>
-            E£{Number(e.unitPrice || 0).toFixed(2)}
-          </td>
-          <td style={{ padding: 6, textAlign: "right" }}>
-            E£{total.toFixed(2)}
-          </td>
-          <td style={{ padding: 6 }}>{e.date ? fmtDateTime(e.date) : ""}</td>
-          <td style={{ padding: 6 }}>{e.note || ""}</td>
-          <td style={{ padding: 6 }}>
-            <button
-              onClick={() => setExpenses((list) => list.filter((x) => x.id !== e.id))}
-              style={{
-                background: "#c62828",
-                color: "#fff",
-                border: "none",
-                borderRadius: 6,
-                padding: "6px 10px",
-                cursor: "pointer",
-              }}
-            >
-              Remove
-            </button>
-          </td>
-        </tr>
-      );
-    })}
-  </tbody>
-</table>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Name</th>
+                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit</th>
+                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Qty</th>
+                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit Price</th>
+                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Total</th>
+                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Date</th>
+                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Note</th>
+                <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {expenses.map((e) => (
+                <tr key={e.id}>
+                  <td style={{ padding: 6 }}>{e.name}</td>
+                  <td style={{ padding: 6 }}>{e.unit}</td>
+                  <td style={{ padding: 6, textAlign: "right" }}>{e.qty}</td>
+                  <td style={{ padding: 6, textAlign: "right" }}>E£{Number(e.unitPrice || 0).toFixed(2)}</td>
+                  <td style={{ padding: 6, textAlign: "right" }}>
+                    E£{(Number(e.qty || 0) * Number(e.unitPrice || 0)).toFixed(2)}
+                  </td>
+                  <td style={{ padding: 6 }}>{e.date ? fmtDateTime(e.date) : ""}</td>
+                  <td style={{ padding: 6 }}>{e.note}</td>
+                  <td style={{ padding: 6 }}>
+                    <button
+                      onClick={() => setExpenses((arr) => arr.filter((x) => x.id !== e.id))}
+                      style={{
+                        background: "#c62828",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: 6,
+                        padding: "6px 10px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {expenses.length === 0 && (
+                <tr>
+                  <td colSpan={8} style={{ padding: 8, opacity: 0.8 }}>
+                    No expenses yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       )}
 
@@ -4498,10 +4492,11 @@ const generatePurchasesPDF = () => {
   <select
     value={cat.unit || "piece"}               // fallback for old data
     onChange={(e) => {
-  e.stopPropagation();
-  updatePurchaseCategoryUnit(cat.id, e.target.value);
-}}
-
+      const u = e.target.value;
+      setPurchaseCategories(prev =>
+        prev.map(c => (c.id === cat.id ? { ...c, unit: u } : c))
+      );
+    }}
     onClick={(e) => e.stopPropagation()}      // extra safety
     style={{
       padding: 4,
@@ -4517,7 +4512,7 @@ const generatePurchasesPDF = () => {
     ))}
   </select>
 </div>
-    <button>
+    </button>
   );
 })}
 
@@ -4593,7 +4588,8 @@ const generatePurchasesPDF = () => {
             Add
           </button>
         </div>
-    
+      </div>
+    </div>
 
     {/* === DETAILS LIST ================================================= */}
     <div style={{ marginTop: 4 }}>
@@ -5847,24 +5843,6 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
