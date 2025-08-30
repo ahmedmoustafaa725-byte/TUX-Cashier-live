@@ -727,7 +727,7 @@ const [newPurchase, setNewPurchase] = useState({
 const [deliveryZoneId, setDeliveryZoneId] = useState("");               // ⬅️ NEW
 const [customers, setCustomers] = useState([]);                         // {phone,name,address,zoneId}
 const [deliveryZones, setDeliveryZones] = useState(DEFAULT_ZONES);      // ⬅️ NEW
-const [newCategoryName, setNewCategoryName] = useState("");
+
 
 
 
@@ -5287,6 +5287,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
