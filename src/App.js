@@ -718,6 +718,14 @@ const [purchaseCategories, setPurchaseCategories] = useState(
 const [purchases, setPurchases] = useState([]); // {id, categoryId, ingredientId?, itemName, unit, qty, unitPrice, date: Date}
 const [purchaseFilter, setPurchaseFilter] = useState("day"); // 'day' | 'month' | 'year'
 const [purchaseCatFilterId, setPurchaseCatFilterId] = useState("");
+const [purchaseDay, setPurchaseDay] = useState(
+  new Date().toISOString().slice(0, 10) // YYYY-MM-DD
+);
+const [purchaseMonth, setPurchaseMonth] = useState(() => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; // YYYY-MM
+});
+const [showAllCats, setShowAllCats] = useState(false);
 const [newPurchase, setNewPurchase] = useState({
   categoryId: "",
   itemName: "",
@@ -853,6 +861,12 @@ const [lastLocalEditAt, setLastLocalEditAt] = useState(0);
       setCloudStatus((s) => ({ ...s, error: String(e) }));
     }
   }, []);
+  useEffect(() => {
+  if (purchaseFilter === "day") {
+    setNewPurchase(p => ({ ...p, date: purchaseDay }));
+  }
+}, [purchaseFilter, purchaseDay]);
+
 
   /* === ADD BELOW THIS LINE (hydrate from local) === */
 useEffect(() => {
@@ -1054,6 +1068,10 @@ useEffect(() => {
           if (unpacked.expenses) setExpenses(unpacked.expenses);
           if (unpacked.dayMeta) setDayMeta(unpacked.dayMeta);
           if (unpacked.bankTx) setBankTx(unpacked.bankTx);
+           if (unpacked.purchases) setPurchases(unpacked.purchases);
+        if (unpacked.purchaseCategories) setPurchaseCategories(unpacked.purchaseCategories);
+        if (unpacked.customers) setCustomers(unpacked.customers);
+        if (unpacked.deliveryZones) setDeliveryZones(unpacked.deliveryZones);
           setCloudStatus((s) => ({ ...s, lastLoadAt: new Date(), error: null }));
         }
       } catch (e) {
@@ -1104,6 +1122,10 @@ if (ts && lastLocalEditAt && ts < lastLocalEditAt) return;
       if (unpacked.expenses) setExpenses(unpacked.expenses);
       if (unpacked.dayMeta) setDayMeta(unpacked.dayMeta);
       if (unpacked.bankTx) setBankTx(unpacked.bankTx);
+       if (unpacked.purchases) setPurchases(unpacked.purchases);
+      if (unpacked.purchaseCategories) setPurchaseCategories(unpacked.purchaseCategories);
+      if (unpacked.customers) setCustomers(unpacked.customers);
+      if (unpacked.deliveryZones) setDeliveryZones(unpacked.deliveryZones);
 
       setLastAppliedCloudAt(ts || Date.now());
     } catch (e) {
@@ -1146,6 +1168,10 @@ if (ts && lastLocalEditAt && ts < lastLocalEditAt) return;
       if (unpacked.expenses) setExpenses(unpacked.expenses);
       if (unpacked.dayMeta) setDayMeta(unpacked.dayMeta);
       if (unpacked.bankTx) setBankTx(unpacked.bankTx);
+       if (unpacked.purchases) setPurchases(unpacked.purchases);
+    if (unpacked.purchaseCategories) setPurchaseCategories(unpacked.purchaseCategories);
+    if (unpacked.customers) setCustomers(unpacked.customers);
+    if (unpacked.deliveryZones) setDeliveryZones(unpacked.deliveryZones);
 
       setCloudStatus((s) => ({ ...s, lastLoadAt: new Date(), error: null }));
       alert("Loaded from cloud ✔");
@@ -1174,9 +1200,9 @@ if (ts && lastLocalEditAt && ts < lastLocalEditAt) return;
       defaultDeliveryFee,
       expenses,
        purchases,
-         purchaseCategories,
-         customers,
-        deliveryZones,
+    purchaseCategories,
+     customers,
+     deliveryZones,      
       dayMeta,
       bankTx,
     });
@@ -1302,29 +1328,52 @@ function computeCOGSForItemDef(def, invMap) {
   }
   return Number(sum.toFixed(2));
 }
-// Period helpers for Purchases                                                // ⬅️ NEW
-function getPeriodRange(kind, dayMeta) {
-  const now = new Date();
+function getPeriodRange(kind, dayMeta, dayStr, monthStr) {
+  // kind: 'day' | 'month' | 'year'
+  // dayStr: 'YYYY-MM-DD' when kind === 'day'
+  // monthStr: 'YYYY-MM' when kind === 'month'
+
+  if (kind === "day" && dayStr) {
+    const d = new Date(`${dayStr}T00:00:00`);
+    const start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+    const end   = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+    return [start, end];
+  }
+
+  if (kind === "month" && monthStr) {
+    const [y, m] = monthStr.split("-").map(Number);
+    const start = new Date(y, m - 1, 1, 0, 0, 0, 0);
+    const end   = new Date(y, m, 0, 23, 59, 59, 999); // last day of month
+    return [start, end];
+  }
+    function isWithin(d, start, end) {
+  const t = +new Date(d);
+  return t >= +start && t <= +end;
+}
+
+const sumPurchases = (rows = []) =>
+  rows.reduce((s, p) => s + Number(p.qty || 0) * Number(p.unitPrice || 0), 0);
+
+  // Fallbacks (keep your previous behavior)
   if (kind === "day") {
-    const start = dayMeta?.startedAt ? new Date(dayMeta.startedAt) : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const now = new Date();
+    const start = dayMeta?.startedAt ? new Date(dayMeta.startedAt) : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
     const end   = dayMeta?.endedAt   ? new Date(dayMeta.endedAt)   : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
     return [start, end];
   }
+
   if (kind === "month") {
-    const start = new Date(now.getFullYear(), now.getMonth(), 1, 0,0,0);
-    const end   = new Date(now.getFullYear(), now.getMonth()+1, 0, 23,59,59,999);
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+    const end   = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
     return [start, end];
   }
-  const start = new Date(now.getFullYear(), 0, 1, 0,0,0);
-  const end   = new Date(now.getFullYear(), 11, 31, 23,59,59,999);
+
+  // 'year'
+  const now = new Date();
+  const start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+  const end   = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
   return [start, end];
-}
-function isWithin(d, start, end) {
-  const t = +d;
-  return t >= +start && t <= +end;
-}
-function sumPurchases(arr) {
-  return arr.reduce((s,p)=> s + Number(p.qty || 0) * Number(p.unitPrice || 0), 0);
 }
 
 
@@ -1619,7 +1668,7 @@ if (orderType === "Delivery") {
   const n = String(deliveryName || "").trim();
   const p = String(deliveryPhone || "").trim();
   const a = String(deliveryAddress || "").trim();
-  setDeliveryZoneId(""); // ⬅️ NEW
+ 
 
 
   if (!n || !/^\d{11}$/.test(p) || !a) {
@@ -2097,8 +2146,8 @@ for (const o of validOrders) {
   }, [inventory, inventorySnapshot]);
   // --- Purchases: compute current period & filtered rows
 const [pStart, pEnd] = useMemo(
-  () => getPeriodRange(purchaseFilter, dayMeta),
-  [purchaseFilter, dayMeta]
+  () => getPeriodRange(purchaseFilter, dayMeta, purchaseDay, purchaseMonth),
+  [purchaseFilter, dayMeta, purchaseDay, purchaseMonth]
 );
 
 const filteredPurchases = useMemo(() => {
@@ -2110,6 +2159,13 @@ const filteredPurchases = useMemo(() => {
     ? withinPeriod.filter((p) => p.categoryId === purchaseCatFilterId)
     : withinPeriod;
 }, [purchases, pStart, pEnd, purchaseCatFilterId]);
+  // Categories that have at least one purchase in the current period
+const categoriesForGrid = useMemo(() => {
+  if (showAllCats) return purchaseCategories;
+  const used = new Set(filteredPurchases.map(p => p.categoryId));
+  return purchaseCategories.filter(c => used.has(c.id));
+}, [showAllCats, filteredPurchases, purchaseCategories]);
+
 
 // KPI: Total Purchases for the selected period
 const totalPurchasesInPeriod = useMemo(
@@ -3763,6 +3819,8 @@ const generatePurchasesPDF = () => {
           </table>
         </div>
       )}
+
+        // Purchase Tab
 {activeTab === "purchases" && (
   <div>
     <h2>Purchases</h2>
@@ -3791,13 +3849,40 @@ const generatePurchasesPDF = () => {
           {k.toUpperCase()}
         </button>
       ))}
+{/* Time pickers for the chosen period */}
+{purchaseFilter === "day" && (
+  <div style={{ display:"flex", alignItems:"center", gap:8, marginLeft:8 }}>
+    <label><b>Pick day:</b> </label>
+    <input
+      type="date"
+      value={purchaseDay}
+      onChange={(e) => { setPurchaseDay(e.target.value); setShowAllCats(false); }}
+      style={{ padding:6, borderRadius:6, border:`1px solid ${btnBorder}` }}
+    />
+  </div>
+)}
+
+{purchaseFilter === "month" && (
+  <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: 8 }}>
+    <label><b>Pick month:</b></label>
+    <input
+      type="month"
+      value={purchaseMonth}
+      onChange={(e) => { setPurchaseMonth(e.target.value); setShowAllCats(false); }}
+      style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+    />
+  </div>
+)}
+
+
 <button
-   onClick={() => setPurchaseCatFilterId("")}
-   title="Show purchases from all categories"
-   style={{ padding:"6px 10px", borderRadius:8, border:`1px solid ${btnBorder}`, background: dark ? "#2b2b2b" : "#f2f2f2", fontWeight:700, cursor:"pointer" }}
- >
-   SHOW ALL
- </button>
+  onClick={() => { setPurchaseCatFilterId(""); setShowAllCats(true); }}
+  title="Show purchases from all categories AND show all categories in the grid"
+  style={{ padding:"6px 10px", borderRadius:8, border:`1px solid ${btnBorder}`, background: dark ? "#2b2b2b" : "#f2f2f2", fontWeight:700, cursor:"pointer" }}
+>
+  SHOW ALL
+</button>
+
  <button
    onClick={resetAllPurchases}
    style={{ padding:"6px 10px", borderRadius:8, border:"none", background:"#c62828", color:"#fff", fontWeight:700, cursor:"pointer" }}
@@ -3836,6 +3921,14 @@ const generatePurchasesPDF = () => {
         <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>
           {currency(totalPurchasesInPeriod)}
         </div>
+          {/* Period KPI (total purchases) */}
+<div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:8 }}>
+  <span><b>Total ({purchaseFilter}):</b></span>
+  <span style={{ padding:"4px 8px", borderRadius:6, background: dark ? "#1e1e1e" : "#fff" }}>
+    {currency(totalPurchasesInPeriod)}
+  </span>
+</div>
+
       </div>
     </div>
 
@@ -3863,7 +3956,7 @@ const generatePurchasesPDF = () => {
     style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 180 }}
   >
     <option value="">Select category</option>
-    {purchaseCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+    {categoriesForGrid.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
   </select>
 
   {/* Item name */}
@@ -3938,7 +4031,7 @@ const generatePurchasesPDF = () => {
         marginBottom: 14,
       }}
     >
-     {purchaseCategories.map((cat) => {
+     {categoriesForGrid.map((cat) => {
   const total = catTotals.get(cat.id) || 0;
   const active = purchaseCatFilterId === cat.id;
   return (
@@ -4093,7 +4186,7 @@ const generatePurchasesPDF = () => {
     <div style={{ marginTop: 4 }}>
       <div style={{ fontWeight: 700, marginBottom: 8 }}>All Categories</div>
 
-      {purchaseCategories.map((cat) => {
+      {categoriesForGrid.map((cat) => {
         const rows = byCategory.get(cat.id) || [];
         const total = catTotals.get(cat.id) || 0;
         return (
@@ -5347,6 +5440,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
