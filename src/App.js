@@ -322,7 +322,7 @@ const DEFAULT_INVENTORY = [
 ];
 
 
-const BASE_WORKERS = ["Hassan", "Warda", "Andiel"];
+const BASE_WORKERS = ["Hassan", "Warda", "Ahmed"];
 const DEFAULT_PAYMENT_METHODS = ["Cash", "Card", "Instapay"];
 const DEFAULT_ORDER_TYPES = ["Take-Away", "Dine-in", "Delivery"];
 const DEFAULT_DELIVERY_FEE = 20;
@@ -337,9 +337,6 @@ const DEFAULT_ZONES = [
 const DEFAULT_PURCHASE_CATEGORIES = [
   "Buns", "Meat", "Cheese", "Veg", "Sauces", "Packaging", "Drinks"
 ];
-// ---- Purchase form presets ----
-const UNIT_CHOICES = ["pcs", "kg", "g", "L", "mL", "pack", "box"];
-const QTY_CHOICES  = [1, 2, 3, 5, 10, 20, 50, 100];
 
 const EDITOR_PIN = "0512";
 const DEFAULT_ADMIN_PINS = {
@@ -2146,10 +2143,8 @@ const byCategory = useMemo(() => {
 
 // KPI: Net after Purchases
 
-// allow adding to a specific category section
-const handleAddPurchase = (catId) => {
-  const categoryId = catId || newPurchase.categoryId;
-  const { itemName, unit, qty, unitPrice, date } = newPurchase;
+const handleAddPurchase = () => {
+  const { categoryId, itemName, unit, qty, unitPrice, date } = newPurchase;
 
   if (!categoryId) return alert("Select a category.");
   const name = String(itemName || "").trim();
@@ -2175,7 +2170,6 @@ const handleAddPurchase = (catId) => {
     date: new Date().toISOString().slice(0, 10),
   });
 };
-
   // Admin-protected: wipe all purchases
 const resetAllPurchases = () => {
   const okAdmin = !!promptAdminAndPin();
@@ -3843,27 +3837,31 @@ const generatePurchasesPDF = () => {
     </div>
 
 
+   
 
-    {/* === ADD PURCHASE CARD ===================*/}
-   <div
+    {/* === ADD PURCHASE CARD ========================================== */}
+<div
   style={{
     padding: 14,
     borderRadius: 12,
     background: dark ? "#1a1a1a" : "#fff",
     border: `1px solid ${cardBorder}`,
     marginBottom: 12,
+    width: "100%",              // ADDED: make card fluid
+    maxWidth: "100%",           // ADDED
   }}
 >
   <div
     style={{
       display: "grid",
-      // Category | Item | Unit | Qty | Unit Price | Date | Button
       gridTemplateColumns:
-        "minmax(160px,1fr) minmax(210px,1fr) 120px 120px 140px 160px 160px",
+        "minmax(160px, 1fr) minmax(210px, 1fr) minmax(200px, 1.2fr) 100px 100px 140px 160px",
       gap: 10,
       alignItems: "center",
+      overflowX: "auto",        // ADDED: keep button inside (scroll if too narrow)
     }}
   >
+
     {/* Category */}
     <select
       value={newPurchase.categoryId}
@@ -3878,11 +3876,15 @@ const generatePurchasesPDF = () => {
         border: `1px solid ${btnBorder}`,
         background: dark ? "#121212" : "#fff",
         color: dark ? "#eee" : "#000",
+        minWidth: 0,            // ADDED
+        width: "100%",          // ADDED
       }}
     >
       <option value="">Category…</option>
       {purchaseCategories.map((c) => (
-        <option key={c.id} value={c.id}>{c.name}</option>
+        <option key={c.id} value={c.id}>
+          {c.name}
+        </option>
       ))}
     </select>
 
@@ -3900,10 +3902,12 @@ const generatePurchasesPDF = () => {
         border: `1px solid ${btnBorder}`,
         background: dark ? "#121212" : "#fff",
         color: dark ? "#eee" : "#000",
+        minWidth: 0,            // ADDED
+        width: "100%",          // ADDED
       }}
     />
 
-    {/* Unit (dropdown, replaces fixed 'pcs' input) */}
+    {/* Unit (fixed list)  — CHANGED from <input> to <select> */}
     <select
       value={newPurchase.unit}
       onChange={(e) =>
@@ -3913,39 +3917,41 @@ const generatePurchasesPDF = () => {
         padding: 10,
         borderRadius: 10,
         border: `1px solid ${btnBorder}`,
+        textAlign: "center",
         background: dark ? "#121212" : "#fff",
         color: dark ? "#eee" : "#000",
-        textAlign: "center",
+        minWidth: 0,            // ADDED
+        width: "100%",          // ADDED
       }}
     >
-      {UNIT_CHOICES.map((u) => (
+      {["kg", "g", "L", "ml", "piece", "pack", "dozen", "bottle", "can", "bag", "box", "carton", "slice", "block","Paper"].map((u) => (
         <option key={u} value={u}>{u}</option>
       ))}
     </select>
 
-    {/* Qty (dropdown with constants) */}
-    <select
-      value={String(newPurchase.qty)}
+    {/* Qty */}
+    <input
+      type="number"
+      step="any"                 // ADDED: allow decimals
+      min={0}
+      value={newPurchase.qty}
       onChange={(e) =>
-        setNewPurchase((p) => ({ ...p, qty: Number(e.target.value) }))
+        setNewPurchase((p) => ({ ...p, qty: Number(e.target.value || 0) }))
       }
       style={{
         padding: 10,
         borderRadius: 10,
         border: `1px solid ${btnBorder}`,
-        background: dark ? "#121212" : "#fff",
-        color: dark ? "#eee" : "#000",
         textAlign: "center",
+        minWidth: 0,            // ADDED
+        width: "100%",          // ADDED
       }}
-    >
-      {QTY_CHOICES.map((q) => (
-        <option key={q} value={q}>{q}</option>
-      ))}
-    </select>
+    />
 
     {/* Unit price */}
     <input
       type="number"
+      step="0.01"                // ADDED: cents
       min={0}
       value={newPurchase.unitPrice}
       onChange={(e) =>
@@ -3958,48 +3964,210 @@ const generatePurchasesPDF = () => {
         padding: 10,
         borderRadius: 10,
         border: `1px solid ${btnBorder}`,
-        textAlign: "right",
-      }}
-      placeholder="Unit price"
-    />
-
-    {/* Date */}
-    <input
-      type="date"
-      value={newPurchase.date}
-      onChange={(e) =>
-        setNewPurchase((p) => ({ ...p, date: e.target.value }))
-      }
-      style={{
-        padding: 10,
-        borderRadius: 10,
-        border: `1px solid ${btnBorder}`,
+        textAlign: "center",
+        minWidth: 0,            // ADDED
+        width: "100%",          // ADDED
       }}
     />
 
-    {/* Add Purchase — now INSIDE the box */}
-    <button
-      onClick={handleAddPurchase}
-      style={{
-        padding: "12px 14px",
-        borderRadius: 12,
-        border: `1px solid ${btnBorder}`,
-        background: "#000",
-        color: "#fff",
-        fontWeight: 700,
-        cursor: "pointer",
-        height: 46,
-      }}
-    >
-      Add Purchase
-    </button>
+    {/* Date + Add */}
+    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      <input
+        type="date"
+        value={newPurchase.date}
+        onChange={(e) =>
+          setNewPurchase((p) => ({ ...p, date: e.target.value }))
+        }
+        style={{
+          padding: 10,
+          borderRadius: 10,
+          border: `1px solid ${btnBorder}`,
+          background: dark ? "#121212" : "#fff",
+          color: dark ? "#eee" : "#000",
+          width: "100%",
+          minWidth: 0,          // ADDED
+        }}
+      />
+      <button
+        onClick={handleAddPurchase}
+        style={{
+          padding: "10px 14px",
+          borderRadius: 10,
+          border: "none",
+          background: "#000",
+          color: "#fff",
+          cursor: "pointer",
+          whiteSpace: "nowrap",
+        }}
+      >
+        Add Purchase
+      </button>
+    </div>
   </div>
 </div>
 
+
+    {/* === CATEGORY TILES + ADD CATEGORY =============================== */}
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+        gap: 12,
+        marginBottom: 14,
+      }}
+    >
+     {purchaseCategories.map((cat) => {
+  const total = catTotals.get(cat.id) || 0;
+  const active = purchaseCatFilterId === cat.id;
+  return (
+    <button
+      key={cat.id}
+      onClick={() =>
+        setPurchaseCatFilterId((id) => (id === cat.id ? "" : cat.id))
+      }
+      style={{
+        position: "relative",                  // ⬅️ add
+        textAlign: "left",
+        padding: 14,
+        borderRadius: 12,
+        border: `1px solid ${cardBorder}`,
+        background: active ? (dark ? "#222" : "#fff8e1") : (dark ? "#1e1e1e" : "#fff"),
+        color: dark ? "#eee" : "#000",
+        cursor: "pointer",
+      }}
+      title="Show category details below"
+    >
+      {/* tiny X in the top-right */}
+      <span
+        title={`Delete ${cat.name}`}
+        aria-label={`Delete ${cat.name}`}
+        onClick={(e) => {
+          e.stopPropagation();   // don't toggle selection
+          e.preventDefault();
+          removePurchaseCategory(cat.id);
+        }}
+        style={{
+          position: "absolute",
+          top: 6,
+          right: 6,
+          width: 22,
+          height: 22,
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          borderRadius: "50%",
+          border: `1px solid ${btnBorder}`,
+          background: dark ? "#2a2a2a" : "#fff",
+          color: dark ? "#eee" : "#000",
+          fontSize: 14,
+          fontWeight: 700,
+          lineHeight: 1,
+          cursor: "pointer",
+          opacity: 0.9,
+        }}
+      >
+        ×
+      </span>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span
+          style={{
+            display: "inline-flex",
+            width: 28,
+            height: 28,
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 8,
+            border: `1px solid ${btnBorder}`,
+            fontSize: 16,
+          }}
+        >
+          📦
+        </span>
+        <div style={{ fontWeight: 700 }}>{cat.name}</div>
+      </div>
+      <div style={{ marginTop: 6, opacity: 0.8 }}>
+        {currency(total)}
+      </div>
+    </button>
+  );
+})}
+
+
+      {/* Add Category tile (inside the categories group) */}
+      <div
+        style={{
+          padding: 14,
+          borderRadius: 12,
+          border: `1px solid ${cardBorder}`,
+          background: dark ? "#1a1a1a" : "#fff",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span
+            style={{
+              display: "inline-flex",
+              width: 28,
+              height: 28,
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: 8,
+              border: `1px solid ${btnBorder}`,
+              fontWeight: 800,
+            }}
+          >
+            +
+          </span>
+          <div style={{ fontWeight: 700 }}>Add Category</div>
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+          <input
+            type="text"
+            placeholder="Category name"
+            value={newCategoryName}
+            onChange={(e) => setNewCategoryName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                const name = String(newCategoryName || "").trim();
+                if (!name) return;
+                const id = `cat_${Date.now()}`;
+                setPurchaseCategories((arr) => [...arr, { id, name }]);
+                setNewCategoryName("");
+              }
+            }}
+            style={{
+              flex: 1,
+              padding: 10,
+              borderRadius: 10,
+              border: `1px solid ${btnBorder}`,
+              background: dark ? "#121212" : "#fff",
+              color: dark ? "#eee" : "#000",
+            }}
+          />
+          <button
+            onClick={() => {
+              const name = String(newCategoryName || "").trim();
+              if (!name) return;
+              const id = `cat_${Date.now()}`;
+              setPurchaseCategories((arr) => [...arr, { id, name }]);
+              setNewCategoryName("");
+            }}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "none",
+              background: "#000",
+              color: "#fff",
+              cursor: "pointer",
+            }}
+          >
+            Add
+          </button>
+        </div>
+      </div>
     </div>
 
-
-    /* === DETAILS LIST ================================================= */
+    {/* === DETAILS LIST ================================================= */}
     <div style={{ marginTop: 4 }}>
       <div style={{ fontWeight: 700, marginBottom: 8 }}>All Categories</div>
 
@@ -4017,7 +4185,7 @@ const generatePurchasesPDF = () => {
               overflow: "hidden",
             }}
           >
-            /* Section header */
+            {/* Section header */}
             <div
               style={{
                 display: "flex",
@@ -4046,7 +4214,7 @@ const generatePurchasesPDF = () => {
               <div style={{ opacity: 0.8 }}>• {currency(total)}</div>
             </div>
 
-            /* Table */
+            {/* Table */}
             <div style={{ padding: 12 }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
@@ -4108,7 +4276,7 @@ const generatePurchasesPDF = () => {
 
 
 
-      /* BANK */
+      {/* BANK */}
       {activeTab === "bank" && (
         <div>
           <h2>Bank / Cashbox</h2>
@@ -4250,12 +4418,12 @@ const generatePurchasesPDF = () => {
         </div>
       )}
 
-      /* REPORTS */
+      {/* REPORTS */}
       {activeTab === "reports" && (
         <div>
           <h2>Reports</h2>
 
-          /* Totals overview */
+          {/* Totals overview */}
           <div
             style={{
               marginBottom: 12,
@@ -4304,7 +4472,7 @@ const generatePurchasesPDF = () => {
             </tbody>
           </table>
 
-          /* Extras summary */
+          {/* Extras summary */}
           <h3>Extras Sold</h3>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
@@ -5257,12 +5425,6 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
-
-
-
-
-
-
 
 
 
