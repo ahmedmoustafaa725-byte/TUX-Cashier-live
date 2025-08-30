@@ -4147,57 +4147,55 @@ const generatePurchasesPDF = () => {
             </button>
           </div>
 
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Name</th>
-                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit</th>
-                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Qty</th>
-                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit Price</th>
-                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Total</th>
-                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Date</th>
-                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Note</th>
-                <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {expenses.map((e) => (
-                <tr key={e.id}>
-                  <td style={{ padding: 6 }}>{e.name}</td>
-                  <td style={{ padding: 6 }}>{e.unit}</td>
-                  <td style={{ padding: 6, textAlign: "right" }}>{e.qty}</td>
-                  <td style={{ padding: 6, textAlign: "right" }}>E£{Number(e.unitPrice || 0).toFixed(2)}</td>
-                  <td style={{ padding: 6, textAlign: "right" }}>
-                    E£{(Number(e.qty || 0) * Number(e.unitPrice || 0)).toFixed(2)}
-                  </td>
-                  <td style={{ padding: 6 }}>{e.date ? fmtDateTime(e.date) : ""}</td>
-                  <td style={{ padding: 6 }}>{e.note}</td>
-                  <td style={{ padding: 6 }}>
-                    <button
-                      onClick={() => setExpenses((arr) => arr.filter((x) => x.id !== e.id))}
-                      style={{
-                        background: "#c62828",
-                        color: "#fff",
-                        border: "none",
-                        borderRadius: 6,
-                        padding: "6px 10px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Remove
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {expenses.length === 0 && (
-                <tr>
-                  <td colSpan={8} style={{ padding: 8, opacity: 0.8 }}>
-                    No expenses yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+   <table style={{ width: "100%", borderCollapse: "collapse" }}>
+  <thead>
+    <tr>
+      <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Name</th>
+      <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit</th>
+      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Qty</th>
+      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit Price</th>
+      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Total</th>
+      <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Date</th>
+      <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Note</th>
+      <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {expenses.map((e) => {
+      const total = Number(e.qty || 0) * Number(e.unitPrice || 0);
+      return (
+        <tr key={e.id}>
+          <td style={{ padding: 6 }}>{e.name}</td>
+          <td style={{ padding: 6 }}>{e.unit}</td>
+          <td style={{ padding: 6, textAlign: "right" }}>{e.qty}</td>
+          <td style={{ padding: 6, textAlign: "right" }}>
+            E£{Number(e.unitPrice || 0).toFixed(2)}
+          </td>
+          <td style={{ padding: 6, textAlign: "right" }}>
+            E£{total.toFixed(2)}
+          </td>
+          <td style={{ padding: 6 }}>{e.date ? fmtDateTime(e.date) : ""}</td>
+          <td style={{ padding: 6 }}>{e.note || ""}</td>
+          <td style={{ padding: 6 }}>
+            <button
+              onClick={() => setExpenses((list) => list.filter((x) => x.id !== e.id))}
+              style={{
+                background: "#c62828",
+                color: "#fff",
+                border: "none",
+                borderRadius: 6,
+                padding: "6px 10px",
+                cursor: "pointer",
+              }}
+            >
+              Remove
+            </button>
+          </td>
+        </tr>
+      );
+    })}
+  </tbody>
+</table>
         </div>
       )}
 
@@ -5849,6 +5847,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
