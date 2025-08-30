@@ -415,17 +415,6 @@ const inferUnitFromCategoryName = (name) =>
   DEFAULT_INV_UNIT_BY_CATNAME[String(name || "").toLowerCase()] || "piece";
 /* ⬆️ END OF NEW BLOCK */
 
-function convertToInventoryUnit(qty, purchaseUnit, invUnit) {
-  const p = UNIT_MAP[String(purchaseUnit || "").toLowerCase()];
-  const i = UNIT_MAP[String(invUnit || "").toLowerCase()];
-  if (!p || !i) return null;
-  if (p.base !== i.base) return null; // incompatible (e.g., kg → ml)
-  const inBase = Number(qty || 0) * p.factor;
-  return inBase / i.factor;           // in inventory units
-}
-
-
-
 function findInventoryIdForPurchase(row, inventory, purchaseCategories) {
   // 1) explicit link on the purchase row
   if (row.ingredientId) return row.ingredientId;
@@ -5778,6 +5767,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
