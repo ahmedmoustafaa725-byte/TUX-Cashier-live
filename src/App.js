@@ -2254,10 +2254,25 @@ const filteredPurchases = useMemo(() => {
     const d = p?.date instanceof Date ? p.date : new Date(p?.date);
     return isWithin(d, pStart, pEnd);
   });
+  
   return purchaseCatFilterId
     ? withinPeriod.filter((p) => p.categoryId === purchaseCatFilterId)
     : withinPeriod;
 }, [purchases, pStart, pEnd, purchaseCatFilterId]);
+
+  const byCategory = useMemo(() => {
+  const m = new Map();
+  for (const p of filteredPurchases) {
+    const key = p.categoryId || "";
+    const arr = m.get(key) || [];
+    arr.push(p);
+    m.set(key, arr);
+  }
+  for (const arr of m.values()) {
+    arr.sort((a, b) => +new Date(a.date) - +new Date(b.date));
+  }
+  return m;
+}, [filteredPurchases]);
   // Categories that have at least one purchase in the current period
 const categoriesForGrid = useMemo(() => {
   if (showAllCats) return purchaseCategories;
@@ -5556,6 +5571,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
