@@ -1163,7 +1163,7 @@ useEffect(() => {
        if (unpacked.purchaseCategories) {
    setPurchaseCategories(normalizePurchaseCategories(unpacked.purchaseCategories));
 }
-          if (unpacked.customers) setCustomers(unpacked.customers);
+     
         if (unpacked.deliveryZones) setDeliveryZones(unpacked.deliveryZones);
           setCloudStatus((s) => ({ ...s, lastLoadAt: new Date(), error: null }));
         }
@@ -5528,6 +5528,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
