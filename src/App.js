@@ -961,7 +961,27 @@ const [adminUnlocked, setAdminUnlocked] = useState(false);
 
   const sortBy = "date-desc";
 
-  
+  // --- simple "Add Category" state + handler (restore) ---
+const [newCategoryName, setNewCategoryName] = useState("");
+const [newCategoryUnit, setNewCategoryUnit] = useState("piece");
+
+const addPurchaseCategory = () => {
+  const name = String(newCategoryName || "").trim();
+  const unit = String(newCategoryUnit || "piece").trim();
+
+  if (!name) return; // ignore empty
+  setPurchaseCategories((list) => {
+    // prevent duplicates by name (case-insensitive)
+    if (list.some((c) => c.name.toLowerCase() === name.toLowerCase())) return list;
+    const id = `cat_${Date.now()}`;
+    return [...list, { id, name, unit }];
+  });
+
+  // reset inputs
+  setNewCategoryName("");
+  setNewCategoryUnit("piece");
+};
+
 
   
 
@@ -5828,6 +5848,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
