@@ -2837,7 +2837,7 @@ const generatePurchasesPDF = () => {
           padding: "6px 10px",
           borderRadius: 6,
           border: `1px solid ${btnBorder}`,
-          background: adminSubTab === key ? "#fff59d" : dark ? "#2c2c2c" : "#f1f1f1",
+          background: adminSubTab === key ? "#fff59d" : (dark ? "#2c2c2c" : "#f1f1f1"),
           color: dark ? "#fff" : "#000",
           cursor: "pointer",
         }}
@@ -2845,9 +2845,11 @@ const generatePurchasesPDF = () => {
         {label}
       </button>
     ))}
-      <div style={{ marginLeft: "auto" }}>
+
+    {/* push to the right */}
+    <div style={{ marginLeft: "auto" }}>
       <button
-        onClick={() => setAdminUnlocked(false)}
+        onClick={() => { setAdminUnlocked(false); setActiveTab("orders"); }} // optional: kick out of Admin
         style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${btnBorder}` }}
       >
         Lock Admin
@@ -2855,8 +2857,7 @@ const generatePurchasesPDF = () => {
     </div>
   </div>
 )}
-  </div>
-)}
+
 
 
       {/* ORDERS */}
@@ -5567,6 +5568,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
