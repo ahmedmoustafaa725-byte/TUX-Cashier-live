@@ -887,8 +887,8 @@ const [newPurchase, setNewPurchase] = useState({
 const [deliveryZoneId, setDeliveryZoneId] = useState("");               // ⬅️ NEW
 const [customers, setCustomers] = useState([]);                         // {phone,name,address,zoneId}
 const [deliveryZones, setDeliveryZones] = useState(DEFAULT_ZONES);      // ⬅️ NEW
-const [newCategoryName, setNewCategoryName] = useState("");
-  const [newCategoryUnit, setNewCategoryUnit] = useState("piece"); // <— NEW
+
+
 const [cashReceived, setCashReceived] = useState(0);
 const [inventory, setInventory] = useState(DEFAULT_INVENTORY);
 const [newInvName, setNewInvName] = useState("");
@@ -5828,6 +5828,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
