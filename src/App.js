@@ -707,6 +707,27 @@ function printReceiptHTML(order, widthMm = 80, copy = "Customer", images) {
   setTimeout(() => { try { if (document.body.contains(ifr)) ifr.remove(); } catch {} }, 12000);
 }
 
+// ---- Customers helpers (module scope) ----
+const normalizePhone = (s) => String(s || "").replace(/\D/g, "").slice(0, 11);
+
+const upsertCustomer = (list, rec) => {
+  const phone = normalizePhone(rec.phone);
+  const without = (list || []).filter(c => normalizePhone(c.phone) !== phone);
+  // New record first; any previous records for that phone are dropped
+  return [{ ...rec, phone }, ...without];
+};
+
+function dedupeCustomers(list = []) {
+  const seen = new Set();
+  const out = [];
+  for (const c of list || []) {
+    const p = normalizePhone(c.phone);
+    if (seen.has(p)) continue;   // skip older duplicates
+    seen.add(p);
+    out.push({ ...c, phone: p });
+  }
+  return out;
+}
 
 
 export default function App() {
@@ -1143,7 +1164,6 @@ useEffect(() => {
    setPurchaseCategories(normalizePurchaseCategories(unpacked.purchaseCategories));
 }
           if (unpacked.customers) setCustomers(unpacked.customers);
-        if ('customers' in data) setCustomers(unpacked.customers || []);
         if (unpacked.deliveryZones) setDeliveryZones(unpacked.deliveryZones);
           setCloudStatus((s) => ({ ...s, lastLoadAt: new Date(), error: null }));
         }
@@ -1249,7 +1269,7 @@ if (ts && lastLocalEditAt && ts < lastLocalEditAt) return;
    if (unpacked.purchaseCategories) {
    setPurchaseCategories(normalizePurchaseCategories(unpacked.purchaseCategories));
  }
-    if (unpacked.customers) setCustomers(unpacked.customers);
+    
     if (unpacked.deliveryZones) setDeliveryZones(unpacked.deliveryZones);
 
       setCloudStatus((s) => ({ ...s, lastLoadAt: new Date(), error: null }));
@@ -1722,28 +1742,6 @@ const multiplyUses = (uses = {}, factor = 1) => {
       };
     })
   );
-// Keep only one customer per phone. Replaces old entry for that phone.
-const normalizePhone = (s) => String(s || "").replace(/\D/g, "").slice(0, 11);
-
-const upsertCustomer = (list, rec) => {
-  const phone = normalizePhone(rec.phone);
-  const without = (list || []).filter(c => normalizePhone(c.phone) !== phone);
-  // New record first; any previous records for that phone are dropped
-  return [{ ...rec, phone }, ...without];
-};
-
-// (Optional) Clean existing duplicates once (keeps first/newest only)
-const dedupeCustomers = (list = []) => {
-  const seen = new Set();
-  const out = [];
-  for (const c of list) {
-    const p = normalizePhone(c.phone);
-    if (seen.has(p)) continue;   // skip older duplicates
-    seen.add(p);
-    out.push({ ...c, phone: p });
-  }
-  return out;
-};
 
 
  const checkout = async () => {
@@ -5530,6 +5528,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
