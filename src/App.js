@@ -385,6 +385,47 @@ function convertToInventoryUnit(qty, purchaseUnit, invUnit) {
   return inBase / i.factor;           // in inventory units
 }
 
+
+/* ⬇️ ADD THIS BLOCK RIGHT HERE (still top-level, before the App component) */
+const DEFAULT_INV_UNIT_BY_CATNAME = {
+  buns: "piece",
+  meat: "g",
+  cheese: "slice",
+  veg: "g",
+  vegetables: "g",
+  sauces: "ml",
+  drinks: "bottle",
+  packaging: "piece",
+};
+
+const slug = (s) =>
+  String(s || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "") || `inv_${Date.now()}`;
+
+const ensureInvIdUnique = (id, list) => {
+  let out = id, n = 1;
+  while (list.some((it) => it.id === out)) out = `${id}-${++n}`;
+  return out;
+};
+
+const inferUnitFromCategoryName = (name) =>
+  DEFAULT_INV_UNIT_BY_CATNAME[String(name || "").toLowerCase()] || "piece";
+/* ⬆️ END OF NEW BLOCK */
+
+function convertToInventoryUnit(qty, purchaseUnit, invUnit) {
+  const p = UNIT_MAP[String(purchaseUnit || "").toLowerCase()];
+  const i = UNIT_MAP[String(invUnit || "").toLowerCase()];
+  if (!p || !i) return null;
+  if (p.base !== i.base) return null; // incompatible (e.g., kg → ml)
+  const inBase = Number(qty || 0) * p.factor;
+  return inBase / i.factor;           // in inventory units
+}
+
+
+
 function findInventoryIdForPurchase(row, inventory, purchaseCategories) {
   // 1) explicit link on the purchase row
   if (row.ingredientId) return row.ingredientId;
@@ -763,7 +804,6 @@ const upsertCustomer = (list, rec) => {
   return [{ ...rec, phone }, ...without];
 };
 
-
 function dedupeCustomers(list = []) {
   const seen = new Set();
   const out = [];
@@ -775,44 +815,6 @@ function dedupeCustomers(list = []) {
   }
   return out;
 }
-
-const DEFAULT_INV_UNIT_BY_CATNAME = {
-  buns: "piece",
-  meat: "g",
-  cheese: "slice",
-  veg: "g",
-  vegetables: "g",
-  sauces: "ml",
-  drinks: "bottle",
-  packaging: "piece",
-};
-
-const slug = (s) =>
-  String(s || "")
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "") || `inv_${Date.now()}`;
-
-const ensureInvIdUnique = (id, list) => {
-  let out = id, n = 1;
-  while (list.some((it) => it.id === out)) out = `${id}-${++n}`;
-  return out;
-};
-
-const inferUnitFromCategoryName = (name) =>
-  DEFAULT_INV_UNIT_BY_CATNAME[String(name || "").toLowerCase()] || "piece";
-
-
-const ensureInvIdUnique = (id, list) => {
-  let out = id, n = 1;
-  while (list.some((it) => it.id === out)) out = `${id}-${++n}`;
-  return out;
-};
-
-const inferUnitFromCategoryName = (name) =>
-  DEFAULT_INV_UNIT_BY_CATNAME[String(name || "").toLowerCase()] || "piece";
-
 
 
 export default function App() {
@@ -1015,16 +1017,7 @@ const [lastLocalEditAt, setLastLocalEditAt] = useState(0);
     setNewPurchase(p => ({ ...p, date: purchaseDay }));
   }
 }, [purchaseFilter, purchaseDay]);
-  // Auto-link purchase to an inventory item by category name (if possible)
-useEffect(() => {
-  if (!newPurchase.categoryId || newPurchase.ingredientId) return;
-  const cat = purchaseCategories.find(c => c.id === newPurchase.categoryId);
-  if (!cat) return;
-  const match = inventory.find(it => it.name.toLowerCase() === String(cat.name || "").toLowerCase());
-  if (match) {
-    setNewPurchase(p => ({ ...p, ingredientId: match.id, unit: p.unit || match.unit }));
-  }
-}, [newPurchase.categoryId, newPurchase.ingredientId, purchaseCategories, inventory]);
+
 
   useEffect(() => {
   if (!Array.isArray(purchaseCategories)) return;
@@ -1056,6 +1049,16 @@ useEffect(() => {
   });
 }, [purchaseCategories]);
 
+  // Auto-link purchase to an inventory item by category name (if possible)
+useEffect(() => {
+  if (!newPurchase.categoryId || newPurchase.ingredientId) return;
+  const cat = purchaseCategories.find(c => c.id === newPurchase.categoryId);
+  if (!cat) return;
+  const match = inventory.find(it => it.name.toLowerCase() === String(cat.name || "").toLowerCase());
+  if (match) {
+    setNewPurchase(p => ({ ...p, ingredientId: match.id, unit: p.unit || match.unit }));
+  }
+}, [newPurchase.categoryId, newPurchase.ingredientId, purchaseCategories, inventory]);
 
 
   const [localDateTime, setLocalDateTime] = useState(() => {
@@ -2429,25 +2432,7 @@ const catTotals = useMemo(() => {
 
 // KPI: Net after Purchases
 
-const handleAddPurchase = () => {
-  const { categoryId, itemName, unit, qty, unitPrice, date } = newPurchase;
-
-  if (!categoryId) return alert("Select a category.");
-  const name = String(itemName || "").trim();
-  if (!name) return alert("Enter item name.");
-
-  const row = {
-  id: `p_${Date.now()}`,
-  categoryId,
-  itemName: name,
-  unit: String(unit || "piece"),
-  qty: Math.max(0, Number(qty || 0)),
-  unitPrice: Math.max(0, Number(unitPrice || 0)),
-  date: date ? new Date(date) : new Date(),
-  ingredientId: String(newPurchase.ingredientId || ""), // <-- NEW
-};
-
-  function inferInvUnitFromPurchaseUnit(u) {
+function inferInvUnitFromPurchaseUnit(u) {
   const m = UNIT_MAP[String(u || "").toLowerCase()];
   return m ? m.base : "piece";
 }
@@ -2534,38 +2519,6 @@ const handleAddPurchase = () => {
   });
 };
 
-
-
-  setPurchases((arr) => [row, ...arr]);
-  // === NEW: automatically add purchased amount to Inventory ===
-const targetInvId = findInventoryIdForPurchase(row, inventory, purchaseCategories);
-if (targetInvId) {
-  const invItem = inventory.find(it => it.id === targetInvId);
-  const delta = convertToInventoryUnit(row.qty, row.unit, invItem?.unit);
-  if (invItem && delta != null) {
-    setInventory(prev =>
-      prev.map(it =>
-        it.id === targetInvId
-          ? { ...it, qty: Number(it.qty || 0) + Number(delta) }
-          : it
-      )
-    );
-  } else {
-    alert(
-      `Purchase saved, but couldn't convert ${row.qty} ${row.unit} to ${invItem?.unit || "?"} for "${invItem?.name || targetInvId}". Inventory not changed.`
-    );
-  }
-}
-
- setNewPurchase({
-  categoryId: "",
-  itemName: "",
-  unit: "piece",
-  qty: 1,
-  unitPrice: 0,
-  date: new Date().toISOString().slice(0, 10),
-  ingredientId: "", // <-- keep form clean
-});
 
 };
   // Admin-protected: wipe all purchases
@@ -5825,18 +5778,6 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
