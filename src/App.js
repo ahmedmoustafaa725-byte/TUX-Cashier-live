@@ -725,7 +725,7 @@ const [purchaseMonth, setPurchaseMonth] = useState(() => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; // YYYY-MM
 });
-const [showAllCats, setShowAllCats] = useState(false);
+const [showAllCats, setShowAllCats] = useState(true);
 const [newPurchase, setNewPurchase] = useState({
   categoryId: "",
   itemName: "",
@@ -883,7 +883,7 @@ useEffect(() => {
   if (typeof l.dark === "boolean") setDark(l.dark);
    /* === ADD BELOW THIS LINE (other tabs & settings) === */
   if (Array.isArray(l.expenses)) setExpenses(l.expenses);
-  if (Array.isArray(l.purchaseCategories)) setPurchaseCategories(l.purchaseCategories); // ⬅️ NEW
+   if (Array.isArray(l.purchaseCategories)) setPurchaseCategories(normalizePurchaseCategories(l.purchaseCategories)); // ⬅️ NEW
 if (Array.isArray(l.purchases)) setPurchases(
   l.purchases.map(p => ({ ...p, date: p.date ? new Date(p.date) : new Date() }))
 ); // ⬅️ NEW
@@ -1070,7 +1070,9 @@ useEffect(() => {
           if (unpacked.dayMeta) setDayMeta(unpacked.dayMeta);
           if (unpacked.bankTx) setBankTx(unpacked.bankTx);
            if (unpacked.purchases) setPurchases(unpacked.purchases);
-        if (unpacked.purchaseCategories) setPurchaseCategories(unpacked.purchaseCategories);
+       if (unpacked.purchaseCategories) {
+   setPurchaseCategories(normalizePurchaseCategories(unpacked.purchaseCategories));
+}
         if (unpacked.customers) setCustomers(unpacked.customers);
         if (unpacked.deliveryZones) setDeliveryZones(unpacked.deliveryZones);
           setCloudStatus((s) => ({ ...s, lastLoadAt: new Date(), error: null }));
@@ -1124,7 +1126,9 @@ if (ts && lastLocalEditAt && ts < lastLocalEditAt) return;
       if (unpacked.dayMeta) setDayMeta(unpacked.dayMeta);
       if (unpacked.bankTx) setBankTx(unpacked.bankTx);
        if (unpacked.purchases) setPurchases(unpacked.purchases);
-      if (unpacked.purchaseCategories) setPurchaseCategories(unpacked.purchaseCategories);
+      if (unpacked.purchaseCategories) {
+   setPurchaseCategories(normalizePurchaseCategories(unpacked.purchaseCategories));
+ }
       if (unpacked.customers) setCustomers(unpacked.customers);
       if (unpacked.deliveryZones) setDeliveryZones(unpacked.deliveryZones);
 
@@ -4139,6 +4143,7 @@ const generatePurchasesPDF = () => {
                 const id = `cat_${Date.now()}`;
                 setPurchaseCategories((arr) => [...arr, { id, name }]);
                 setNewCategoryName("");
+                setShowAllCats(true);
               }
             }}
             style={{
@@ -5431,6 +5436,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
