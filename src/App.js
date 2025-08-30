@@ -3847,15 +3847,17 @@ const generatePurchasesPDF = () => {
     background: dark ? "#1a1a1a" : "#fff",
     border: `1px solid ${cardBorder}`,
     marginBottom: 12,
-    width: "100%",              // ADDED: make card fluid
-    maxWidth: "100%",           // ADDED
+ width: 1200,            // CHANGED: fixed card width (px)
+    maxWidth: 1200,         // CHANGED: keep fixed
+    margin: "0 auto",       // ADDED: center the card
+    boxSizing: "border-box",// ADDED: include padding/border in width
   }}
 >
   <div
     style={{
       display: "grid",
-      gridTemplateColumns:
-        "minmax(160px, 1fr) minmax(210px, 1fr) minmax(200px, 1.2fr) 100px 100px 140px 160px",
+       gridTemplateColumns:
+      "180px 220px 220px 100px 100px 140px 140px", 
       gap: 10,
       alignItems: "center",
       overflowX: "auto",        // ADDED: keep button inside (scroll if too narrow)
@@ -5425,6 +5427,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
