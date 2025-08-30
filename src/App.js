@@ -732,6 +732,9 @@ function dedupeCustomers(list = []) {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("orders");
+  // Which page inside the Admin tab is open
+const [adminSubTab, setAdminSubTab] = useState("inventory"); 
+
   const [dark, setDark] = useState(false);
 
   const [menu, setMenu] = useState(BASE_MENU);
@@ -1007,6 +1010,12 @@ useEffect(() => { saveLocalPartial({ menu }); }, [menu]);
   });
 }, [purchases]); // ⬅️ NEW
   
+
+  useEffect(() => { saveLocalPartial({ adminSubTab }); }, [adminSubTab]);
+useEffect(() => {
+  const l = loadLocal();
+  if (typeof l.adminSubTab === "string") setAdminSubTab(l.adminSubTab);
+}, []); // put near your other local hydration logic
 
 useEffect(() => { saveLocalPartial({ purchaseCategories }); }, [purchaseCategories]); // ⬅️ NEW
 useEffect(() => { saveLocalPartial({ purchaseFilter }); }, [purchaseFilter]);        // ⬅️ NEW
@@ -2543,25 +2552,30 @@ const endedStr   = m.endedAt   ? fmtDateTime(m.endedAt)   : "—";
     transition: "background 0.2s ease, color 0.2s ease",
   };
 
-  const handleTabClick = (key) => {
-    if (key === "edit" && !pricesUnlocked) {
-      const entered = window.prompt("Enter Editor PIN to open Edit:", "");
-      if (entered == null) return;
-      if (norm(entered) !== norm(EDITOR_PIN)) return alert("Wrong PIN.");
-      setPricesUnlocked(true);
-    }
-    if (key === "bank" && !bankUnlocked) {
-      const ok = !!promptAdminAndPin();
-      if (!ok) return;
-      setBankUnlocked(true);
-    }
-     if (key === "purchases" && !purchasesUnlocked) {
-      const ok = !!promptAdminAndPin();
-      if (!ok) return;
-      setPurchasesUnlocked(true);
-    }
-    setActiveTab(key);
-  };
+ const handleTabClick = (key) => {
+  // Only top-level tabs are handled here now
+  setActiveTab(key);
+};
+const handleAdminSubTabClick = (sub) => {
+  if (sub === "edit" && !pricesUnlocked) {
+    const entered = window.prompt("Enter Editor PIN to open Edit:", "");
+    if (entered == null) return;
+    if (norm(entered) !== norm(EDITOR_PIN)) return alert("Wrong PIN.");
+    setPricesUnlocked(true);
+  }
+  if (sub === "bank" && !bankUnlocked) {
+    const ok = !!promptAdminAndPin();
+    if (!ok) return;
+    setBankUnlocked(true);
+  }
+  if (sub === "purchases" && !purchasesUnlocked) {
+    const ok = !!promptAdminAndPin();
+    if (!ok) return;
+    setPurchasesUnlocked(true);
+  }
+  setAdminSubTab(sub);
+};
+
 
   const bankBalance = useMemo(() => {
     return bankTx.reduce((sum, t) => {
@@ -2790,35 +2804,57 @@ const generatePurchasesPDF = () => {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-        {[
-          ["orders", "Orders"],
-          ["board", "Orders Board"],
-          ["inventory", "Inventory"],
-          ["expenses", "Expenses"],
-          ["purchases", "Purchases"], // ⬅️ NEW
+<div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+  {[
+    ["orders", "Orders"],
+    ["board", "Orders Board"],
+    ["expenses", "Expenses"],
+    ["admin", "Admin"], // <-- new consolidated tab
+  ].map(([key, label]) => (
+    <button
+      key={key}
+      onClick={() => handleTabClick(key)}
+      style={{
+        padding: "8px 12px",
+        borderRadius: 6,
+        border: `1px solid ${btnBorder}`,
+        background: activeTab === key ? "#ffd54f" : dark ? "#333" : "#eee",
+        color: dark ? "#fff" : "#000",
+        cursor: "pointer",
+      }}
+    >
+      {label}
+    </button>
+  ))}
+</div>
+{activeTab === "admin" && (
+  <div style={{ display: "flex", gap: 8, margin: "0 0 12px", flexWrap: "wrap" }}>
+    {[
+      ["inventory", "Inventory"],
+      ["purchases", "Purchases"],
+      ["bank", "Bank"],
+      ["reports", "Reports"],
+      ["edit", "Edit"],
+      ["settings", "Settings"],
+    ].map(([key, label]) => (
+      <button
+        key={key}
+        onClick={() => handleAdminSubTabClick(key)}
+        style={{
+          padding: "6px 10px",
+          borderRadius: 6,
+          border: `1px solid ${btnBorder}`,
+          background: adminSubTab === key ? "#fff59d" : dark ? "#2c2c2c" : "#f1f1f1",
+          color: dark ? "#fff" : "#000",
+          cursor: "pointer",
+        }}
+      >
+        {label}
+      </button>
+    ))}
+  </div>
+)}
 
-          ["bank", "Bank"],
-          ["reports", "Reports"],
-          ["edit", "Edit"],            // renamed from Prices
-          ["settings", "Settings"],
-        ].map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => handleTabClick(key)}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 6,
-              border: `1px solid ${btnBorder}`,
-              background: activeTab === key ? "#ffd54f" : dark ? "#333" : "#eee",
-              color: dark ? "#fff" : "#000",
-              cursor: "pointer",
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
 
       {/* ORDERS */}
       {activeTab === "orders" && (
@@ -3576,7 +3612,7 @@ const generatePurchasesPDF = () => {
       )}
 
       {/* INVENTORY */}
-      {activeTab === "inventory" && (
+     {activeTab === "admin" && adminSubTab === "inventory" && (
         <div>
           <h2>Inventory</h2>
 
@@ -3908,7 +3944,7 @@ const generatePurchasesPDF = () => {
       )}
 
        {/* Purchase Tab */}
-{activeTab === "purchases" && (
+{activeTab === "admin" && adminSubTab === "purchases" && (
   <div>
     <h2>Purchases</h2>
 
@@ -4380,7 +4416,7 @@ const generatePurchasesPDF = () => {
 
 
       {/* BANK */}
-      {activeTab === "bank" && (
+     {activeTab === "admin" && adminSubTab === "bank" && (
         <div>
           <h2>Bank / Cashbox</h2>
           <div
@@ -4522,7 +4558,7 @@ const generatePurchasesPDF = () => {
       )}
 
       {/* REPORTS */}
-      {activeTab === "reports" && (
+      {activeTab === "admin" && adminSubTab === "reports" && (
         <div>
           <h2>Reports</h2>
 
@@ -4640,7 +4676,7 @@ const generatePurchasesPDF = () => {
       )}
 
       {/* EDIT (was "Prices") */}
-      {activeTab === "edit" && (
+      {activeTab === "admin" && adminSubTab === "edit" && (
         <div>
           <h2>Edit</h2>
 
@@ -5449,7 +5485,7 @@ const generatePurchasesPDF = () => {
       )}
 
       {/* SETTINGS */}
-      {activeTab === "settings" && (
+      {activeTab === "admin" && adminSubTab === "settings" && (
         <div>
           <h2>Settings</h2>
 
@@ -5528,6 +5564,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
