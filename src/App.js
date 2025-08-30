@@ -2774,22 +2774,7 @@ const handleAdminSubTabClick = (sub) => {
   setAdminSubTab(sub); // no PIN checks here anymore
 };
 
-const addPurchaseCategory = () => {
-  const name = String(newCategoryName || "").trim();
-  const unit = String(newCategoryUnit || "piece").trim();
-  if (!name) return alert("Enter a category name.");
-  // prevent duplicates by name (case-insensitive)
-  if (purchaseCategories.some(c => c.name.toLowerCase() === name.toLowerCase())) {
-    return alert("Category already exists.");
-  }
-  const next = [
-    ...purchaseCategories,
-    { id: `cat_${Date.now()}`, name, unit }
-  ];
-  setPurchaseCategories(next);
-  setNewCategoryName("");
-  setNewCategoryUnit("piece");
-};
+
 
 const updatePurchaseCategoryUnit = (catId, unit) => {
   setPurchaseCategories(list =>
@@ -5843,6 +5828,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
