@@ -4595,8 +4595,7 @@ const generatePurchasesPDF = () => {
             Add
           </button>
         </div>
-      </div>
-    </div>
+    
 
     {/* === DETAILS LIST ================================================= */}
     <div style={{ marginTop: 4 }}>
@@ -5850,6 +5849,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
