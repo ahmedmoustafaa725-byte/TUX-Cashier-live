@@ -354,6 +354,52 @@ function normalizePurchaseCategories(arr = []) {
 
 // Allowed units for Purchases
 const PURCHASE_UNITS = ["kg", "g", "L", "ml", "piece", "pack", "dozen", "bottle", "can", "bag", "box", "carton", "slice", "block"];
+// --- Purchase → Inventory linking & unit conversion (ADD) ---
+const UNIT_MAP = {
+  // mass
+  kg: { base: "g",  factor: 1000 },
+  g:  { base: "g",  factor: 1 },
+  // volume
+  l:  { base: "ml", factor: 1000 },
+  ml: { base: "ml", factor: 1 },
+  // counts
+  piece:  { base: "piece",  factor: 1 },
+  pieces: { base: "piece",  factor: 1 },
+  slice:  { base: "slice",  factor: 1 },
+  slices: { base: "slice",  factor: 1 },
+  pack:   { base: "pack",   factor: 1 },
+  bottle: { base: "bottle", factor: 1 },
+  can:    { base: "can",    factor: 1 },
+  bag:    { base: "bag",    factor: 1 },
+  box:    { base: "box",    factor: 1 },
+  carton: { base: "carton", factor: 1 },
+  dozen:  { base: "piece",  factor: 12 }, // 1 dozen = 12 pieces
+};
+
+function convertToInventoryUnit(qty, purchaseUnit, invUnit) {
+  const p = UNIT_MAP[String(purchaseUnit || "").toLowerCase()];
+  const i = UNIT_MAP[String(invUnit || "").toLowerCase()];
+  if (!p || !i) return null;
+  if (p.base !== i.base) return null; // incompatible (e.g., kg → ml)
+  const inBase = Number(qty || 0) * p.factor;
+  return inBase / i.factor;           // in inventory units
+}
+
+function findInventoryIdForPurchase(row, inventory, purchaseCategories) {
+  // 1) explicit link on the purchase row
+  if (row.ingredientId) return row.ingredientId;
+
+  // 2) try matching category name to inventory name (case-insensitive)
+  const catName = (purchaseCategories.find(c => c.id === row.categoryId)?.name || "").toLowerCase();
+  const byCat = inventory.find(it => it.name.toLowerCase() === catName);
+  if (byCat) return byCat.id;
+
+  // 3) fallback: try matching the purchase itemName to an inventory name
+  const itemName = String(row.itemName || "").toLowerCase();
+  const byItem = inventory.find(it => it.name.toLowerCase() === itemName);
+  return byItem ? byItem.id : null;
+}
+
 
 
 
@@ -790,9 +836,11 @@ const [newPurchase, setNewPurchase] = useState({
   itemName: "",
   unit: "piece",
   qty: 1,
-  unitPrice:"",
-  date: new Date().toISOString().slice(0,10),
+  unitPrice: "",
+  date: new Date().toISOString().slice(0, 10),
+  ingredientId: "", // <-- NEW: link this purchase to an inventory item (optional)
 });
+
   
 const [deliveryZoneId, setDeliveryZoneId] = useState("");               // ⬅️ NEW
 const [customers, setCustomers] = useState([]);                         // {phone,name,address,zoneId}
@@ -928,6 +976,17 @@ const [lastLocalEditAt, setLastLocalEditAt] = useState(0);
     setNewPurchase(p => ({ ...p, date: purchaseDay }));
   }
 }, [purchaseFilter, purchaseDay]);
+  // Auto-link purchase to an inventory item by category name (if possible)
+useEffect(() => {
+  if (!newPurchase.categoryId || newPurchase.ingredientId) return;
+  const cat = purchaseCategories.find(c => c.id === newPurchase.categoryId);
+  if (!cat) return;
+  const match = inventory.find(it => it.name.toLowerCase() === String(cat.name || "").toLowerCase());
+  if (match) {
+    setNewPurchase(p => ({ ...p, ingredientId: match.id, unit: p.unit || match.unit }));
+  }
+}, [newPurchase.categoryId, newPurchase.ingredientId, purchaseCategories, inventory]);
+
 
   const [localDateTime, setLocalDateTime] = useState(() => {
   const now = new Date();
@@ -2308,24 +2367,48 @@ const handleAddPurchase = () => {
   if (!name) return alert("Enter item name.");
 
   const row = {
-    id: `p_${Date.now()}`,
-    categoryId,
-    itemName: name,
-    unit: String(unit || "piece"),
-    qty: Math.max(0, Number(qty || 0)),
-    unitPrice: Math.max(0, Number(unitPrice || 0)),
-    date: date ? new Date(date) : new Date(),
-  };
+  id: `p_${Date.now()}`,
+  categoryId,
+  itemName: name,
+  unit: String(unit || "piece"),
+  qty: Math.max(0, Number(qty || 0)),
+  unitPrice: Math.max(0, Number(unitPrice || 0)),
+  date: date ? new Date(date) : new Date(),
+  ingredientId: String(newPurchase.ingredientId || ""), // <-- NEW
+};
+
 
   setPurchases((arr) => [row, ...arr]);
-  setNewPurchase({
-    categoryId: "",
-    itemName: "",
-    unit: "piece",
-    qty: 1,
-    unitPrice: 0,
-    date: new Date().toISOString().slice(0, 10),
-  });
+  // === NEW: automatically add purchased amount to Inventory ===
+const targetInvId = findInventoryIdForPurchase(row, inventory, purchaseCategories);
+if (targetInvId) {
+  const invItem = inventory.find(it => it.id === targetInvId);
+  const delta = convertToInventoryUnit(row.qty, row.unit, invItem?.unit);
+  if (invItem && delta != null) {
+    setInventory(prev =>
+      prev.map(it =>
+        it.id === targetInvId
+          ? { ...it, qty: Number(it.qty || 0) + Number(delta) }
+          : it
+      )
+    );
+  } else {
+    alert(
+      `Purchase saved, but couldn't convert ${row.qty} ${row.unit} to ${invItem?.unit || "?"} for "${invItem?.name || targetInvId}". Inventory not changed.`
+    );
+  }
+}
+
+ setNewPurchase({
+  categoryId: "",
+  itemName: "",
+  unit: "piece",
+  qty: 1,
+  unitPrice: 0,
+  date: new Date().toISOString().slice(0, 10),
+  ingredientId: "", // <-- keep form clean
+});
+
 };
   // Admin-protected: wipe all purchases
 const resetAllPurchases = () => {
@@ -5584,6 +5667,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
