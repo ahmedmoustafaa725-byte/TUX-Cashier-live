@@ -831,8 +831,6 @@ const lockAdminPin = (n) => {
   setUnlockedPins((u) => ({ ...u, [n]: false }));
 };
 
-  const [pricesUnlocked, setPricesUnlocked] = useState(false);
-
   const [orders, setOrders] = useState([]);
   const [nextOrderNo, setNextOrderNo] = useState(1);
 
@@ -843,8 +841,11 @@ const lockAdminPin = (n) => {
   const [newExpUnitPrice, setNewExpUnitPrice] = useState(0);
   const [newExpNote, setNewExpNote] = useState("");
 
-  const [bankUnlocked, setBankUnlocked] = useState(false);
-  const [purchasesUnlocked, setPurchasesUnlocked] = useState(false);
+
+
+  // User has unlocked the Admin area for this session
+const [adminUnlocked, setAdminUnlocked] = useState(false);
+
 
   const [bankTx, setBankTx] = useState([]);
   const [bankForm, setBankForm] = useState({
@@ -2552,29 +2553,21 @@ const endedStr   = m.endedAt   ? fmtDateTime(m.endedAt)   : "—";
     transition: "background 0.2s ease, color 0.2s ease",
   };
 
- const handleTabClick = (key) => {
-  // Only top-level tabs are handled here now
+const handleTabClick = (key) => {
+  if (key === "admin") {
+    if (!adminUnlocked) {
+      const ok = !!promptAdminAndPin(); // uses your existing Admin PINs (1..6)
+      if (!ok) return;                  // stay on current tab if PIN fails/cancelled
+      setAdminUnlocked(true);
+    }
+  }
   setActiveTab(key);
 };
+
 const handleAdminSubTabClick = (sub) => {
-  if (sub === "edit" && !pricesUnlocked) {
-    const entered = window.prompt("Enter Editor PIN to open Edit:", "");
-    if (entered == null) return;
-    if (norm(entered) !== norm(EDITOR_PIN)) return alert("Wrong PIN.");
-    setPricesUnlocked(true);
-  }
-  if (sub === "bank" && !bankUnlocked) {
-    const ok = !!promptAdminAndPin();
-    if (!ok) return;
-    setBankUnlocked(true);
-  }
-  if (sub === "purchases" && !purchasesUnlocked) {
-    const ok = !!promptAdminAndPin();
-    if (!ok) return;
-    setPurchasesUnlocked(true);
-  }
-  setAdminSubTab(sub);
+  setAdminSubTab(sub); // no PIN checks here anymore
 };
+
 
 
   const bankBalance = useMemo(() => {
@@ -2852,6 +2845,16 @@ const generatePurchasesPDF = () => {
         {label}
       </button>
     ))}
+      <div style={{ marginLeft: "auto" }}>
+      <button
+        onClick={() => setAdminUnlocked(false)}
+        style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${btnBorder}` }}
+      >
+        Lock Admin
+      </button>
+    </div>
+  </div>
+)}
   </div>
 )}
 
@@ -5564,6 +5567,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
