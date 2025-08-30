@@ -3910,21 +3910,21 @@ const generatePurchasesPDF = () => {
     style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
   />
 
-  {/* Add (black text) */}
-  <button
-    onClick={handleAddPurchase}
-    style={{
-      background: "#2e7d32",
-      color: "#000",                  // ← make text black
-      border: "none",
-      borderRadius: 6,
-      padding: "8px 12px",
-      cursor: "pointer",
-      fontWeight: 700,
-    }}
-  >
-    Add Purchase
-  </button>
+<button
+  onClick={handleAddPurchase}
+  style={{
+    background: "#000",   // black button
+    color: "#fff",        // white text
+    border: "none",
+    borderRadius: 6,
+    padding: "8px 12px",
+    cursor: "pointer",
+    fontWeight: 700,
+  }}
+>
+  Add Purchase
+</button>
+
 </div>
 
 
@@ -5347,6 +5347,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
