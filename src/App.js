@@ -2427,17 +2427,32 @@ function inferInvUnitFromPurchaseUnit(u) {
 }
 
 const handleAddPurchase = () => {
-  // ...your existing validation...
+  // pull the fields from state
+  const {
+    categoryId,
+    itemName,
+    unit,
+    qty,
+    unitPrice,
+    date,
+    ingredientId,
+  } = newPurchase;
+
+  const nameStr = String(itemName || "");
+  if (!categoryId || !nameStr) {
+    alert("Choose a category and enter an item name.");
+    return;
+  }
 
   const row = {
     id: `p_${Date.now()}`,
     categoryId,
-    itemName: name,
+    itemName: nameStr,                          // ✅ don't use `name`
     unit: String(unit || "piece"),
     qty: Math.max(0, Number(qty || 0)),
     unitPrice: Math.max(0, Number(unitPrice || 0)),
     date: date ? new Date(date) : new Date(),
-    ingredientId: String(newPurchase.ingredientId || ""),
+    ingredientId: String(ingredientId || ""),   // start with whatever is selected
   };
 
   // 🔗 Ensure there is a linked inventory item
@@ -2446,7 +2461,6 @@ const handleAddPurchase = () => {
   setInventory((prev) => {
     let list = [...prev];
 
-    // Create inventory item if not found
     if (!targetInvId) {
       const catName =
         purchaseCategories.find((c) => c.id === row.categoryId)?.name ||
@@ -2454,19 +2468,11 @@ const handleAddPurchase = () => {
         "Item";
       const invUnit = inferInvUnitFromPurchaseUnit(row.unit);
       const id = ensureInvIdUnique(slug(catName), list);
-      list.push({
-        id,
-        name: catName,
-        unit: invUnit,
-        qty: 0,
-        costPerUnit: 0,
-      });
+      list.push({ id, name: catName, unit: invUnit, qty: 0, costPerUnit: 0 });
       targetInvId = id;
-      // also tag the purchase row so future matches are explicit
-      row.ingredientId = id;
+      row.ingredientId = id; // record the link on the purchase row
     }
 
-    // Add the purchased quantity (converted) to inventory
     const invItem = list.find((it) => it.id === targetInvId);
     const delta = convertToInventoryUnit(row.qty, row.unit, invItem?.unit);
     if (delta != null) {
@@ -2474,12 +2480,9 @@ const handleAddPurchase = () => {
         it.id === targetInvId ? { ...it, qty: Number(it.qty || 0) + Number(delta) } : it
       );
     } else {
-      // Units incompatible → switch item’s unit if safe (qty==0), else warn
       if (invItem && Number(invItem.qty || 0) === 0) {
         const newUnit = inferInvUnitFromPurchaseUnit(row.unit);
-        list = list.map((it) =>
-          it.id === targetInvId ? { ...it, unit: newUnit } : it
-        );
+        list = list.map((it) => (it.id === targetInvId ? { ...it, unit: newUnit } : it));
         const delta2 = convertToInventoryUnit(row.qty, row.unit, newUnit) || 0;
         list = list.map((it) =>
           it.id === targetInvId ? { ...it, qty: Number(it.qty || 0) + delta2 } : it
@@ -2493,10 +2496,8 @@ const handleAddPurchase = () => {
     return list;
   });
 
-  // Save purchase AFTER we possibly set row.ingredientId
   setPurchases((arr) => [row, ...arr]);
 
-  // reset form…
   setNewPurchase({
     categoryId: "",
     itemName: "",
@@ -2507,6 +2508,7 @@ const handleAddPurchase = () => {
     ingredientId: "",
   });
 };
+
 
   // Admin-protected: wipe all purchases
 const resetAllPurchases = () => {
@@ -5765,6 +5767,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
