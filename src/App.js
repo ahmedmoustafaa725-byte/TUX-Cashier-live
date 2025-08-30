@@ -1055,7 +1055,8 @@ useEffect(() => {
   if (cat?.unit && newPurchase.unit !== cat.unit) {
     setNewPurchase(p => ({ ...p, unit: cat.unit }));
   }
-}, [newPurchase.categoryId, purchaseCategories]);
+}, [newPurchase.categoryId, newPurchase.unit, purchaseCategories]);
+
 
   // Auto-link purchase to an inventory item by category name (if possible)
 useEffect(() => {
@@ -4492,11 +4493,10 @@ const generatePurchasesPDF = () => {
   <select
     value={cat.unit || "piece"}               // fallback for old data
     onChange={(e) => {
-      const u = e.target.value;
-      setPurchaseCategories(prev =>
-        prev.map(c => (c.id === cat.id ? { ...c, unit: u } : c))
-      );
-    }}
+  e.stopPropagation();
+  updatePurchaseCategoryUnit(cat.id, e.target.value);
+}}
+
     onClick={(e) => e.stopPropagation()}      // extra safety
     style={{
       padding: 4,
@@ -5843,6 +5843,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
