@@ -423,11 +423,27 @@ function escHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
+// Date formatting: dd/mm/yy
+function fmtDate(d) {
+  const dt = d instanceof Date ? d : new Date(d);
+  const dd = String(dt.getDate()).padStart(2, "0");
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const yy = String(dt.getFullYear()).slice(-2);
+  return `${dd}/${mm}/${yy}`;
+}
+
+// If you ever need date + time later, you can use this:
+function fmtDateTime(d) {
+  const dt = d instanceof Date ? d : new Date(d);
+  const time = dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return `${fmtDate(dt)} ${time}`;
+}
+
 function buildReceiptHTML(order, widthMm = 80) {
   const m = Math.max(0, Math.min(4, 4)); // padding mm
   const currency = (v) => `E£${Number(v || 0).toFixed(2)}`;
   const dt = new Date(order.date);
-  const orderDateStr = `${dt.getDate()}/${dt.getMonth() + 1}/${dt.getFullYear()}`;
+  const orderDateStr = fmtDate(dt);
   const orderTimeStr = dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
   const itemsSubtotal =
@@ -820,11 +836,12 @@ const lockAdminPin = (n) => {
 
   const sortBy = "date-desc";
 
-  const [nowStr, setNowStr] = useState(new Date().toLocaleString());
-  useEffect(() => {
-    const t = setInterval(() => setNowStr(new Date().toLocaleString()), 1000);
-    return () => clearInterval(t);
-  }, []);
+  const [nowStr, setNowStr] = useState(fmtDate(new Date()));
+useEffect(() => {
+  const t = setInterval(() => setNowStr(fmtDate(new Date())), 1000);
+  return () => clearInterval(t);
+}, []);
+
 
   const [newMenuName, setNewMenuName] = useState("");
   const [newMenuPrice, setNewMenuPrice] = useState(0);
@@ -2496,10 +2513,9 @@ const removePurchaseCategory = (catId) => {
 const currency = (v) => `E£${Number(v || 0).toFixed(2)}`;
 
 // Date -> YYYY-MM-DD for Purchases tables
-const prettyDate = (d) => {
-  const dt = d instanceof Date ? d : new Date(d);
-  return dt.toISOString().slice(0, 10);
-};
+// Date -> dd/mm/yy for Purchases tables
+const prettyDate = (d) => fmtDate(d);
+
 
      // === ADD BELOW: Purchases PDF report =================================
 const generatePurchasesPDF = () => {
@@ -2661,7 +2677,7 @@ const generatePurchasesPDF = () => {
           <>
             <span>
               Started by <b>{dayMeta.startedBy}</b> at{" "}
-              <b>{new Date(dayMeta.startedAt).toLocaleString()}</b>
+              <b>{fmtDate(dayMeta.startedAt)}</b>
               {dayMeta.currentWorker && (
                 <> • Current: <b>{dayMeta.currentWorker}</b></>
               )}
@@ -3354,7 +3370,7 @@ const generatePurchasesPDF = () => {
                     Order #{o.orderNo} — E£{o.total.toFixed(2)}{" "}
                     {o.cloudId ? "☁" : ""}
                   </strong>
-                  <span>{o.date.toLocaleString()}</span>
+                  <span>{fmtDate(o.date)}</span>
                 </div>
                 <div style={{ color: dark ? "#ccc" : "#555", marginTop: 4 }}>
                   Worker: {o.worker} • Payment: {o.payment}
@@ -3377,7 +3393,7 @@ const generatePurchasesPDF = () => {
                              {o.voided && (
   <>
     {o.restockedAt && (
-      <span> • Cancelled at: {o.restockedAt.toLocaleString()}</span>
+      <span> • Cancelled at: {fmtDate(o.restockedAt)}</span>
     )}
     {o.voidReason && (
       <span> • Reason: {o.voidReason}</span>
@@ -3526,9 +3542,8 @@ const generatePurchasesPDF = () => {
                 <strong>Locked:</strong>
                 <span>
                   Start-of-day captured{" "}
-                  {inventoryLockedAt
-                    ? `at ${new Date(inventoryLockedAt).toLocaleString()}`
-                    : "" }
+                  {inventoryLockedAt ? `at ${fmtDate(inventoryLockedAt)}` : "" }
+
                   . Editing disabled until <b>End the Day</b> or admin unlock.
                 </span>
                 <button
@@ -5449,6 +5464,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
