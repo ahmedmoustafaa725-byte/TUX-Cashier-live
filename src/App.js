@@ -2146,8 +2146,10 @@ const byCategory = useMemo(() => {
 
 // KPI: Net after Purchases
 
-const handleAddPurchase = () => {
-  const { categoryId, itemName, unit, qty, unitPrice, date } = newPurchase;
+// allow adding to a specific category section
+const handleAddPurchase = (catId) => {
+  const categoryId = catId || newPurchase.categoryId;
+  const { itemName, unit, qty, unitPrice, date } = newPurchase;
 
   if (!categoryId) return alert("Select a category.");
   const name = String(itemName || "").trim();
@@ -2173,6 +2175,7 @@ const handleAddPurchase = () => {
     date: new Date().toISOString().slice(0, 10),
   });
 };
+
   // Admin-protected: wipe all purchases
 const resetAllPurchases = () => {
   const okAdmin = !!promptAdminAndPin();
@@ -3995,7 +3998,7 @@ const generatePurchasesPDF = () => {
 
     </div>
 
-         {/* Add Category Box */}
+       {/* Add Category Box */}
 <div
   style={{
     border: `1px solid ${btnBorder}`,
@@ -4013,16 +4016,11 @@ const generatePurchasesPDF = () => {
       alignItems: "center",
     }}
   >
-    {/* Plus badge (optional) */}
+    {/* Plus badge */}
     <div
       style={{
-        width: 48,
-        height: 48,
-        borderRadius: 12,
-        border: `1px solid ${btnBorder}`,
-        display: "grid",
-        placeItems: "center",
-        fontSize: 24,
+        width: 48, height: 48, borderRadius: 12, border: `1px solid ${btnBorder}`,
+        display: "grid", placeItems: "center", fontSize: 24,
         background: dark ? "#333" : "#f9f9f9",
       }}
     >
@@ -4031,43 +4029,37 @@ const generatePurchasesPDF = () => {
 
     {/* Input */}
     <input
+      type="text"
+      placeholder="New category name"
       value={newCategoryName}
       onChange={(e) => setNewCategoryName(e.target.value)}
-      placeholder="Category name"
-      style={{
-        padding: "12px 14px",
-        borderRadius: 12,
-        border: `1px solid ${btnBorder}`,
-        background: dark ? "#121212" : "#fff",
-        color: dark ? "#eee" : "#000",
-      }}
+      style={{ padding: 8, borderRadius: 8, border: `1px solid ${btnBorder}` }}
     />
 
-    {/* Button — INSIDE the box */}
+    {/* Button */}
     <button
       onClick={() => {
-        const name = String(newCategoryName || "").trim();
-        if (!name) return alert("Category name required.");
-        const id =
-          `cat_${Date.now()}`; // or your existing id scheme
-        setPurchaseCategories((arr) => [...arr, { id, name }]);
+        const name = (newCategoryName || "").trim();
+        if (!name) return alert("Enter a category name.");
+        const id = `cat_${Date.now()}`;
+        setPurchaseCategories((list) => [...list, { id, name }]);
         setNewCategoryName("");
       }}
       style={{
-        padding: "12px 14px",
-        borderRadius: 12,
-        border: `1px solid ${btnBorder}`,
-        background: "#000",
+        padding: "10px 12px",
+        borderRadius: 10,
+        border: "none",
+        background: "#1976d2",
         color: "#fff",
         fontWeight: 700,
         cursor: "pointer",
-        height: 48,
       }}
     >
-      Add
+      Add Category
     </button>
   </div>
 </div>
+
 
     /* === DETAILS LIST ================================================= */
     <div style={{ marginTop: 4 }}>
@@ -5327,6 +5319,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
