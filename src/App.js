@@ -357,7 +357,7 @@ const PURCHASE_UNITS = ["kg", "g", "L", "ml", "piece", "pack", "dozen", "bottle"
 
 
 
-const EDITOR_PIN = "0512";
+
 const DEFAULT_ADMIN_PINS = {
   1: "1111",
   2: "2222",
@@ -811,25 +811,7 @@ const [inventorySnapshot, setInventorySnapshot] = useState([]);
 const [inventoryLockedAt, setInventoryLockedAt] = useState(null);
 
   const [adminPins, setAdminPins] = useState({ ...DEFAULT_ADMIN_PINS });
-  const [unlockedPins, setUnlockedPins] = useState({}); // {1:true, 2:false, ...}
-  const verifyAdminPin = (n) => {
-  const entered = window.prompt(`Enter PIN for Admin ${n}:`, "");
-  if (entered == null) return false;
-  if (norm(entered) !== norm(adminPins[n] || "")) {
-    alert("Invalid PIN.");
-    return false;
-  }
-  return true;
-};
-
-const unlockAdminPin = (n) => {
-  if (!verifyAdminPin(n)) return;
-  setUnlockedPins((u) => ({ ...u, [n]: true }));
-};
-
-const lockAdminPin = (n) => {
-  setUnlockedPins((u) => ({ ...u, [n]: false }));
-};
+  const [unlockedPins, setUnlockedPins] = useState({}); 
 
   const [orders, setOrders] = useState([]);
   const [nextOrderNo, setNextOrderNo] = useState(1);
@@ -2278,21 +2260,6 @@ const catTotals = useMemo(() => {
   return m;
 }, [filteredPurchases]);
 
-// Map category -> rows (sorted by date)
-const byCategory = useMemo(() => {
-  const m = new Map();
-  for (const p of filteredPurchases) {
-    const key = p.categoryId || "";
-    const arr = m.get(key) || [];
-    arr.push(p);
-    m.set(key, arr);
-  }
-  // ✅ no unused variable
-  for (const arr of m.values()) {
-    arr.sort((a, b) => +new Date(a.date) - +new Date(b.date));
-  }
-  return m;
-}, [filteredPurchases]);
 
 
 // KPI: Net after Purchases
@@ -5568,6 +5535,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
