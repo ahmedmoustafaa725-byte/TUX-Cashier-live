@@ -3112,38 +3112,7 @@ const generatePurchasesPDF = () => {
     </div>
   </div>
 )}
-{/* ADMIN → Purchases: Add Category bar */}
-{activeTab === "admin" && adminSubTab === "purchases" && (
-  <div style={{ marginBottom: 12, padding: 10, border: `1px solid ${btnBorder}`, borderRadius: 8 }}>
-    <h3 style={{ marginTop: 0 }}>Add Purchase Category</h3>
-    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-      <input
-        type="text"
-        placeholder="Category name (e.g., Meat)"
-        value={newCategoryName}
-        onChange={(e) => setNewCategoryName(e.target.value)}
-        style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 220 }}
-      />
-      <select
-        value={newCategoryUnit}
-        onChange={(e) => setNewCategoryUnit(e.target.value)}
-        style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-      >
-        <option value="">Select unit</option>
-        {PURCHASE_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-      </select>
-      <button
-        onClick={addPurchaseCategory}
-        style={{ padding: "8px 12px", borderRadius: 6, border: "none", background: "#43a047", color: "#fff", cursor: "pointer" }}
-      >
-        Add Category
-      </button>
-    </div>
-    <small style={{ opacity: .8 }}>
-      Tip: this unit becomes the default when you add purchases under this category.
-    </small>
-  </div>
-)}
+
 
       {/* ORDERS */}
       {activeTab === "orders" && (
@@ -4521,77 +4490,85 @@ const generatePurchasesPDF = () => {
 })}
 
 
-      {/* Add Category tile (inside the categories group) */}
-      <div
-        style={{
-          padding: 14,
-          borderRadius: 12,
-          border: `1px solid ${cardBorder}`,
-          background: dark ? "#1a1a1a" : "#fff",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span
-            style={{
-              display: "inline-flex",
-              width: 28,
-              height: 28,
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: 8,
-              border: `1px solid ${btnBorder}`,
-              fontWeight: 800,
-            }}
-          >
-            +
-          </span>
-          <div style={{ fontWeight: 700 }}>Add Category</div>
-        </div>
-        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-          <input
-            type="text"
-            placeholder="Category name"
-            value={newCategoryName}
-            onChange={(e) => setNewCategoryName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                const name = String(newCategoryName || "").trim();
-                if (!name) return;
-                const id = `cat_${Date.now()}`;
-                setPurchaseCategories((arr) => [...arr, { id, name }]);
-                setNewCategoryName("");
-                setShowAllCats(true);
-              }
-            }}
-            style={{
-              flex: 1,
-              padding: 10,
-              borderRadius: 10,
-              border: `1px solid ${btnBorder}`,
-              background: dark ? "#121212" : "#fff",
-              color: dark ? "#eee" : "#000",
-            }}
-          />
-          <button
-            onClick={() => {
-              const name = String(newCategoryName || "").trim();
-              if (!name) return;
-              const id = `cat_${Date.now()}`;
-              setPurchaseCategories((arr) => [...arr, { id, name }]);
-              setNewCategoryName("");
-            }}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 10,
-              border: "none",
-              background: "#000",
-              color: "#fff",
-              cursor: "pointer",
-            }}
-          >
-            Add
-          </button>
-        </div>
+    {/* Add Category tile (inside the categories group) */}
+<div
+  style={{
+    padding: 14,
+    borderRadius: 12,
+    border: `1px solid ${cardBorder}`,
+    background: dark ? "#1a1a1a" : "#fff",
+  }}
+>
+  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+    <span
+      style={{
+        display: "inline-flex",
+        width: 28,
+        height: 28,
+        alignItems: "center",
+        justifyContent: "center",
+        borderRadius: 8,
+        border: `1px solid ${btnBorder}`,
+        fontWeight: 800,
+      }}
+    >
+      +
+    </span>
+    <div style={{ fontWeight: 700 }}>Add Category</div>
+  </div>
+
+  <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+    <input
+      type="text"
+      placeholder="Category name"
+      value={newCategoryName}
+      onChange={(e) => setNewCategoryName(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") addPurchaseCategory();
+      }}
+      style={{
+        flex: 1,
+        minWidth: 160,
+        padding: 10,
+        borderRadius: 10,
+        border: `1px solid ${btnBorder}`,
+        background: dark ? "#121212" : "#fff",
+        color: dark ? "#eee" : "#000",
+      }}
+    />
+
+    {/* NEW: unit select lives in the same row */}
+    <select
+      value={newCategoryUnit}
+      onChange={(e) => setNewCategoryUnit(e.target.value)}
+      style={{
+        padding: 10,
+        borderRadius: 10,
+        border: `1px solid ${btnBorder}`,
+        background: dark ? "#121212" : "#fff",
+        color: dark ? "#eee" : "#000",
+      }}
+      title="Default unit for this category"
+    >
+      {PURCHASE_UNITS.map((u) => (
+        <option key={u} value={u}>{u}</option>
+      ))}
+    </select>
+
+    <button
+      onClick={addPurchaseCategory}
+      style={{
+        padding: "10px 14px",
+        borderRadius: 10,
+        border: "none",
+        background: "#000",
+        color: "#fff",
+        cursor: "pointer",
+      }}
+    >
+      Add
+    </button>
+  </div>
       </div>
     </div>
 
@@ -5847,6 +5824,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
