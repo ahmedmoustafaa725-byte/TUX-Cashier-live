@@ -1,4 +1,3 @@
-
 import React, { useEffect, useMemo, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -340,18 +339,38 @@ const DEFAULT_ZONES = [
 ];
 
 // ---- Purchase categories (you can add more in Purchases tab) ----       // ⬅️ NEW
+// ---- Purchase categories (you can add more in Purchases tab) ----
 const DEFAULT_PURCHASE_CATEGORIES = [
-  "Buns", "Meat", "Cheese", "Veg", "Sauces", "Packaging", "Drinks"
+  { id: "cat_buns",  name: "Buns",      unit: "piece" },
+  { id: "cat_meat",  name: "Meat",      unit: "kg" },
+  { id: "cat_cheese",name: "Cheese",    unit: "slice" },
+  { id: "cat_veg",   name: "Veg",       unit: "g" },
+  { id: "cat_sauces",name: "Sauces",    unit: "ml" },
+  { id: "cat_pack",  name: "Packaging", unit: "piece" },
+  { id: "cat_drink", name: "Drinks",    unit: "can" },
 ];
+
 
 // Normalizes categories that might be strings or objects
 function normalizePurchaseCategories(arr = []) {
-  return (arr || []).map((c, i) =>
-    typeof c === "string"
-      ? { id: `cat_${i + 1}`, name: c }
-      : { id: c.id || `cat_${i + 1}`, name: c.name || String(c.id || `Cat ${i + 1}`) }
-  );
+  return (arr || []).map((c, i) => {
+    if (typeof c === "string") {
+      const nm = c;
+      return {
+        id: `cat_${i + 1}`,
+        name: nm,
+        unit: inferUnitFromCategoryName(nm), // fallback if old format
+      };
+    }
+    const nm = c.name || String(c.id || `Cat ${i + 1}`);
+    return {
+      id: c.id || `cat_${i + 1}`,
+      name: nm,
+      unit: c.unit || inferUnitFromCategoryName(nm),
+    };
+  });
 }
+
 
 // Allowed units for Purchases
 const PURCHASE_UNITS = ["kg", "g", "L", "ml", "piece", "pack", "dozen", "bottle", "can", "bag", "box", "carton", "slice", "block"];
@@ -833,7 +852,7 @@ const [adminSubTab, setAdminSubTab] = useState("inventory");
   const [selectedExtras, setSelectedExtras] = useState([]);
   const [selectedQty, setSelectedQty] = useState(1);
   const [cart, setCart] = useState([]);
-  
+  const [newCategoryUnit, setNewCategoryUnit] = useState("piece");
   const [worker, setWorker] = useState("");
   const [payment, setPayment] = useState("");
   // Split payment support
@@ -1032,7 +1051,7 @@ const [lastLocalEditAt, setLastLocalEditAt] = useState(0);
         out.push({
           id,
           name: catName,
-          unit: inferUnitFromCategoryName(catName),
+          unit: c.unit || inferUnitFromCategoryName(catName),
           qty: 0,
           costPerUnit: 0,
         });
@@ -1064,6 +1083,19 @@ useEffect(() => {
     hour12: true,        // 24-hour like your Cairo clock
   })}`;
 });
+
+  // When user picks a category, default the purchase unit to that category's unit (unless user already set one)
+useEffect(() => {
+  if (!newPurchase?.categoryId) return;
+  const cat = purchaseCategories.find(c => c.id === newPurchase.categoryId);
+  if (!cat) return;
+  setNewPurchase(p => {
+    // don't override if user already chose something custom this time
+    if (p.unit && p.unit !== "piece") return p;
+    return { ...p, unit: cat.unit || p.unit || "piece" };
+  });
+}, [newPurchase.categoryId, purchaseCategories]);
+
 
 useEffect(() => {
   const id = setInterval(() => {
@@ -2459,6 +2491,7 @@ const handleAddPurchase = () => {
     date: date ? new Date(date) : new Date(),
     ingredientId: String(ingredientId || ""),   // start with whatever is selected
   };
+  
 
   // 🔗 Ensure there is a linked inventory item
   let targetInvId = findInventoryIdForPurchase(row, inventory, purchaseCategories);
@@ -2514,6 +2547,17 @@ const handleAddPurchase = () => {
   });
 };
 
+  const addPurchaseCategory = () => {
+  const nm = String(newCategoryName || "").trim();
+  if (!nm) return alert("Enter category name");
+  const id = ensureInvIdUnique(slug(nm), purchaseCategories); // reuse your helpers
+  setPurchaseCategories(list => [
+    ...list,
+    { id, name: nm, unit: newCategoryUnit || inferUnitFromCategoryName(nm) },
+  ]);
+  setNewCategoryName("");
+  setNewCategoryUnit("piece");
+};
 
   // Admin-protected: wipe all purchases
 const resetAllPurchases = () => {
@@ -2730,6 +2774,7 @@ const endedStr   = m.endedAt   ? fmtDateTime(m.endedAt)   : "—";
       if (idx < 0) return arr;
       return moveByIndex(arr, idx, +1);
     });
+  
 
   const cardBorder = dark ? "#555" : "#ddd";
   const softBg = dark ? "#1e1e1e" : "#f5f5f5";
@@ -3067,8 +3112,38 @@ const generatePurchasesPDF = () => {
     </div>
   </div>
 )}
-
-
+{/* ADMIN → Purchases: Add Category bar */}
+{activeTab === "admin" && adminSubTab === "purchases" && (
+  <div style={{ marginBottom: 12, padding: 10, border: `1px solid ${btnBorder}`, borderRadius: 8 }}>
+    <h3 style={{ marginTop: 0 }}>Add Purchase Category</h3>
+    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      <input
+        type="text"
+        placeholder="Category name (e.g., Meat)"
+        value={newCategoryName}
+        onChange={(e) => setNewCategoryName(e.target.value)}
+        style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 220 }}
+      />
+      <select
+        value={newCategoryUnit}
+        onChange={(e) => setNewCategoryUnit(e.target.value)}
+        style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+      >
+        <option value="">Select unit</option>
+        {PURCHASE_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+      </select>
+      <button
+        onClick={addPurchaseCategory}
+        style={{ padding: "8px 12px", borderRadius: 6, border: "none", background: "#43a047", color: "#fff", cursor: "pointer" }}
+      >
+        Add Category
+      </button>
+    </div>
+    <small style={{ opacity: .8 }}>
+      Tip: this unit becomes the default when you add purchases under this category.
+    </small>
+  </div>
+)}
 
       {/* ORDERS */}
       {activeTab === "orders" && (
@@ -5772,6 +5847,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
