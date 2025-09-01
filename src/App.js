@@ -4252,31 +4252,17 @@ const generatePurchasesPDF = () => {
                   <td style={{ padding: 6 }}>{e.date ? fmtDateTime(e.date) : ""}</td>
                   <td style={{ padding: 6 }}>{e.note}</td>
                   <td style={{ padding: 6 }}>
-                  <button
-  onClick={() => {
-    const locked = !!(e?.locked || e?.source === "order_return" || e?.orderNo != null);
-    if (locked) {
-      alert("This expense is linked to a returned order and cannot be removed.");
-      return;
-    }
-    setExpenses((arr) => arr.filter((x) => x.id !== e.id));
-  }}
-  disabled={!!(e?.locked || e?.source === "order_return" || e?.orderNo != null)}
-  title={
-    (e?.locked || e?.source === "order_return" || e?.orderNo != null)
-      ? "Linked to returned order — cannot remove"
-      : "Remove"
-  }
+<button
+  onClick={() => removeExpense(e.id)}
+  disabled={isExpenseLocked(e)}
+  title={isExpenseLocked(e) ? "Linked to returned order — cannot remove" : "Remove"}
   style={{
     background: "#c62828",
     color: "#fff",
     border: "none",
     borderRadius: 6,
     padding: "6px 10px",
-    cursor:
-      (e?.locked || e?.source === "order_return" || e?.orderNo != null)
-        ? "not-allowed"
-        : "pointer",
+    cursor: isExpenseLocked(e) ? "not-allowed" : "pointer",
   }}
 >
   Remove
@@ -5920,6 +5906,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
