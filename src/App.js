@@ -839,6 +839,10 @@ function dedupeCustomers(list = []) {
   return out;
 }
 
+// Expenses from returned orders are "locked"
+const isExpenseLocked = (e) =>
+  !!(e?.locked || e?.source === "order_return" || e?.orderNo != null);
+
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("orders");
@@ -2311,15 +2315,20 @@ const voidOrderToExpense = async (orderNo) => {
   );
   if (!ok) return;
 
-  // Local expense row always (this is your ledger)
+  // 🔒 Locked expense row (cannot be removed)
   const expRow = {
-    id: `exp_${Date.now()}`,
-    name: `Voided order #${orderNo} — ${ord.orderType || "-"}`,
+    id: `exp_ret_${orderNo}_${Date.now()}`,
+    name: `Returned order #${orderNo} — ${ord.orderType || "-"}`,
     unit: "order",
     qty: 1,
     unitPrice: itemsOnly,
     note: reason,
     date: new Date(),
+
+    // lock flags
+    locked: true,
+    source: "order_return",
+    orderNo,
   };
   setExpenses((arr) => [expRow, ...arr]);
 
@@ -2353,6 +2362,7 @@ const voidOrderToExpense = async (orderNo) => {
     console.warn("Cloud update (void→expense) failed:", e);
   }
 };
+
 
 
 
@@ -2638,6 +2648,20 @@ const removePurchaseCategory = (catId) => {
   setPurchaseCatFilterId(prev => (prev === catId ? "" : prev));
   setNewPurchase(p => (p.categoryId === catId ? { ...p, categoryId: "" } : p));
 };
+
+  // --- Expenses: protected delete (prevents removal of returned-order expenses)
+const removeExpense = (id) => {
+  setExpenses((arr) => {
+    const row = arr.find((e) => e.id === id);
+    if (!row) return arr;
+    if (isExpenseLocked(row)) {
+      alert("This expense is linked to a returned order and cannot be removed.");
+      return arr; // block deletion
+    }
+    return arr.filter((e) => e.id !== id);
+  });
+};
+
 
 
   // --------------------------- PDF: REPORT ---------------------------
@@ -4228,19 +4252,36 @@ const generatePurchasesPDF = () => {
                   <td style={{ padding: 6 }}>{e.date ? fmtDateTime(e.date) : ""}</td>
                   <td style={{ padding: 6 }}>{e.note}</td>
                   <td style={{ padding: 6 }}>
-                    <button
-                      onClick={() => setExpenses((arr) => arr.filter((x) => x.id !== e.id))}
-                      style={{
-                        background: "#c62828",
-                        color: "#fff",
-                        border: "none",
-                        borderRadius: 6,
-                        padding: "6px 10px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Remove
-                    </button>
+                  <button
+  onClick={() => {
+    const locked = !!(e?.locked || e?.source === "order_return" || e?.orderNo != null);
+    if (locked) {
+      alert("This expense is linked to a returned order and cannot be removed.");
+      return;
+    }
+    setExpenses((arr) => arr.filter((x) => x.id !== e.id));
+  }}
+  disabled={!!(e?.locked || e?.source === "order_return" || e?.orderNo != null)}
+  title={
+    (e?.locked || e?.source === "order_return" || e?.orderNo != null)
+      ? "Linked to returned order — cannot remove"
+      : "Remove"
+  }
+  style={{
+    background: "#c62828",
+    color: "#fff",
+    border: "none",
+    borderRadius: 6,
+    padding: "6px 10px",
+    cursor:
+      (e?.locked || e?.source === "order_return" || e?.orderNo != null)
+        ? "not-allowed"
+        : "pointer",
+  }}
+>
+  Remove
+</button>
+
                   </td>
                 </tr>
               ))}
@@ -5879,6 +5920,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
