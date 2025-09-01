@@ -75,6 +75,23 @@ function packStateForCloud(state) {
     bankTx,
   } = state;
 
+  const purchases = Array.isArray(state.purchases)
+    ? state.purchases.map((p) => ({
+        ...p,
+        date: p.date ? p.date.toISOString() : null,
+      }))
+    : [];
+
+  const purchaseCategories = Array.isArray(state.purchaseCategories)
+    ? state.purchaseCategories
+    : [];
+
+  const customers = Array.isArray(state.customers) ? state.customers : [];
+
+  const deliveryZones = Array.isArray(state.deliveryZones)
+    ? state.deliveryZones
+    : [];
+
   return {
     version: 1,
     updatedAt: serverTimestamp(),
@@ -102,22 +119,14 @@ function packStateForCloud(state) {
       ...e,
       date: e.date ? e.date.toISOString() : null,
     })),
-    purchases: (state.purchases || []).map((p) => ({ ...p, date: p.date ? p.date.toISOString() : null })), // ⬅️ NEW
-purchaseCategories: state.purchaseCategories || [],   // ⬅️ NEW
-customers: state.customers || [],                     // ⬅️ NEW
-deliveryZones: state.deliveryZones || [],             // ⬅️ NEW
-...(Array.isArray(state.purchases) ? {
-  purchases: state.purchases.map(p => ({ ...p, date: p.date ? p.date.toISOString() : null })),
- } : {}),
- ...(Array.isArray(state.purchaseCategories) ? { purchaseCategories: state.purchaseCategories } : {}),
- ...(Array.isArray(state.customers) ? { customers: state.customers } : {}),
- ...(Array.isArray(state.deliveryZones) ? { deliveryZones: state.deliveryZones } : {}),
+    purchases,
+    purchaseCategories,
+    customers,
+    deliveryZones,
     dayMeta: dayMeta
       ? {
           ...dayMeta,
-          startedAt: dayMeta.startedAt
-            ? dayMeta.startedAt.toISOString()
-            : null,
+          startedAt: dayMeta.startedAt ? dayMeta.startedAt.toISOString() : null,
           endedAt: dayMeta.endedAt ? dayMeta.endedAt.toISOString() : null,
           lastReportAt: dayMeta.lastReportAt
             ? dayMeta.lastReportAt.toISOString()
@@ -137,6 +146,7 @@ deliveryZones: state.deliveryZones || [],             // ⬅️ NEW
     })),
   };
 }
+
 
 function unpackStateFromCloud(data, fallbackDayMeta = {}) {
   const out = {};
@@ -1514,73 +1524,81 @@ if (ts && lastLocalEditAt && ts < lastLocalEditAt) return;
 
 
   // Autosave (state doc) – never saves orders when realtime is ON
-  useEffect(() => {
-    if (!cloudEnabled || !stateDocRef || !fbUser || !hydrated) return;
-    const t = setTimeout(async () => {
-    const bodyBase = packStateForCloud({
-      menu,
-      extraList,
-      orders: realtimeOrders ? [] : orders,
-      inventory,
-      nextOrderNo,
-      dark,
-      workers,
-      paymentMethods,
-      inventoryLocked,
-      inventorySnapshot,
-      inventoryLockedAt,
-      adminPins,
-      orderTypes,
-      defaultDeliveryFee,
-      expenses,
-      purchases,
-      purchaseCategories,
-      customers,
-      deliveryZones,
-      dayMeta,
-      bankTx,
-    });
+useEffect(() => {
+  if (!cloudEnabled || !stateDocRef || !fbUser || !hydrated) return;
 
-    // Fence fields
-    writeSeqRef.current += 1;
-    const body = {
-      ...bodyBase,
-      writerId: clientIdRef.current,
-      writeSeq: writeSeqRef.current,
-      clientTime: Date.now(),
-    };
-        await setDoc(stateDocRef, body, { merge: true });
-        setCloudStatus((s) => ({ ...s, lastSaveAt: new Date(), error: null }));
-      } catch (e) {
-        setCloudStatus((s) => ({ ...s, error: String(e) }));
-      }
-    }, 1600);
-    return () => clearTimeout(t);
-  }, [
-    cloudEnabled,
-    stateDocRef,
-    fbUser,
-    hydrated,
-    menu,
-    extraList,
-    orders,
-    inventory,
-    nextOrderNo,
-    dark,
-    workers,
-    paymentMethods,
-    inventoryLocked,
-    inventorySnapshot,
-    inventoryLockedAt,
-    adminPins,
-    orderTypes,
-    defaultDeliveryFee,
-    expenses,
-    purchases, purchaseCategories, customers, deliveryZones,
-    dayMeta,
-    bankTx,
-    realtimeOrders,
-  ]);
+  const t = setTimeout(async () => {
+    try {
+      const bodyBase = packStateForCloud({
+        menu,
+        extraList,
+        orders: realtimeOrders ? [] : orders,
+        inventory,
+        nextOrderNo,
+        dark,
+        workers,
+        paymentMethods,
+        inventoryLocked,
+        inventorySnapshot,
+        inventoryLockedAt,
+        adminPins,
+        orderTypes,
+        defaultDeliveryFee,
+        expenses,
+        purchases,
+        purchaseCategories,
+        customers,
+        deliveryZones,
+        dayMeta,
+        bankTx,
+      });
+
+      // Fence fields
+      writeSeqRef.current += 1;
+      const body = {
+        ...bodyBase,
+        writerId: clientIdRef.current,
+        writeSeq: writeSeqRef.current,
+        clientTime: Date.now(),
+      };
+
+      await setDoc(stateDocRef, body, { merge: true });
+      setCloudStatus((s) => ({ ...s, lastSaveAt: new Date(), error: null }));
+    } catch (e) {
+      setCloudStatus((s) => ({ ...s, error: String(e) }));
+    }
+  }, 1600);
+
+  return () => clearTimeout(t);
+}, [
+  cloudEnabled,
+  stateDocRef,
+  fbUser,
+  hydrated,
+  menu,
+  extraList,
+  orders,
+  inventory,
+  nextOrderNo,
+  dark,
+  workers,
+  paymentMethods,
+  inventoryLocked,
+  inventorySnapshot,
+  inventoryLockedAt,
+  adminPins,
+  orderTypes,
+  defaultDeliveryFee,
+  expenses,
+  purchases,
+  purchaseCategories,
+  customers,
+  deliveryZones,
+  dayMeta,
+  bankTx,
+  realtimeOrders,
+]);
+
 
   const startedAtMs = dayMeta?.startedAt
     ? new Date(dayMeta.startedAt).getTime()
@@ -5861,6 +5879,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
