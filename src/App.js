@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { initializeApp, getApps, getApp } from "firebase/app";
@@ -999,6 +999,10 @@ const [lastLocalEditAt, setLastLocalEditAt] = useState(0);
   });
   const [hydrated, setHydrated] = useState(false);
   const [lastAppliedCloudAt, setLastAppliedCloudAt] = useState(0);
+  // Prevent our own cloud writes from boomeranging back
+const clientIdRef = useRef(`cli_${Math.random().toString(36).slice(2)}`);
+const writeSeqRef = useRef(0);
+
 
 
   // Printing preferences (kept)
@@ -1458,39 +1462,48 @@ if (ts && lastLocalEditAt && ts < lastLocalEditAt) return;
       alert("Cloud load failed: " + e);
     }
   };
-  const saveToCloudNow = async () => {
+ const saveToCloudNow = async () => {
   if (!stateDocRef || !fbUser) return alert("Firebase not ready.");
   try {
-    
-   const bodyBase = packStateForCloud({
-       menu, extraList, orders: realtimeOrders ? [] : orders, inventory,
-       nextOrderNo, dark, workers, paymentMethods,
-       inventoryLocked, inventorySnapshot, inventoryLockedAt,
-       adminPins, orderTypes, defaultDeliveryFee,
-       expenses,
-       purchases, purchaseCategories, customers, deliveryZones,   // ⬅️ add these
-       dayMeta, bankTx,
- });
-     // fence: mark this write as ours and bump our local sequence
+    const bodyBase = packStateForCloud({
+      menu,
+      extraList,
+      orders: realtimeOrders ? [] : orders,
+      inventory,
+      nextOrderNo,
+      dark,
+      workers,
+      paymentMethods,
+      inventoryLocked,
+      inventorySnapshot,
+      inventoryLockedAt,
+      adminPins,
+      orderTypes,
+      defaultDeliveryFee,
+      expenses,
+      purchases,
+      purchaseCategories,
+      customers,
+      deliveryZones,
+      dayMeta,
+      bankTx,
+    });
+
+    // Fence fields
     writeSeqRef.current += 1;
     const body = {
       ...bodyBase,
       writerId: clientIdRef.current,
       writeSeq: writeSeqRef.current,
       clientTime: Date.now(),
-           });
-        writeSeqRef.current += 1;
-        const body = {
-          ...bodyBase,
-          writerId: clientIdRef.current,
-          writeSeq: writeSeqRef.current,
-          clientTime: Date.now(),
-        };
-        await setDoc(stateDocRef, body, { merge: true });
+    };
 
-    // mark latest timestamps so the cloud listener won't re-apply this back onto us
-setLastLocalEditAt(Date.now());
-setLastAppliedCloudAt(Date.now());
+    await setDoc(stateDocRef, body, { merge: true });
+
+    // So our listener won’t re-apply this right away
+    const now = Date.now();
+    setLastLocalEditAt(now);
+    setLastAppliedCloudAt(now);
 
     alert("Synced to cloud ✔");
   } catch (e) {
@@ -1499,34 +1512,43 @@ setLastAppliedCloudAt(Date.now());
 };
 
 
+
   // Autosave (state doc) – never saves orders when realtime is ON
   useEffect(() => {
     if (!cloudEnabled || !stateDocRef || !fbUser || !hydrated) return;
     const t = setTimeout(async () => {
-      try {
-        const bodybase = packStateForCloud({
-          menu,
-          extraList,
-          orders: realtimeOrders ? [] : orders,
-          inventory,
-          nextOrderNo,
-          dark,
-          workers,
-          paymentMethods,
-          inventoryLocked,
-          inventorySnapshot,
-          inventoryLockedAt,
-          adminPins,
-          orderTypes,
-          defaultDeliveryFee,
-          expenses,
-           purchases,
-        purchaseCategories,
-        customers,
-        deliveryZones,
-          dayMeta,
-          bankTx,
-        });
+    const bodyBase = packStateForCloud({
+      menu,
+      extraList,
+      orders: realtimeOrders ? [] : orders,
+      inventory,
+      nextOrderNo,
+      dark,
+      workers,
+      paymentMethods,
+      inventoryLocked,
+      inventorySnapshot,
+      inventoryLockedAt,
+      adminPins,
+      orderTypes,
+      defaultDeliveryFee,
+      expenses,
+      purchases,
+      purchaseCategories,
+      customers,
+      deliveryZones,
+      dayMeta,
+      bankTx,
+    });
+
+    // Fence fields
+    writeSeqRef.current += 1;
+    const body = {
+      ...bodyBase,
+      writerId: clientIdRef.current,
+      writeSeq: writeSeqRef.current,
+      clientTime: Date.now(),
+    };
         await setDoc(stateDocRef, body, { merge: true });
         setCloudStatus((s) => ({ ...s, lastSaveAt: new Date(), error: null }));
       } catch (e) {
@@ -5839,6 +5861,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
