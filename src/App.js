@@ -1357,6 +1357,13 @@ useEffect(() => {
       if (snap.metadata.hasPendingWrites) return; // ignore our own in-flight writes
 
       const data = snap.data() || {};
+       // FENCE: ignore our own echoes up to our current write sequence
+      if (data.writerId === clientIdRef.current) {
+        const seq = Number(data.writeSeq || 0);
+        if (seq && seq <= writeSeqRef.current) return; // we've already applied this (or it's older)
+        // if it's newer than we know, accept and advance our local sequence
+        writeSeqRef.current = Math.max(writeSeqRef.current, seq);
+      }
       const ts =
         data.updatedAt instanceof Timestamp
           ? data.updatedAt.toMillis()
@@ -1455,17 +1462,32 @@ if (ts && lastLocalEditAt && ts < lastLocalEditAt) return;
   if (!stateDocRef || !fbUser) return alert("Firebase not ready.");
   try {
     
-    const body = packStateForCloud({
-   menu, extraList, orders: realtimeOrders ? [] : orders, inventory,
-   nextOrderNo, dark, workers, paymentMethods,
-   inventoryLocked, inventorySnapshot, inventoryLockedAt,
-   adminPins, orderTypes, defaultDeliveryFee,
-   expenses,
-   purchases, purchaseCategories, customers, deliveryZones,   // ⬅️ add these
-   dayMeta, bankTx,
+   const bodyBase = packStateForCloud({
+       menu, extraList, orders: realtimeOrders ? [] : orders, inventory,
+       nextOrderNo, dark, workers, paymentMethods,
+       inventoryLocked, inventorySnapshot, inventoryLockedAt,
+       adminPins, orderTypes, defaultDeliveryFee,
+       expenses,
+       purchases, purchaseCategories, customers, deliveryZones,   // ⬅️ add these
+       dayMeta, bankTx,
  });
-    
-    await setDoc(stateDocRef, body, { merge: true });
+     // fence: mark this write as ours and bump our local sequence
+    writeSeqRef.current += 1;
+    const body = {
+      ...bodyBase,
+      writerId: clientIdRef.current,
+      writeSeq: writeSeqRef.current,
+      clientTime: Date.now(),
+           });
+        writeSeqRef.current += 1;
+        const body = {
+          ...bodyBase,
+          writerId: clientIdRef.current,
+          writeSeq: writeSeqRef.current,
+          clientTime: Date.now(),
+        };
+        await setDoc(stateDocRef, body, { merge: true });
+
     // mark latest timestamps so the cloud listener won't re-apply this back onto us
 setLastLocalEditAt(Date.now());
 setLastAppliedCloudAt(Date.now());
@@ -1482,7 +1504,7 @@ setLastAppliedCloudAt(Date.now());
     if (!cloudEnabled || !stateDocRef || !fbUser || !hydrated) return;
     const t = setTimeout(async () => {
       try {
-        const body = packStateForCloud({
+        const bodybase = packStateForCloud({
           menu,
           extraList,
           orders: realtimeOrders ? [] : orders,
@@ -2135,15 +2157,18 @@ setDeliveryAddress("");
 
  // --------- Order actions ----------
 const markOrderDone = async (orderNo) => {
-  setOrders((o) =>
-    o.map((ord) => (ord.orderNo !== orderNo || ord.done ? ord : { ...ord, done: true }))
-  );
+  // If not live, update locally
+  if (!realtimeOrders) {
+    setOrders((o) =>
+      o.map((ord) => (ord.orderNo !== orderNo || ord.done ? ord : { ...ord, done: true }))
+    );
+  }
+
   try {
     if (!cloudEnabled || !ordersColRef || !fbUser) return;
     let targetId = orders.find((o) => o.orderNo === orderNo)?.cloudId;
     if (!targetId) {
-      const qy = query(ordersColRef, where("orderNo", "==", orderNo));
-      const ss = await getDocs(qy);
+      const ss = await getDocs(query(ordersColRef, where("orderNo", "==", orderNo)));
       if (!ss.empty) targetId = ss.docs[0].id;
     }
     if (targetId) {
@@ -2157,22 +2182,22 @@ const markOrderDone = async (orderNo) => {
   }
 };
 
+
 const voidOrderAndRestock = async (orderNo) => {
   const ord = orders.find((o) => o.orderNo === orderNo);
   if (!ord) return;
   if (ord.done) return alert("This order is DONE and cannot be cancelled.");
   if (ord.voided) return alert("This order is already cancelled/returned.");
-  // Require a reason
-const reasonRaw = window.prompt(
-  `Reason for CANCEL (restock) — order #${orderNo}:`,
-  ""
-);
-const reason = String(reasonRaw || "").trim();
-if (!reason) return alert("A reason is required.");
 
+  const reasonRaw = window.prompt(
+    `Reason for CANCEL (restock) — order #${orderNo}:`,
+    ""
+  );
+  const reason = String(reasonRaw || "").trim();
+  if (!reason) return alert("A reason is required.");
   if (!window.confirm(`Cancel order #${orderNo} and restock inventory?`)) return;
 
-  // Compute items to give back
+  // Restock locally
   const giveBack = {};
   for (const line of ord.cart) {
     const uses = line.uses || {};
@@ -2180,8 +2205,6 @@ if (!reason) return alert("A reason is required.");
       giveBack[k] = (giveBack[k] || 0) + (uses[k] || 0);
     }
   }
-
-  // Restock locally
   setInventory((inv) =>
     inv.map((it) => {
       const back = giveBack[it.id] || 0;
@@ -2189,31 +2212,30 @@ if (!reason) return alert("A reason is required.");
     })
   );
 
-  // Mark cancelled with restock timestamp
   const when = new Date();
-  setOrders((o) =>
-  o.map((x) =>
-    x.orderNo === orderNo
-      ? { ...x, voided: true, restockedAt: when, voidReason: reason }
-      : x
-  )
-);
 
+  // If not live mode, flip locally; otherwise let snapshot update UI
+  if (!realtimeOrders) {
+    setOrders((o) =>
+      o.map((x) =>
+        x.orderNo === orderNo
+          ? { ...x, voided: true, restockedAt: when, voidReason: reason }
+          : x
+      )
+    );
+  }
 
-  // Cloud update
   try {
     if (!cloudEnabled || !ordersColRef || !fbUser) return;
     let targetId = ord.cloudId;
     if (!targetId) {
-      const qy = query(ordersColRef, where("orderNo", "==", orderNo));
-      const ss = await getDocs(qy);
+      const ss = await getDocs(query(ordersColRef, where("orderNo", "==", orderNo)));
       if (!ss.empty) targetId = ss.docs[0].id;
     }
     if (targetId) {
       await updateDoc(fsDoc(db, "shops", SHOP_ID, "orders", targetId), {
         voided: true,
-        voidReason: reason,   
-
+        voidReason: reason,
         restockedAt: when.toISOString(),
         updatedAt: serverTimestamp(),
       });
@@ -2223,6 +2245,7 @@ if (!reason) return alert("A reason is required.");
   }
 };
 
+
 const voidOrderToExpense = async (orderNo) => {
   const ord = orders.find((o) => o.orderNo === orderNo);
   if (!ord) return;
@@ -2231,16 +2254,14 @@ const voidOrderToExpense = async (orderNo) => {
   if (!isExpenseVoidEligible(ord.orderType)) {
     return alert("This action is only for non Dine-in / Take-Away orders.");
   }
-  // Require a reason
-const reasonRaw = window.prompt(
-  `Reason for RETURN (no restock) — order #${orderNo}:`,
-  ""
-);
-const reason = String(reasonRaw || "").trim();
-if (!reason) return alert("A reason is required.");
 
+  const reasonRaw = window.prompt(
+    `Reason for RETURN (no restock) — order #${orderNo}:`,
+    ""
+  );
+  const reason = String(reasonRaw || "").trim();
+  if (!reason) return alert("A reason is required.");
 
-  // Use items-only total as the waste amount (delivery fee isn't item cost)
   const itemsOnly = ord.itemsTotal != null
     ? Number(ord.itemsTotal || 0)
     : Math.max(0, Number(ord.total || 0) - Number(ord.deliveryFee || 0));
@@ -2250,17 +2271,7 @@ if (!reason) return alert("A reason is required.");
   );
   if (!ok) return;
 
-  // 1) Mark voided (no restock)
-  setOrders((o) =>
-  o.map((x) =>
-    x.orderNo === orderNo
-      ? { ...x, voided: true, restockedAt: undefined, voidReason: reason }
-      : x
-  )
-);
-
-
-  // 2) Push an expense row at the top
+  // Local expense row always (this is your ledger)
   const expRow = {
     id: `exp_${Date.now()}`,
     name: `Voided order #${orderNo} — ${ord.orderType || "-"}`,
@@ -2272,13 +2283,22 @@ if (!reason) return alert("A reason is required.");
   };
   setExpenses((arr) => [expRow, ...arr]);
 
-  // 3) Cloud: mark order as voided (no restock timestamp)
+  // If not live mode, flip locally; otherwise let snapshot update UI
+  if (!realtimeOrders) {
+    setOrders((o) =>
+      o.map((x) =>
+        x.orderNo === orderNo
+          ? { ...x, voided: true, restockedAt: undefined, voidReason: reason }
+          : x
+      )
+    );
+  }
+
   try {
     if (cloudEnabled && ordersColRef && fbUser) {
       let targetId = ord.cloudId;
       if (!targetId) {
-        const qy = query(ordersColRef, where("orderNo", "==", orderNo));
-        const ss = await getDocs(qy);
+        const ss = await getDocs(query(ordersColRef, where("orderNo", "==", orderNo)));
         if (!ss.empty) targetId = ss.docs[0].id;
       }
       if (targetId) {
@@ -2464,76 +2484,70 @@ function inferInvUnitFromPurchaseUnit(u) {
 }
 
 const handleAddPurchase = () => {
-  // pull the fields from state
-  const {
-    categoryId,
-    itemName,
-    unit,
-    qty,
-    unitPrice,
-    date,
-    ingredientId,
-  } = newPurchase;
-
-  const nameStr = String(itemName || "");
+  const { categoryId, itemName, unit, qty, unitPrice, date, ingredientId } = newPurchase;
+  const nameStr = String(itemName || "").trim();
   if (!categoryId || !nameStr) {
     alert("Choose a category and enter an item name.");
     return;
   }
 
+  // Decide the target inventory id BEFORE touching state
+  let targetInvId =
+    ingredientId ||
+    findInventoryIdForPurchase(
+      { categoryId, itemName: nameStr, ingredientId },
+      inventory,
+      purchaseCategories
+    );
+
+  // Prepare list update & ensure inv item exists
+  let nextInventory = [...inventory];
+  if (!targetInvId) {
+    const catName =
+      purchaseCategories.find((c) => c.id === categoryId)?.name ||
+      nameStr ||
+      "Item";
+    const invUnit = inferInvUnitFromPurchaseUnit(unit);
+    const id = ensureInvIdUnique(slug(catName), nextInventory);
+    nextInventory.push({ id, name: catName, unit: invUnit, qty: 0, costPerUnit: 0 });
+    targetInvId = id;
+  }
+
+  // Apply quantity delta with conversion
+  const invItem = nextInventory.find((it) => it.id === targetInvId);
+  const delta = convertToInventoryUnit(qty, unit, invItem?.unit);
+  if (delta != null) {
+    nextInventory = nextInventory.map((it) =>
+      it.id === targetInvId ? { ...it, qty: Number(it.qty || 0) + Number(delta) } : it
+    );
+  } else if (invItem && Number(invItem.qty || 0) === 0) {
+    const newUnit = inferInvUnitFromPurchaseUnit(unit);
+    nextInventory = nextInventory.map((it) =>
+      it.id === targetInvId ? { ...it, unit: newUnit } : it
+    );
+    const delta2 = convertToInventoryUnit(qty, unit, newUnit) || 0;
+    nextInventory = nextInventory.map((it) =>
+      it.id === targetInvId ? { ...it, qty: Number(it.qty || 0) + delta2 } : it
+    );
+  } else {
+    alert(
+      `Purchase saved, but units incompatible (${unit} vs ${invItem?.unit}). Update the inventory unit first.`
+    );
+  }
+
+  // Commit both states immutably
+  setInventory(nextInventory);
+
   const row = {
     id: `p_${Date.now()}`,
     categoryId,
-    itemName: nameStr,                          // ✅ don't use `name`
+    itemName: nameStr,
     unit: String(unit || "piece"),
     qty: Math.max(0, Number(qty || 0)),
     unitPrice: Math.max(0, Number(unitPrice || 0)),
     date: date ? new Date(date) : new Date(),
-    ingredientId: String(ingredientId || ""),   // start with whatever is selected
+    ingredientId: targetInvId,
   };
-  
-
-  // 🔗 Ensure there is a linked inventory item
-  let targetInvId = findInventoryIdForPurchase(row, inventory, purchaseCategories);
-
-  setInventory((prev) => {
-    let list = [...prev];
-
-    if (!targetInvId) {
-      const catName =
-        purchaseCategories.find((c) => c.id === row.categoryId)?.name ||
-        row.itemName ||
-        "Item";
-      const invUnit = inferInvUnitFromPurchaseUnit(row.unit);
-      const id = ensureInvIdUnique(slug(catName), list);
-      list.push({ id, name: catName, unit: invUnit, qty: 0, costPerUnit: 0 });
-      targetInvId = id;
-      row.ingredientId = id; // record the link on the purchase row
-    }
-
-    const invItem = list.find((it) => it.id === targetInvId);
-    const delta = convertToInventoryUnit(row.qty, row.unit, invItem?.unit);
-    if (delta != null) {
-      list = list.map((it) =>
-        it.id === targetInvId ? { ...it, qty: Number(it.qty || 0) + Number(delta) } : it
-      );
-    } else {
-      if (invItem && Number(invItem.qty || 0) === 0) {
-        const newUnit = inferInvUnitFromPurchaseUnit(row.unit);
-        list = list.map((it) => (it.id === targetInvId ? { ...it, unit: newUnit } : it));
-        const delta2 = convertToInventoryUnit(row.qty, row.unit, newUnit) || 0;
-        list = list.map((it) =>
-          it.id === targetInvId ? { ...it, qty: Number(it.qty || 0) + delta2 } : it
-        );
-      } else {
-        alert(
-          `Purchase saved, but units incompatible (${row.unit} vs ${invItem?.unit}). Update the inventory unit first.`
-        );
-      }
-    }
-    return list;
-  });
-
   setPurchases((arr) => [row, ...arr]);
 
   setNewPurchase({
@@ -2546,6 +2560,7 @@ const handleAddPurchase = () => {
     ingredientId: "",
   });
 };
+
 
   const addPurchaseCategory = () => {
   const nm = String(newCategoryName || "").trim();
@@ -5824,6 +5839,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
