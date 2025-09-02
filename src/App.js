@@ -897,12 +897,6 @@ const lowStockItems = useMemo(() => {
 
 const lowStockCount = lowStockItems.length;
 
-const openInventoryEditor = () => {
-  setActiveTab("admin");
-  setAdminSubTab("inventory");
-  setShowLowStock(false);
-};
-
 
   const [menu, setMenu] = useState(BASE_MENU);
   const [extraList, setExtraList] = useState(BASE_EXTRAS);
@@ -6307,6 +6301,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
