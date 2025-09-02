@@ -1008,8 +1008,7 @@ const [adminUnlocked, setAdminUnlocked] = useState(false);
 
   
 
-  const [newMenuName, setNewMenuName] = useState("");
-  const [newMenuPrice, setNewMenuPrice] = useState(0);
+ 
   const [newExtraName, setNewExtraName] = useState("");
   const [newExtraPrice, setNewExtraPrice] = useState(0);
 
@@ -6060,6 +6059,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
