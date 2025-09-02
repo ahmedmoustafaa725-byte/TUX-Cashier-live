@@ -3174,6 +3174,7 @@ const generatePurchasesPDF = () => {
     {[
       ["inventory", "Inventory"],
       ["purchases", "Purchases"],
+      ["cogs", "COGS"],
       ["bank", "Bank"],
       ["reports", "Reports"],
       ["edit", "Edit"],
@@ -3206,6 +3207,162 @@ const generatePurchasesPDF = () => {
     </div>
   </div>
 )}
+{/* ───────────────────────────────── COGS TAB ───────────────────────────────── */}
+{activeTab === "admin" && adminSubTab === "cogs" && (
+  <div style={{ display: "grid", gap: 14 }}>
+    {/* Inventory Costs (E£ / unit) */}
+    <div
+      style={{
+        border: `1px solid ${cardBorder}`,
+        borderRadius: 10,
+        padding: 12,
+        background: dark ? "#151515" : "#fafafa",
+      }}
+    >
+      <h3 style={{ marginTop: 0 }}>Inventory Costs (E£ / unit)</h3>
+      <p style={{ marginTop: 4, opacity: 0.8 }}>
+        Set the cost <b>per inventory unit</b>. These feed the auto-COGS calculation below.
+      </p>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Item</th>
+              <th style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Unit</th>
+              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Cost / Unit (E£)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {inventory.map((it) => (
+              <tr key={it.id}>
+                <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{it.name}</td>
+                <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{it.unit}</td>
+                <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={Number(it.costPerUnit || 0)}
+                    onChange={(e) => {
+                      const v = Math.max(0, Number(e.target.value || 0));
+                      setInventory((arr) =>
+                        arr.map((x) => (x.id === it.id ? { ...x, costPerUnit: v } : x))
+                      );
+                    }}
+                    style={{ width: 120, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, textAlign: "right" }}
+                  />
+                </td>
+              </tr>
+            ))}
+            {inventory.length === 0 && (
+              <tr>
+                <td colSpan={3} style={{ padding: 8, opacity: 0.7 }}>
+                  No inventory yet. Add items in <b>Admin → Inventory</b>.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {/* COGS per Menu Item (auto) */}
+    <div
+      style={{
+        border: `1px solid ${cardBorder}`,
+        borderRadius: 10,
+        padding: 12,
+        background: dark ? "#151515" : "#fafafa",
+      }}
+    >
+      <h3 style={{ marginTop: 0 }}>COGS per Menu Item (auto)</h3>
+      <p style={{ marginTop: 4, opacity: 0.8 }}>
+        Based on each item’s <code>uses</code> and the inventory costs above. Adjust “Inventory Costs” to update here.
+      </p>
+
+      {/* MENU ITEMS */}
+      <h4 style={{ margin: "10px 0 6px" }}>Menu</h4>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Item</th>
+              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Price (E£)</th>
+              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>COGS (E£)</th>
+              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Gross Margin (E£)</th>
+              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Margin %</th>
+            </tr>
+          </thead>
+          <tbody>
+            {menu.map((def) => {
+              const price = Number(def.price || 0);
+              const cogs = computeCOGSForItemDef(def, invById);
+              const gm = price - cogs;
+              const mp = price > 0 ? (gm / price) * 100 : 0;
+              return (
+                <tr key={`m_${def.id}`}>
+                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{def.name}</td>
+                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{currency(price)}</td>
+                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{currency(cogs)}</td>
+                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{currency(gm)}</td>
+                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{mp.toFixed(1)}%</td>
+                </tr>
+              );
+            })}
+            {menu.length === 0 && (
+              <tr>
+                <td colSpan={5} style={{ padding: 8, opacity: 0.7 }}>
+                  No menu items yet.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* EXTRAS */}
+      <h4 style={{ margin: "16px 0 6px" }}>Extras</h4>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Extra</th>
+              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Price (E£)</th>
+              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>COGS (E£)</th>
+              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Gross Margin (E£)</th>
+              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Margin %</th>
+            </tr>
+          </thead>
+          <tbody>
+            {extraList.map((def) => {
+              const price = Number(def.price || 0);
+              const cogs = computeCOGSForItemDef(def, invById);
+              const gm = price - cogs;
+              const mp = price > 0 ? (gm / price) * 100 : 0;
+              return (
+                <tr key={`e_${def.id}`}>
+                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{def.name}</td>
+                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{currency(price)}</td>
+                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{currency(cogs)}</td>
+                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{currency(gm)}</td>
+                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{mp.toFixed(1)}%</td>
+                </tr>
+              );
+            })}
+            {extraList.length === 0 && (
+              <tr>
+                <td colSpan={5} style={{ padding: 8, opacity: 0.7 }}>
+                  No extras yet.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+)}
+
 
 
       {/* ORDERS */}
@@ -5935,6 +6092,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
