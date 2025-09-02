@@ -338,8 +338,8 @@ const BASE_EXTRAS = [
   { id: 113, name: "Tux Hawawshi Sauce", price: 10, uses: {} },
 ];
 const DEFAULT_INVENTORY = [
-  { id: "meat", name: "Meat", unit: "g", qty: 0, costPerUnit: 0 },       // ⬅️ NEW
-  { id: "cheese", name: "Cheese", unit: "slices", qty: 0, costPerUnit: 0 }, // ⬅️ NEW
+  { id: "meat",   name: "Meat",   unit: "g",     qty: 0, costPerUnit: 0, minQty: 0 },
+  { id: "cheese", name: "Cheese", unit: "slices",qty: 0, costPerUnit: 0, minQty: 0 },
 ];
 
 
@@ -879,6 +879,25 @@ export default function App() {
 const [adminSubTab, setAdminSubTab] = useState("inventory"); 
 
   const [dark, setDark] = useState(false);
+  // Low-stock UI state + derived list
+const [showLowStock, setShowLowStock] = useState(false);
+
+const lowStockItems = useMemo(() => {
+  return (inventory || []).filter(it => {
+    const min = Number(it.minQty || 0);
+    if (min <= 0) return false; // threshold not set
+    return Number(it.qty || 0) <= min; // at or below threshold
+  });
+}, [inventory]);
+
+const lowStockCount = lowStockItems.length;
+
+const openInventoryEditor = () => {
+  setActiveTab("admin");
+  setAdminSubTab("inventory");
+  setShowLowStock(false);
+};
+
 
   const [menu, setMenu] = useState(BASE_MENU);
   const [extraList, setExtraList] = useState(BASE_EXTRAS);
@@ -1164,6 +1183,7 @@ useEffect(() => {
           unit: c.unit || inferUnitFromCategoryName(catName),
           qty: 0,
           costPerUnit: 0,
+           minQty: 0,
         });
         changed = true;
       }
@@ -2667,7 +2687,7 @@ const handleAddPurchase = () => {
       "Item";
     const invUnit = inferInvUnitFromPurchaseUnit(unit);
     const id = ensureInvIdUnique(slug(catName), nextInventory);
-    nextInventory.push({ id, name: catName, unit: invUnit, qty: 0, costPerUnit: 0 });
+    nextInventory.push({ id, name: catName, unit: invUnit, qty: 0, costPerUnit: 0, minQty: 0 });
     targetInvId = id;
   }
 
@@ -3142,7 +3162,48 @@ const generatePurchasesPDF = () => {
 
   {/* Right side: date/time + theme toggle */}
   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-    <div style={{ fontSize: 12 }}>{localDateTime}</div>
+    <div style={{ fontSize: 12 }}>{localDateTime}
+</div>
+      {/* Low-stock alert button */}
+    <button
+      onClick={() => setShowLowStock(s => !s)}
+      title={lowStockCount ? `${lowStockCount} item(s) low in stock` : "No low-stock items"}
+      style={{
+        position: "relative",
+        padding: "6px 10px",
+        borderRadius: 6,
+        border: `1px solid ${btnBorder}`,
+        background: lowStockCount ? "#ffebee" : (dark ? "#2c2c2c" : "#f1f1f1"),
+        color: lowStockCount ? "#b71c1c" : (dark ? "#fff" : "#000"),
+        cursor: "pointer",
+        fontWeight: 700,
+      }}
+    >
+      🔔 Low Stock
+      {lowStockCount > 0 && (
+        <span
+          style={{
+            position: "absolute",
+            top: -6,
+            right: -6,
+            minWidth: 20,
+            height: 20,
+            borderRadius: 10,
+            padding: "0 6px",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "#d32f2f",
+            color: "#fff",
+            fontSize: 12,
+            border: "2px solid white",
+          }}
+        >
+          {lowStockCount}
+        </span>
+      )}
+    </button>
+
     <button
       onClick={() => setDark((d) => !d)}
       title={dark ? "Switch to Light" : "Switch to Dark"}
@@ -3249,6 +3310,69 @@ const generatePurchasesPDF = () => {
           </>
         )}
       </div>
+{/* Low-stock slide-down panel */}
+{showLowStock && (
+  <div
+    style={{
+      border: `1px solid ${cardBorder}`,
+      borderRadius: 8,
+      padding: 10,
+      marginBottom: 10,
+      background: softBg,
+    }}
+  >
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <h3 style={{ margin: 0 }}>Low Stock</h3>
+      <span style={{ opacity: 0.7 }}>
+        {lowStockCount ? `${lowStockCount} item(s)` : "No items are low in stock 🎉"}
+      </span>
+      <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+        <button
+          onClick={openInventoryEditor}
+          style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${btnBorder}` }}
+        >
+          Go to Inventory
+        </button>
+        <button
+          onClick={() => setShowLowStock(false)}
+          style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${btnBorder}` }}
+        >
+          Close
+        </button>
+      </div>
+    </div>
+
+    {lowStockCount > 0 && (
+      <div style={{ overflowX: "auto", marginTop: 8 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Item</th>
+              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Qty</th>
+              <th style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Unit</th>
+              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Min</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lowStockItems.map(it => (
+              <tr key={it.id}>
+                <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{it.name}</td>
+                <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
+                  {Number(it.qty || 0)}
+                </td>
+                <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{it.unit}</td>
+                <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
+                  {Number(it.minQty || 0)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+  </div>
+)}
+
 
       {/* Tabs */}
 <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
@@ -3330,35 +3454,55 @@ const generatePurchasesPDF = () => {
       </p>
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Item</th>
-              <th style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Unit</th>
-              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Cost / Unit (E£)</th>
-            </tr>
-          </thead>
+         <thead>
+  <tr>
+    <th style={{ textAlign: "left",  padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Item</th>
+    <th style={{ textAlign: "left",  padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Unit</th>
+    <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Min Level</th>
+    <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Cost / Unit (E£)</th>
+  </tr>
+</thead>
+
           <tbody>
-            {inventory.map((it) => (
-              <tr key={it.id}>
-                <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{it.name}</td>
-                <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{it.unit}</td>
-                <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={Number(it.costPerUnit || 0)}
-                    onChange={(e) => {
-                      const v = Math.max(0, Number(e.target.value || 0));
-                      setInventory((arr) =>
-                        arr.map((x) => (x.id === it.id ? { ...x, costPerUnit: v } : x))
-                      );
-                    }}
-                    style={{ width: 120, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, textAlign: "right" }}
-                  />
-                </td>
-              </tr>
-            ))}
+           {inventory.map((it) => (
+  <tr key={it.id}>
+    <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{it.name}</td>
+    <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{it.unit}</td>
+
+    {/* Min Level editor */}
+    <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
+      <input
+        type="number"
+        min="0"
+        step="1"
+        value={Number(it.minQty || 0)}
+        onChange={(e) => {
+          const v = Math.max(0, Number(e.target.value || 0));
+          setInventory((arr) => arr.map(x => x.id === it.id ? { ...x, minQty: v } : x));
+        }}
+        style={{ width: 120, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, textAlign: "right" }}
+      />
+    </td>
+
+    {/* Cost / Unit editor */}
+    <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
+      <input
+        type="number"
+        min="0"
+        step="0.01"
+        value={Number(it.costPerUnit || 0)}
+        onChange={(e) => {
+          const v = Math.max(0, Number(e.target.value || 0));
+          setInventory((arr) =>
+            arr.map((x) => (x.id === it.id ? { ...x, costPerUnit: v } : x))
+          );
+        }}
+        style={{ width: 120, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, textAlign: "right" }}
+      />
+    </td>
+  </tr>
+))}
+
             {inventory.length === 0 && (
               <tr>
                 <td colSpan={3} style={{ padding: 8, opacity: 0.7 }}>
@@ -6163,3 +6307,4 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
