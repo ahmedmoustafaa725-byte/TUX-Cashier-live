@@ -338,10 +338,9 @@ const BASE_EXTRAS = [
   { id: 113, name: "Tux Hawawshi Sauce", price: 10, uses: {} },
 ];
 const DEFAULT_INVENTORY = [
-  { id: "meat",   name: "Meat",   unit: "g",     qty: 0, costPerUnit: 0, minQty: 0 },
-  { id: "cheese", name: "Cheese", unit: "slice", qty: 0, costPerUnit: 0, minQty: 0 },
+  { id: "meat", name: "Meat", unit: "g", qty: 0, costPerUnit: 0 },       // ⬅️ NEW
+  { id: "cheese", name: "Cheese", unit: "slices", qty: 0, costPerUnit: 0 }, // ⬅️ NEW
 ];
-
 
 
 const BASE_WORKERS = ["Hassan", "Warda", "Ahmed"];
@@ -3014,21 +3013,6 @@ const handleAdminSubTabClick = (sub) => {
       return sum;
     }, 0);
   }, [bankTx]);
-
-
-  // Toggle for the small alert panel in the header
-const [showLowAlert, setShowLowAlert] = useState(false);
-
-// All items at/below their threshold (and threshold > 0)
-const lowStockItems = useMemo(() => {
-  return (inventory || []).filter(it =>
-    Number(it?.minQty || 0) > 0 &&
-    Number(it?.qty || 0) <= Number(it?.minQty || 0)
-  );
-}, [inventory]);
-
-const lowCount = lowStockItems.length;
-
   // Money formatter for Purchases KPI & tables
 const currency = (v) => `E£${Number(v || 0).toFixed(2)}`;
 
@@ -3156,138 +3140,24 @@ const generatePurchasesPDF = () => {
 >
   <h1 style={{ margin: 0 }}>🍔 TUX — Burger Truck POS</h1>
 
- {/* Right side: low-stock alert + date/time + theme toggle */}
-<div style={{ position: "relative", display: "flex", alignItems: "center", gap: 8 }}>
-  {/* Low-stock alert button */}
-  <button
-    onClick={() => setShowLowAlert(s => !s)}
-    title="Low stock items"
-    style={{
-      position: "relative",
-      padding: "4px 10px",
-      borderRadius: 6,
-      border: `1px solid ${btnBorder}`,
-      background: dark ? "#2c2c2c" : "#f1f1f1",
-      color: dark ? "#fff" : "#000",
-      cursor: "pointer",
-      fontWeight: 700
-    }}
-  >
-    ⚠ Low stock
-    {lowCount > 0 && (
-      <span
-        style={{
-          position: "absolute",
-          top: -6,
-          right: -6,
-          minWidth: 18,
-          height: 18,
-          padding: "0 5px",
-          borderRadius: 9,
-          background: "#e53935",
-          color: "#fff",
-          fontSize: 12,
-          lineHeight: "18px",
-          textAlign: "center",
-          border: "1px solid rgba(0,0,0,.15)"
-        }}
-      >
-        {lowCount}
-      </span>
-    )}
-  </button>
-
-  <div style={{ fontSize: 12 }}>{localDateTime}</div>
-
-  <button
-    onClick={() => setDark((d) => !d)}
-    title={dark ? "Switch to Light" : "Switch to Dark"}
-    style={{
-      padding: "4px 10px",
-      borderRadius: 6,
-      border: `1px solid ${btnBorder}`,
-      background: dark ? "#2c2c2c" : "#f1f1f1",
-      color: dark ? "#fff" : "#000",
-      cursor: "pointer",
-    }}
-  >
-    {dark ? "☀ Light" : "🌙 Dark"}
-  </button>
-
-  {/* Low-stock dropdown panel */}
-  {showLowAlert && (
-    <div
+  {/* Right side: date/time + theme toggle */}
+  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+    <div style={{ fontSize: 12 }}>{localDateTime}</div>
+    <button
+      onClick={() => setDark((d) => !d)}
+      title={dark ? "Switch to Light" : "Switch to Dark"}
       style={{
-        position: "fixed",
-        top: 64,               // below header
-        right: 16,
-        zIndex: 9999,
-        width: 360,
-        maxHeight: "60vh",
-        overflow: "auto",
+        padding: "4px 10px",
+        borderRadius: 6,
         border: `1px solid ${btnBorder}`,
-        borderRadius: 10,
-        background: dark ? "#151515" : "#ffffff",
-        boxShadow: "0 8px 24px rgba(0,0,0,.18)",
-        padding: 10
+        background: dark ? "#2c2c2c" : "#f1f1f1",
+        color: dark ? "#fff" : "#000",
+        cursor: "pointer",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-        <strong>Low stock ({lowCount})</strong>
-        <button
-          onClick={() => setShowLowAlert(false)}
-          style={{ border: `1px solid ${btnBorder}`, borderRadius: 6, padding: "2px 8px", background: "transparent", cursor: "pointer" }}
-        >
-          ✕
-        </button>
-      </div>
-
-      {lowCount === 0 ? (
-        <div style={{ opacity: .7 }}>All good! No items below threshold.</div>
-      ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: "left", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>Item</th>
-              <th style={{ textAlign: "right", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>Qty</th>
-              <th style={{ textAlign: "right", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>Min</th>
-            </tr>
-          </thead>
-          <tbody>
-            {lowStockItems.map(it => (
-              <tr key={it.id}>
-                <td style={{ padding: 6, borderBottom: `1px solid ${cardBorder}` }}>
-                  {it.name} <span style={{ opacity:.7 }}>(/{it.unit})</span>
-                </td>
-                <td style={{ padding: 6, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
-                  {Number(it.qty || 0).toFixed(2)}
-                </td>
-                <td style={{ padding: 6, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
-                  {Number(it.minQty || 0).toFixed(2)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
-<div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
-  <button
-    onClick={() => setShowLowAlert(false)}
-    style={{
-      padding: "6px 10px",
-      borderRadius: 6,
-      border: `1px solid ${btnBorder}`,
-      background: dark ? "#2c2c2c" : "#f1f1f1",
-      color: dark ? "#fff" : "#000",
-      cursor: "pointer",
-    }}
-  >
-    OK
-  </button>
-</div>
-    </div>
-  )}
+      {dark ? "☀ Light" : "🌙 Dark"}
+    </button>
+  </div>
 </div>
 
 
@@ -3460,63 +3330,43 @@ const generatePurchasesPDF = () => {
       </p>
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
-         <thead>
-  <tr>
-    <th style={{ textAlign: "left",  padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Item</th>
-    <th style={{ textAlign: "left",  padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Unit</th>
-    <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Cost / Unit (E£)</th>
-    <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Min Qty (alert below)</th>
-  </tr>
-</thead>
-<tbody>
-  {inventory.map((it) => {
-    const isLow = Number(it?.minQty || 0) > 0 && Number(it?.qty || 0) <= Number(it?.minQty || 0);
-    return (
-      <tr key={it.id} style={{ background: isLow ? (dark ? "rgba(229,57,53,.15)" : "rgba(229,57,53,.08)") : undefined }}>
-        <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{it.name}</td>
-        <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{it.unit}</td>
-        <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={Number(it.costPerUnit || 0)}
-            onChange={(e) => {
-              const v = Math.max(0, Number(e.target.value || 0));
-              setInventory((arr) =>
-                arr.map((x) => (x.id === it.id ? { ...x, costPerUnit: v } : x))
-              );
-            }}
-            style={{ width: 120, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, textAlign: "right" }}
-          />
-        </td>
-        <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={Number(it.minQty || 0)}
-            onChange={(e) => {
-              const v = Math.max(0, Number(e.target.value || 0));
-              setInventory((arr) =>
-                arr.map((x) => (x.id === it.id ? { ...x, minQty: v } : x))
-              );
-            }}
-            style={{ width: 120, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, textAlign: "right" }}
-          />
-        </td>
-      </tr>
-    );
-  })}
-  {inventory.length === 0 && (
-    <tr>
-      <td colSpan={4} style={{ padding: 8, opacity: 0.7 }}>
-        No inventory yet. Add items in <b>Admin → Inventory</b>.
-      </td>
-    </tr>
-  )}
-</tbody>
-
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Item</th>
+              <th style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Unit</th>
+              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Cost / Unit (E£)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {inventory.map((it) => (
+              <tr key={it.id}>
+                <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{it.name}</td>
+                <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{it.unit}</td>
+                <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={Number(it.costPerUnit || 0)}
+                    onChange={(e) => {
+                      const v = Math.max(0, Number(e.target.value || 0));
+                      setInventory((arr) =>
+                        arr.map((x) => (x.id === it.id ? { ...x, costPerUnit: v } : x))
+                      );
+                    }}
+                    style={{ width: 120, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, textAlign: "right" }}
+                  />
+                </td>
+              </tr>
+            ))}
+            {inventory.length === 0 && (
+              <tr>
+                <td colSpan={3} style={{ padding: 8, opacity: 0.7 }}>
+                  No inventory yet. Add items in <b>Admin → Inventory</b>.
+                </td>
+              </tr>
+            )}
+          </tbody>
         </table>
       </div>
     </div>
@@ -3696,51 +3546,42 @@ const generatePurchasesPDF = () => {
               </div>
 
               {/* Qty + Add */}
-<div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8 }}>
-  <strong>Qty:</strong>
-  <button
-    onClick={() => setSelectedQty((q) => Math.max(1, Number(q || 1) - 1))}
-    style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${btnBorder}` }}
-  >
-    –
-  </button>
+              <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8 }}>
+                <strong>Qty:</strong>
+                <button
+                  onClick={() => setSelectedQty((q) => Math.max(1, Number(q || 1) - 1))}
+                  style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${btnBorder}` }}
+                >
+                  –
+                </button>
+                <input
+                  type="number"
+                  value={selectedQty}
+                  onChange={(e) => setSelectedQty(Math.max(1, Number(e.target.value || 1)))}
+                  style={{ width: 70, textAlign: "center" }}
+                />
+                <button
+                  onClick={() => setSelectedQty((q) => Math.max(1, Number(q || 1) + 1))}
+                  style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${btnBorder}` }}
+                >
+                  +
+                </button>
 
-  <input
-    type="number"
-    min={1}
-    value={selectedQty}
-    onChange={(e) => setSelectedQty(Math.max(1, Number(e.target.value || 1)))}
-    style={{
-      width: 70,
-      textAlign: "center",
-      padding: 6,
-      borderRadius: 6,
-      border: `1px solid ${btnBorder}`
-    }}
-  />
-
-  <button
-    onClick={() => setSelectedQty((q) => Math.max(1, Number(q || 1) + 1))}
-    style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${btnBorder}` }}
-  >
-    +
-  </button>
-
-  <button
-    onClick={addToCart}
-    style={{
-      marginLeft: 8,
-      padding: "6px 12px",
-      borderRadius: 6,
-      border: `1px solid ${btnBorder}`,
-      background: "#1976d2",
-      color: "#fff",
-      cursor: "pointer"
-    }}
-  >
-    Add to cart
-  </button>
-</div>
+                <button
+                  onClick={addToCart}
+                  style={{
+                    marginLeft: "auto",
+                    padding: "10px 14px",
+                    borderRadius: 6,
+                    border: "none",
+                    background: "#42a5f5",
+                    color: "white",
+                    cursor: "pointer",
+                  }}
+                >
+                  Add to cart
+                </button>
+              </div>
             </div>
           </div>
 
@@ -6322,7 +6163,3 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
-
-
-
-
