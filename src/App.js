@@ -22,6 +22,15 @@ import {
   runTransaction, // <-- atomic counter
 } from "firebase/firestore";
 
+const toIso = (v) => {
+  if (!v) return null;
+  if (v instanceof Date) return v.toISOString();
+  if (v instanceof Timestamp) return v.toDate().toISOString();
+  const d = new Date(v);
+  return isNaN(d) ? null : d.toISOString();
+};
+
+
 /* --------------------------- FIREBASE CONFIG --------------------------- */
 const firebaseConfig = {
   apiKey: "AIzaSyAp1F6t8zgRiJI9xOzFkKJVsCQIT9BWXno",
@@ -75,12 +84,13 @@ function packStateForCloud(state) {
     bankTx,
   } = state;
 
-  const purchases = Array.isArray(state.purchases)
-    ? state.purchases.map((p) => ({
-        ...p,
-        date: p.date ? p.date.toISOString() : null,
-      }))
-    : [];
+const purchases = Array.isArray(state.purchases)
+  ? state.purchases.map((p) => ({
+      ...p,
+      date: toIso(p.date),
+    }))
+  : [];
+
 
   const purchaseCategories = Array.isArray(state.purchaseCategories)
     ? state.purchaseCategories
@@ -99,8 +109,8 @@ function packStateForCloud(state) {
     extras: extraList,
     orders: (orders || []).map((o) => ({
       ...o,
-      date: o.date ? o.date.toISOString() : null,
-      restockedAt: o.restockedAt ? o.restockedAt.toISOString() : null,
+     date: toIso(o.date),
+restockedAt: toIso(o.restockedAt),
     })),
     inventory,
     nextOrderNo,
@@ -109,15 +119,13 @@ function packStateForCloud(state) {
     paymentMethods,
     inventoryLocked,
     inventorySnapshot,
-    inventoryLockedAt: inventoryLockedAt
-      ? new Date(inventoryLockedAt).toISOString()
-      : null,
+    inventoryLockedAt: toIso(inventoryLockedAt),
     adminPins,
     orderTypes,
     defaultDeliveryFee,
     expenses: (expenses || []).map((e) => ({
       ...e,
-      date: e.date ? e.date.toISOString() : null,
+      date: toIso(e.date),
     })),
     purchases,
     purchaseCategories,
@@ -126,23 +134,21 @@ function packStateForCloud(state) {
     dayMeta: dayMeta
       ? {
           ...dayMeta,
-          startedAt: dayMeta.startedAt ? dayMeta.startedAt.toISOString() : null,
-          endedAt: dayMeta.endedAt ? dayMeta.endedAt.toISOString() : null,
-          lastReportAt: dayMeta.lastReportAt
-            ? dayMeta.lastReportAt.toISOString()
-            : null,
-          resetAt: dayMeta.resetAt ? dayMeta.resetAt.toISOString() : null,
+         startedAt: toIso(dayMeta.startedAt),
+ endedAt: toIso(dayMeta.endedAt),
+ lastReportAt: toIso(dayMeta.lastReportAt),
+ resetAt: toIso(dayMeta.resetAt),
           shiftChanges: Array.isArray(dayMeta.shiftChanges)
             ? dayMeta.shiftChanges.map((c) => ({
                 ...c,
-                at: c?.at ? new Date(c.at).toISOString() : null,
+                at: toIso(c?.at),
               }))
             : [],
         }
       : {},
     bankTx: (bankTx || []).map((t) => ({
       ...t,
-      date: t.date ? t.date.toISOString() : null,
+      date: toIso(t.date),
     })),
   };
 }
@@ -241,8 +247,8 @@ deliveryZoneId: order.deliveryZoneId || "",   // ⬅️ NEW
   voided: !!order.voided,
   voidReason: order.voidReason || "",
   note: order.note || "",
-  date: order.date ? order.date.toISOString() : new Date().toISOString(),
-  restockedAt: order.restockedAt ? order.restockedAt.toISOString() : null,
+  date: toIso(order.date) || new Date().toISOString(),
+restockedAt: toIso(order.restockedAt),
   cart: order.cart || [],
   idemKey: order.idemKey || "",
   createdAt: serverTimestamp(),
@@ -1235,7 +1241,9 @@ useEffect(() => {
   
 
    /* === ADD BELOW THIS LINE (other tabs & settings) === */
-  if (Array.isArray(l.expenses)) setExpenses(l.expenses);
+ if (Array.isArray(l.expenses)) {
+   setExpenses(l.expenses.map(e => ({ ...e, date: e.date ? new Date(e.date) : new Date() })));
+ }
    if (Array.isArray(l.purchaseCategories)) setPurchaseCategories(normalizePurchaseCategories(l.purchaseCategories)); // ⬅️ NEW
 if (Array.isArray(l.purchases)) setPurchases(
   l.purchases.map(p => ({ ...p, date: p.date ? new Date(p.date) : new Date() }))
@@ -1244,8 +1252,21 @@ if (typeof l.purchaseFilter === "string") setPurchaseFilter(l.purchaseFilter); /
 if (Array.isArray(l.customers)) setCustomers(dedupeCustomers(l.customers));
 if (Array.isArray(l.deliveryZones)) setDeliveryZones(l.deliveryZones); // ⬅️ NEW
 
-  if (Array.isArray(l.bankTx)) setBankTx(l.bankTx);
-  if (l.dayMeta) setDayMeta(l.dayMeta);
+   if (Array.isArray(l.bankTx)) {
+   setBankTx(l.bankTx.map(t => ({ ...t, date: t.date ? new Date(t.date) : new Date() })));
+}
+  if (l.dayMeta) {
+   setDayMeta({
+     ...l.dayMeta,
+     startedAt: l.dayMeta.startedAt ? new Date(l.dayMeta.startedAt) : null,
+     endedAt: l.dayMeta.endedAt ? new Date(l.dayMeta.endedAt) : null,
+     lastReportAt: l.dayMeta.lastReportAt ? new Date(l.dayMeta.lastReportAt) : null,
+     resetAt: l.dayMeta.resetAt ? new Date(l.dayMeta.resetAt) : null,
+     shiftChanges: Array.isArray(l.dayMeta.shiftChanges)
+       ? l.dayMeta.shiftChanges.map(c => ({ ...c, at: c.at ? new Date(c.at) : null }))
+       : [],
+   });
+ }
   if (typeof l.inventoryLocked === "boolean") setInventoryLocked(l.inventoryLocked);
   if (Array.isArray(l.inventorySnapshot)) setInventorySnapshot(l.inventorySnapshot);
   if (l.inventoryLockedAt) setInventoryLockedAt(new Date(l.inventoryLockedAt));
@@ -1272,9 +1293,10 @@ if (Array.isArray(l.deliveryZones)) setDeliveryZones(l.deliveryZones); // ⬅️
 /* === MIRROR TO LOCAL (all tabs & settings) === */
 useEffect(() => { saveLocalPartial({ menu }); }, [menu]);
   useEffect(() => {
-  saveLocalPartial({
-    purchases: purchases.map(p => ({ ...p, date: p.date ? new Date(p.date).toISOString() : null }))
-  });
+saveLocalPartial({
+  purchases: purchases.map(p => ({ ...p, date: toIso(p.date) }))
+});
+
 }, [purchases]); // ⬅️ NEW
   
 
@@ -2366,7 +2388,7 @@ const voidOrderAndRestock = async (orderNo) => {
       await updateDoc(fsDoc(db, "shops", SHOP_ID, "orders", targetId), {
         voided: true,
         voidReason: reason,
-        restockedAt: when.toISOString(),
+        restockedAt: toIso(when),
         updatedAt: serverTimestamp(),
       });
     }
@@ -6141,28 +6163,3 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
