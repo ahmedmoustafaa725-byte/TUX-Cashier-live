@@ -348,18 +348,6 @@ const DEFAULT_ZONES = [
   { id: "zone-c", name: "Zone C (Far)", fee: 40 },
 ];
 
-// ---- Purchase categories (you can add more in Purchases tab) ----       // ⬅️ NEW
-// ---- Purchase categories (you can add more in Purchases tab) ----
-const DEFAULT_PURCHASE_CATEGORIES = [
-  { id: "cat_buns",  name: "Buns",      unit: "piece" },
-  { id: "cat_meat",  name: "Meat",      unit: "kg" },
-  { id: "cat_cheese",name: "Cheese",    unit: "slice" },
-  { id: "cat_veg",   name: "Veg",       unit: "g" },
-  { id: "cat_sauces",name: "Sauces",    unit: "ml" },
-  { id: "cat_pack",  name: "Packaging", unit: "piece" },
-  { id: "cat_drink", name: "Drinks",    unit: "can" },
-];
-
 
 // Normalizes categories that might be strings or objects
 function normalizePurchaseCategories(arr = []) {
@@ -884,9 +872,9 @@ const [deliveryFee, setDeliveryFee] = useState(0);
 const [deliveryName, setDeliveryName] = useState("");
 const [deliveryPhone, setDeliveryPhone] = useState("");
 const [deliveryAddress, setDeliveryAddress] = useState("");
-  // ───── Purchases & Zones state ─────                                     // ⬅️ NEW
- const [purchaseCategories, setPurchaseCategories] = useState(
-  normalizePurchaseCategories(DEFAULT_PURCHASE_CATEGORIES)
+  // ───── Purchases & Zones state ─────                                   
+ const [purchaseCategories, setPurchaseCategories] = useState(() =>
+   normalizePurchaseCategories(loadLocal().purchaseCategories || [])
  );
 const [purchases, setPurchases] = useState([]); // {id, categoryId, ingredientId?, itemName, unit, qty, unitPrice, date: Date}
 const [purchaseFilter, setPurchaseFilter] = useState("day"); // 'day' | 'month' | 'year'
@@ -1088,7 +1076,9 @@ const writeSeqRef = useRef(0);
 
 
   useEffect(() => {
-  if (!Array.isArray(purchaseCategories)) return;
+ if (!Array.isArray(purchaseCategories)) return;
+  // wait for either local or cloud hydration to complete
+  if (!localHydrated && !hydrated) return;
   setInventory((prev) => {
     let changed = false;
     let out = [...prev];
@@ -1115,7 +1105,7 @@ const writeSeqRef = useRef(0);
     }
     return changed ? out : prev;
   });
-}, [purchaseCategories]);
+}, [purchaseCategories, localHydrated, hydrated]);
 
   // Auto-link purchase to an inventory item by category name (if possible)
 useEffect(() => {
@@ -6080,6 +6070,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
