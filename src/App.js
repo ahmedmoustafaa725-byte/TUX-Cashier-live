@@ -404,6 +404,38 @@ function convertToInventoryUnit(qty, purchaseUnit, invUnit) {
 }
 
 
+function getLatestPurchaseForInv(inventoryItem, purchases, purchaseCategories) {
+  let best = null;
+  const invName = String(inventoryItem?.name || "").toLowerCase();
+
+  for (const p of purchases || []) {
+    const when = p?.date instanceof Date ? p.date : new Date(p?.date);
+
+    // 1) Prefer rows explicitly linked by ingredientId
+    if (p.ingredientId && p.ingredientId === inventoryItem.id) {
+      if (!best || when > best._when) best = { ...p, _when: when };
+      continue;
+    }
+
+    // 2) Fallback: match purchase category name to inventory name
+    if (!p.ingredientId) {
+      const catName = (purchaseCategories.find(c => c.id === p.categoryId)?.name || "").toLowerCase();
+      if (catName && catName === invName) {
+        if (!best || when > best._when) best = { ...p, _when: when };
+      }
+    }
+  }
+  return best;
+}
+
+
+// price per *inventory* unit from a purchase row
+function unitPriceToInventoryCost(unitPrice, purchaseUnit, invUnit) {
+  const invUnitsPerPurchaseUnit = convertToInventoryUnit(1, purchaseUnit, invUnit);
+  if (!invUnitsPerPurchaseUnit) return null;
+  return Number(unitPrice || 0) / invUnitsPerPurchaseUnit;
+}
+
 /* ⬇️ ADD THIS BLOCK RIGHT HERE (still top-level, before the App component) */
 const DEFAULT_INV_UNIT_BY_CATNAME = {
   buns: "piece",
@@ -1073,6 +1105,30 @@ const writeSeqRef = useRef(0);
     setNewPurchase(p => ({ ...p, date: purchaseDay }));
   }
 }, [purchaseFilter, purchaseDay]);
+
+useEffect(() => {
+  if (!purchases?.length) return;
+
+  setInventory(current => {
+    let changed = false;
+
+    const next = current.map(it => {
+      const last = getLatestPurchaseForInv(it, purchases, purchaseCategories);
+      if (!last) return it;
+
+      const cpu = unitPriceToInventoryCost(last.unitPrice, last.unit, it.unit);
+      if (cpu == null) return it;
+
+      const v = Number(cpu.toFixed(4));
+      if (Number(it.costPerUnit || 0) === v) return it; // no change
+
+      changed = true;
+      return { ...it, costPerUnit: v };
+    });
+
+    return changed ? next : current;
+  });
+}, [purchases, purchaseCategories, setInventory]);
 
 
   useEffect(() => {
@@ -6070,6 +6126,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
