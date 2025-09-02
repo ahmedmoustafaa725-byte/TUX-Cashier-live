@@ -3182,28 +3182,31 @@ const generatePurchasesPDF = () => {
       }}
     >
       🔔 Low Stock
-      {lowStockCount > 0 && (
-        <span
-          style={{
-            position: "absolute",
-            top: -6,
-            right: -6,
-            minWidth: 20,
-            height: 20,
-            borderRadius: 10,
-            padding: "0 6px",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: "#d32f2f",
-            color: "#fff",
-            fontSize: 12,
-            border: "2px solid white",
-          }}
-        >
-          {lowStockCount}
-        </span>
-      )}
+    {lowStockCount > 0 && (
+  <span
+    style={{
+      position: "absolute",
+      top: -4,
+      right: -4,
+      minWidth: 16,
+      height: 16,
+      borderRadius: 8,
+      padding: "0 4px",
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      background: "#d32f2f",
+      color: "#fff",
+      fontSize: 10,
+      fontWeight: 800,
+      lineHeight: 1,
+      border: "1.5px solid white",
+    }}
+  >
+    {lowStockCount > 99 ? "99+" : lowStockCount}
+  </span>
+)}
+
     </button>
 
     <button
@@ -3328,20 +3331,15 @@ const generatePurchasesPDF = () => {
       <span style={{ opacity: 0.7 }}>
         {lowStockCount ? `${lowStockCount} item(s)` : "No items are low in stock 🎉"}
       </span>
-      <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-        <button
-          onClick={openInventoryEditor}
-          style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${btnBorder}` }}
-        >
-          Go to Inventory
-        </button>
-        <button
-          onClick={() => setShowLowStock(false)}
-          style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${btnBorder}` }}
-        >
-          Close
-        </button>
-      </div>
+<div style={{ marginLeft: "auto" }}>
+  <button
+    onClick={() => setShowLowStock(false)}
+    style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${btnBorder}` }}
+  >
+    Close
+  </button>
+  </div>
+
     </div>
 
     {lowStockCount > 0 && (
@@ -6309,5 +6307,6 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
