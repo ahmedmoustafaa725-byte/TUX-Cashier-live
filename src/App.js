@@ -3323,7 +3323,7 @@ const generatePurchasesPDF = () => {
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
       <h3 style={{ margin: 0 }}>Low Stock</h3>
       <span style={{ opacity: 0.7 }}>
-        {lowStockCount ? `${lowStockCount} item(s)` : "No items are low in stock 🎉"}
+        {lowStockCount ? `${lowStockCount} item(s)` : "No items are low in stock"}
       </span>
 <div style={{ marginLeft: "auto" }}>
   <button
@@ -3648,7 +3648,7 @@ const generatePurchasesPDF = () => {
             </div>
 
             <div style={{ flex: 1, minWidth: 300 }}>
-              <h3>Extras (for selected item)</h3>
+              <h3>Extras</h3>
               {/* TILE GRID (multi-select) */}
               <div
                 style={{
@@ -4138,7 +4138,7 @@ const generatePurchasesPDF = () => {
               }}
             >
               <div>
-                <strong>Order Total (incl. delivery if any):</strong>{" "}
+                <strong>Order Total (incl. delivery):</strong>{" "}
                 E£
                 {(
                   cart.reduce((s, b) => {
@@ -6297,6 +6297,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
