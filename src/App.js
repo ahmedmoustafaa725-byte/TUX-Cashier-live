@@ -1179,7 +1179,7 @@ useEffect(() => {
   if (!cat) return;
   const match = inventory.find(it => it.name.toLowerCase() === String(cat.name || "").toLowerCase());
   if (match) {
-    setNewPurchase(p => ({ ...p, ingredientId: match.id, unit: p.unit || match.unit }));
+    setNewPurchase(p => ({ ...p, ingredientId: match.id })); 
   }
 }, [newPurchase.categoryId, newPurchase.ingredientId, purchaseCategories, inventory]);
 
@@ -1201,7 +1201,7 @@ useEffect(() => {
   if (!cat) return;
   setNewPurchase(p => {
     // don't override if user already chose something custom this time
-    if (p.unit && p.unit !== "piece") return p;
+   
     return { ...p, unit: cat.unit || p.unit || "piece" };
   });
 }, [newPurchase.categoryId, purchaseCategories]);
@@ -4894,7 +4894,7 @@ const generatePurchasesPDF = () => {
   {/* Unit dropdown */}
   <select
     value={newPurchase.unit}
-    onChange={(e) => setNewPurchase(p => ({ ...p, unit: e.target.value }))}
+    onChange={e => setNewPurchase(p => ({ ...p, unit: e.target.value }))}
     style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 140 }}
   >
     {PURCHASE_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
@@ -6163,3 +6163,4 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
