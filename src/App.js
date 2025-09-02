@@ -3444,7 +3444,7 @@ const generatePurchasesPDF = () => {
     >
       <h3 style={{ marginTop: 0 }}>Inventory Costs (E£ / unit)</h3>
       <p style={{ marginTop: 4, opacity: 0.8 }}>
-        Set the cost <b>per inventory unit</b>. These feed the auto-COGS calculation below.
+        Set the cost per inventory unit and the Min Level.
       </p>
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -3519,9 +3519,7 @@ const generatePurchasesPDF = () => {
       }}
     >
       <h3 style={{ marginTop: 0 }}>COGS per Menu Item (auto)</h3>
-      <p style={{ marginTop: 4, opacity: 0.8 }}>
-        Based on each item’s <code>uses</code> and the inventory costs above. Adjust “Inventory Costs” to update here.
-      </p>
+    
 
       {/* MENU ITEMS */}
       <h4 style={{ margin: "10px 0 6px" }}>Menu</h4>
@@ -5813,8 +5811,6 @@ const generatePurchasesPDF = () => {
 
 
           {/* Workers / Payments / Order Types — side-by-side */}
-<h3>People & Payments</h3>
-
 <div
   style={{
     display: "grid",
@@ -6254,7 +6250,7 @@ const generatePurchasesPDF = () => {
                   />
                 </label>
                 <small style={{ display: "block", opacity: 0.75 }}>
-                  Typical sizes: 80, 58. Your current: {preferredPaperWidthMm} mm.
+                   Your current: {preferredPaperWidthMm} mm.
                 </small>
               </div>
             </div>
@@ -6301,6 +6297,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
