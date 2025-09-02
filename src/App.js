@@ -955,6 +955,21 @@ const unlockAdminPin = (n) => {
   const [nextOrderNo, setNextOrderNo] = useState(1);
 
   const [expenses, setExpenses] = useState([]);
+  // 🔒 Safety-net: never allow locked expenses (from returned orders) to disappear
+const lastLockedRef = useRef([]);
+
+useEffect(() => {
+  const lockedNow = (expenses || []).filter(isExpenseLocked);
+  const missing = lastLockedRef.current.filter(
+    prev => !lockedNow.some(cur => cur.id === prev.id)
+  );
+  if (missing.length) {
+    // Put them back in front — unremoveable by design
+    setExpenses(arr => [...missing, ...arr]);
+  }
+  lastLockedRef.current = lockedNow;
+}, [expenses]);
+
   const [newExpName, setNewExpName] = useState("");
   const [newExpUnit, setNewExpUnit] = useState("pcs");
   const [newExpQty, setNewExpQty] = useState(1);
@@ -4252,17 +4267,31 @@ const generatePurchasesPDF = () => {
                   <td style={{ padding: 6 }}>{e.date ? fmtDateTime(e.date) : ""}</td>
                   <td style={{ padding: 6 }}>{e.note}</td>
                   <td style={{ padding: 6 }}>
-<button
-  onClick={() => removeExpense(e.id)}
-  disabled={isExpenseLocked(e)}
-  title={isExpenseLocked(e) ? "Linked to returned order — cannot remove" : "Remove"}
+                  <button
+  onClick={() => {
+    const locked = !!(e?.locked || e?.source === "order_return" || e?.orderNo != null);
+    if (locked) {
+      alert("This expense is linked to a returned order and cannot be removed.");
+      return;
+    }
+    removeExpense(e.id);
+  }}
+  disabled={!!(e?.locked || e?.source === "order_return" || e?.orderNo != null)}
+  title={
+    (e?.locked || e?.source === "order_return" || e?.orderNo != null)
+      ? "Linked to returned order — cannot remove"
+      : "Remove"
+  }
   style={{
     background: "#c62828",
     color: "#fff",
     border: "none",
     borderRadius: 6,
     padding: "6px 10px",
-    cursor: isExpenseLocked(e) ? "not-allowed" : "pointer",
+    cursor:
+      (e?.locked || e?.source === "order_return" || e?.orderNo != null)
+        ? "not-allowed"
+        : "pointer",
   }}
 >
   Remove
@@ -5906,14 +5935,6 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
-
-
-
-
-
-
-
-
 
 
 
