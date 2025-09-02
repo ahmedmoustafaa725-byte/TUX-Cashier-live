@@ -394,6 +394,15 @@ const UNIT_MAP = {
   dozen:  { base: "piece",  factor: 12 }, // 1 dozen = 12 pieces
 };
 
+
+function unitPriceToInventoryCost(purchaseUnitPrice, purchaseUnit, invUnit) {
+  // how many inventory units are in 1 purchase unit?
+  const qtyInInvUnits = convertToInventoryUnit(1, purchaseUnit, invUnit);
+  if (!qtyInInvUnits || !isFinite(qtyInInvUnits) || qtyInInvUnits <= 0) return null;
+  return purchaseUnitPrice / qtyInInvUnits; // E£ per inventory unit
+}
+
+
 function convertToInventoryUnit(qty, purchaseUnit, invUnit) {
   const p = UNIT_MAP[String(purchaseUnit || "").toLowerCase()];
   const i = UNIT_MAP[String(invUnit || "").toLowerCase()];
@@ -2667,6 +2676,18 @@ const handleAddPurchase = () => {
       `Purchase saved, but units incompatible (${unit} vs ${invItem?.unit}). Update the inventory unit first.`
     );
   }
+
+
+const targetItem = nextInventory.find(it => it.id === targetInvId);
+if (targetItem) {
+  const cpu = unitPriceToInventoryCost(Number(unitPrice || 0), unit, targetItem.unit);
+  if (cpu != null) {
+    nextInventory = nextInventory.map(it =>
+      it.id === targetInvId ? { ...it, costPerUnit: Number(cpu.toFixed(4)) } : it
+    );
+  }
+}
+
 
   // Commit both states immutably
   setInventory(nextInventory);
@@ -6126,6 +6147,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
