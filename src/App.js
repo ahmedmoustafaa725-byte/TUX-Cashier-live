@@ -5362,102 +5362,7 @@ const generatePurchasesPDF = () => {
               )}
             </tbody>
           </table>
-{/* ───────── Inventory Costs (E£/unit) & COGS (place right after Items/Extras) ───────── */}  {/* ⬅️ NEW */}
-<h3 style={{ marginTop: 18 }}>Inventory Costs (E£ / unit)</h3>
-<table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 12 }}>
-  <thead>
-    <tr>
-      <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Ingredient</th>
-      <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Unit</th>
-      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Cost / Unit (E£)</th>
-    </tr>
-  </thead>
-  <tbody>
-    {inventory.map((it) => (
-      <tr key={it.id}>
-        <td style={{ padding: 6 }}>{it.name}</td>
-        <td style={{ padding: 6 }}>{it.unit}</td>
-        <td style={{ padding: 6, textAlign: "right" }}>
-          <input
-            type="number"
-            step="any"
-            value={Number(it.costPerUnit ?? 0)}
-            onChange={(e) => {
-              const v = Number(e.target.value || 0);
-              setInventory((inv) => inv.map(x => x.id === it.id ? { ...x, costPerUnit: v } : x));
-            }}
-            style={{ width: 140, textAlign: "right" }}
-          />
-        </td>
-      </tr>
-    ))}
-  </tbody>
-</table>
 
-<h3>COGS per Menu Item (auto)</h3>
-<table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 12 }}>
-  <thead>
-    <tr>
-      <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Item</th>
-      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>COGS / unit (E£)</th>
-      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Price (E£)</th>
-      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Gross / unit (E£)</th>
-    </tr>
-  </thead>
-  <tbody>
-    {menu.map((m) => {
-      const cogs = computeCOGSForItemDef(m, invById);
-      const price = Number(m.price || 0);
-      return (
-        <tr key={m.id}>
-          <td style={{ padding: 6 }}>{m.name}</td>
-          <td style={{ padding: 6, textAlign: "right" }}>{cogs.toFixed(2)}</td>
-          <td style={{ padding: 6, textAlign: "right" }}>{price.toFixed(2)}</td>
-          <td style={{ padding: 6, textAlign: "right" }}>{(price - cogs).toFixed(2)}</td>
-        </tr>
-      );
-    })}
-  </tbody>
-</table>
-
-
-          {/* Add item */}
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 18 }}>
-            <input
-              type="text"
-              placeholder="New item name"
-              value={newMenuName}
-              onChange={(e) => setNewMenuName(e.target.value)}
-              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 220 }}
-            />
-            <input
-              type="number"
-              placeholder="Price (E£)"
-              value={newMenuPrice}
-              onChange={(e) => setNewMenuPrice(Number(e.target.value || 0))}
-              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 160 }}
-            />
-            <button
-              onClick={() => {
-                const name = String(newMenuName || "").trim();
-                if (!name) return alert("Name required.");
-                const id = Date.now();
-                setMenu((arr) => [...arr, { id, name, price: Math.max(0, Number(newMenuPrice || 0)), uses: {}, color: "#ffffff" }]);
-                setNewMenuName("");
-                setNewMenuPrice(0);
-              }}
-              style={{
-                background: "#2e7d32",
-                color: "#fff",
-                border: "none",
-                borderRadius: 6,
-                padding: "8px 12px",
-                cursor: "pointer",
-              }}
-            >
-              Add Item
-            </button>
-          </div>
 
           {/* Extras editor */}
           <h3>Extras</h3>
@@ -6094,6 +5999,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
