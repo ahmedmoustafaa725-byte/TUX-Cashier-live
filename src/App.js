@@ -4582,96 +4582,7 @@ const generatePurchasesPDF = () => {
     </div>
 
 
-   
-
-  {/* ── Add Purchase row (bordered) ───────────────────────────────── */}
-<div
-  style={{
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 8,
-    alignItems: "center",
-    marginBottom: 10,
-    padding: 10,
-    border: `1px solid ${btnBorder}`,   // ← border line
-    borderRadius: 8,
-    background: dark ? "#1b1b1b" : "#fafafa",
-  }}
->
-  {/* Category */}
-  <select
-    value={newPurchase.categoryId}
-    onChange={(e) => setNewPurchase(p => ({ ...p, categoryId: e.target.value }))}
-    style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 180 }}
-  >
-    <option value="">Select category</option>
-    {categoriesForGrid.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-  </select>
-
-  {/* Item name */}
-  <input
-    type="text"
-    placeholder="Item name"
-    value={newPurchase.itemName}
-    onChange={(e) => setNewPurchase(p => ({ ...p, itemName: e.target.value }))}
-    style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 220 }}
-  />
-
-  {/* Unit dropdown */}
-  <select
-    value={newPurchase.unit}
-    onChange={(e) => setNewPurchase(p => ({ ...p, unit: e.target.value }))}
-    style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 140 }}
-  >
-    {PURCHASE_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-  </select>
-
-  {/* Qty */}
-  <input
-    type="number"
-    placeholder="Qty"
-    value={newPurchase.qty}
-    onChange={(e) => setNewPurchase(p => ({ ...p, qty: Math.max(0, Number(e.target.value || 0)) }))}
-    style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 120 }}
-  />
-
-  {/* Unit price */}
-  <input
-    type="number"
-    placeholder="Unit Price (E£)"
-    value={newPurchase.unitPrice}
-    onChange={(e) => setNewPurchase(p => ({ ...p, unitPrice: Math.max(0, Number(e.target.value || 0)) }))}
-    style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 160 }}
-  />
-
-  {/* Date */}
-  <input
-    type="date"
-    value={newPurchase.date}
-    onChange={(e) => setNewPurchase(p => ({ ...p, date: e.target.value }))}
-    style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-  />
-
-<button
-  onClick={handleAddPurchase}
-  style={{
-    background: "#000",   // black button
-    color: "#fff",        // white text
-    border: "none",
-    borderRadius: 6,
-    padding: "8px 12px",
-    cursor: "pointer",
-    fontWeight: 700,
-  }}
->
-  Add Purchase
-</button>
-
-</div>
-
-
-
-    {/* === CATEGORY TILES + ADD CATEGORY =============================== */}
+  {/* === CATEGORY TILES + ADD CATEGORY =============================== */}
     <div
       style={{
         display: "grid",
@@ -4839,6 +4750,97 @@ const generatePurchasesPDF = () => {
   </div>
       </div>
     </div>
+
+   
+
+  {/* ── Add Purchase row (bordered) ───────────────────────────────── */}
+<div
+  style={{
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 8,
+    alignItems: "center",
+    marginBottom: 10,
+    padding: 10,
+    border: `1px solid ${btnBorder}`,   // ← border line
+    borderRadius: 8,
+    background: dark ? "#1b1b1b" : "#fafafa",
+  }}
+>
+  {/* Category */}
+  <select
+    value={newPurchase.categoryId}
+    onChange={(e) => setNewPurchase(p => ({ ...p, categoryId: e.target.value }))}
+    style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 180 }}
+  >
+    <option value="">Select category</option>
+    {categoriesForGrid.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+  </select>
+
+  {/* Item name */}
+  <input
+    type="text"
+    placeholder="Item name"
+    value={newPurchase.itemName}
+    onChange={(e) => setNewPurchase(p => ({ ...p, itemName: e.target.value }))}
+    style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 220 }}
+  />
+
+  {/* Unit dropdown */}
+  <select
+    value={newPurchase.unit}
+    onChange={(e) => setNewPurchase(p => ({ ...p, unit: e.target.value }))}
+    style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 140 }}
+  >
+    {PURCHASE_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+  </select>
+
+  {/* Qty */}
+  <input
+    type="number"
+    placeholder="Qty"
+    value={newPurchase.qty}
+    onChange={(e) => setNewPurchase(p => ({ ...p, qty: Math.max(0, Number(e.target.value || 0)) }))}
+    style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 120 }}
+  />
+
+  {/* Unit price */}
+  <input
+    type="number"
+    placeholder="Unit Price (E£)"
+    value={newPurchase.unitPrice}
+    onChange={(e) => setNewPurchase(p => ({ ...p, unitPrice: Math.max(0, Number(e.target.value || 0)) }))}
+    style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 160 }}
+  />
+
+  {/* Date */}
+  <input
+    type="date"
+    value={newPurchase.date}
+    onChange={(e) => setNewPurchase(p => ({ ...p, date: e.target.value }))}
+    style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+  />
+
+<button
+  onClick={handleAddPurchase}
+  style={{
+    background: "#000",   // black button
+    color: "#fff",        // white text
+    border: "none",
+    borderRadius: 6,
+    padding: "8px 12px",
+    cursor: "pointer",
+    fontWeight: 700,
+  }}
+>
+  Add Purchase
+</button>
+
+</div>
+
+
+
+  
 
     {/* === DETAILS LIST ================================================= */}
     <div style={{ marginTop: 4 }}>
@@ -6092,6 +6094,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
