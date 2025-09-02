@@ -913,6 +913,29 @@ const [newPurchase, setNewPurchase] = useState({
 const [deliveryZoneId, setDeliveryZoneId] = useState("");               // ⬅️ NEW
 const [customers, setCustomers] = useState([]);                         // {phone,name,address,zoneId}
 const [deliveryZones, setDeliveryZones] = useState(DEFAULT_ZONES);      // ⬅️ NEW
+  // --- Delivery Zones editor (Settings) ---
+const [newZoneName, setNewZoneName] = useState("");
+const [newZoneFee, setNewZoneFee] = useState(0);
+
+const addZone = () => {
+  const nm = String(newZoneName || "").trim();
+  if (!nm) return alert("Enter a zone name.");
+  const fee = Math.max(0, Number(newZoneFee || 0));
+  const id = ensureInvIdUnique(slug(nm), deliveryZones); // you already have slug() & ensureInvIdUnique()
+  setDeliveryZones((z) => [...z, { id, name: nm, fee }]);
+  setNewZoneName("");
+  setNewZoneFee(0);
+};
+
+const removeZone = (id) => {
+  const z = deliveryZones.find((d) => d.id === id);
+  if (!z) return;
+  if (!window.confirm(`Delete "${z.name}"?`)) return;
+  setDeliveryZones((list) => list.filter((d) => d.id !== id));
+  // if the current order had this zone selected, clear it
+  setDeliveryZoneId((prev) => (prev === id ? "" : prev));
+};
+
 const [newCategoryName, setNewCategoryName] = useState("");
 
 
@@ -6059,6 +6082,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
