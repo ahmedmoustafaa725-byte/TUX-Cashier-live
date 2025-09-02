@@ -879,6 +879,11 @@ export default function App() {
 const [adminSubTab, setAdminSubTab] = useState("inventory"); 
 
   const [dark, setDark] = useState(false);
+
+const [inventory, setInventory] = useState(DEFAULT_INVENTORY);
+const [inventoryLocked, setInventoryLocked] = useState(false);
+const [inventorySnapshot, setInventorySnapshot] = useState([]);
+const [inventoryLockedAt, setInventoryLockedAt] = useState(null);
   // Low-stock UI state + derived list
 const [showLowStock, setShowLowStock] = useState(false);
 
@@ -989,13 +994,10 @@ const [newCategoryName, setNewCategoryName] = useState("");
 
 
 const [cashReceived, setCashReceived] = useState(0);
-const [inventory, setInventory] = useState(DEFAULT_INVENTORY);
 const [newInvName, setNewInvName] = useState("");
 const [newInvUnit, setNewInvUnit] = useState("");
 const [newInvQty, setNewInvQty] = useState(0);
-const [inventoryLocked, setInventoryLocked] = useState(false);
-const [inventorySnapshot, setInventorySnapshot] = useState([]);
-const [inventoryLockedAt, setInventoryLockedAt] = useState(null);
+
 
   const [adminPins, setAdminPins] = useState({ ...DEFAULT_ADMIN_PINS });
   // Simple PIN check for a specific Admin number (1..6)
@@ -6307,4 +6309,5 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
