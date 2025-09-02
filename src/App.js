@@ -3696,55 +3696,51 @@ const generatePurchasesPDF = () => {
               </div>
 
               {/* Qty + Add */}
-              <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8 }}>
-                <strong>Qty:</strong>
-                <button
-                  onClick={() => setSelectedQty((q) => Math.max(1, Number(q || 1) - 1))}
-                  style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${btnBorder}` }}
-                >
-                  –
-                </button>
-               <input
-  type="number"
-  min={1}
-  value={selectedQty}
-  onChange={(e) =>
-    setSelectedQty(Math.max(1, Number(e.target.value || 1)))
-  }
-  style={{
-    width: 70,
-    textAlign: "center",
-    padding: 6,
-    borderRadius: 6,
-    border: `1px solid ${btnBorder}`,
-  }}
-/>
+<div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8 }}>
+  <strong>Qty:</strong>
+  <button
+    onClick={() => setSelectedQty((q) => Math.max(1, Number(q || 1) - 1))}
+    style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${btnBorder}` }}
+  >
+    –
+  </button>
 
-<button
-  onClick={() =>
-    setSelectedQty((q) => Math.max(1, Number(q || 1) + 1))
-  }
-  style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${btnBorder}` }}
->
-  +
-</button>
+  <input
+    type="number"
+    min={1}
+    value={selectedQty}
+    onChange={(e) => setSelectedQty(Math.max(1, Number(e.target.value || 1)))}
+    style={{
+      width: 70,
+      textAlign: "center",
+      padding: 6,
+      borderRadius: 6,
+      border: `1px solid ${btnBorder}`
+    }}
+  />
 
-<button
-  onClick={addToCart}
-  style={{
-    marginLeft: 8,
-    padding: "6px 12px",
-    borderRadius: 6,
-    border: "none",
-    background: "#1976d2",
-    color: "#fff",
-    cursor: "pointer",
-  }}
->
-  Add to cart
-</button>
+  <button
+    onClick={() => setSelectedQty((q) => Math.max(1, Number(q || 1) + 1))}
+    style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${btnBorder}` }}
+  >
+    +
+  </button>
 
-              </div>
+  <button
+    onClick={addToCart}
+    style={{
+      marginLeft: 8,
+      padding: "6px 12px",
+      borderRadius: 6,
+      border: `1px solid ${btnBorder}`,
+      background: "#1976d2",
+      color: "#fff",
+      cursor: "pointer"
+    }}
+  >
+    Add to cart
+  </button>
+</div>
             </div>
           </div>
 
@@ -6326,6 +6322,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
