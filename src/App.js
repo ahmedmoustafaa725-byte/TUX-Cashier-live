@@ -438,12 +438,6 @@ function getLatestPurchaseForInv(inventoryItem, purchases, purchaseCategories) {
 }
 
 
-// price per *inventory* unit from a purchase row
-function unitPriceToInventoryCost(unitPrice, purchaseUnit, invUnit) {
-  const invUnitsPerPurchaseUnit = convertToInventoryUnit(1, purchaseUnit, invUnit);
-  if (!invUnitsPerPurchaseUnit) return null;
-  return Number(unitPrice || 0) / invUnitsPerPurchaseUnit;
-}
 
 /* ⬇️ ADD THIS BLOCK RIGHT HERE (still top-level, before the App component) */
 const DEFAULT_INV_UNIT_BY_CATNAME = {
@@ -6147,6 +6141,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
