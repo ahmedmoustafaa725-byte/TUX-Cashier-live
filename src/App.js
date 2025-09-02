@@ -5824,62 +5824,123 @@ const generatePurchasesPDF = () => {
   </div>
 </div>
 
-<h3>Delivery Zones & Fees</h3>   {/* ⬅️ NEW */}
-<table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 10 }}>
-  <thead>
-    <tr>
-      <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Name</th>
-      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Fee (E£)</th>
-      <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Actions</th>
-    </tr>
-  </thead>
-  <tbody>
-    {deliveryZones.map(z => (
-      <tr key={z.id}>
-        <td style={{ padding: 6 }}>
-          <input
-            type="text"
-            value={z.name}
-            onChange={(e)=> setDeliveryZones(arr => arr.map(x => x.id === z.id ? { ...x, name: e.target.value } : x))}
-            style={{ width: "100%" }}
-          />
-        </td>
-        <td style={{ padding: 6, textAlign: "right" }}>
-          <input
-            type="number"
-            value={z.fee}
-            onChange={(e)=> setDeliveryZones(arr => arr.map(x => x.id === z.id ? { ...x, fee: Number(e.target.value || 0) } : x))}
-            style={{ width: 140, textAlign: "right" }}
-          />
-        </td>
-        <td style={{ padding: 6 }}>
-          <button
-            onClick={()=> setDeliveryZones(arr => arr.filter(x => x.id !== z.id))}
-            style={{ background: "#c62828", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
-          >
-            Remove
-          </button>
-        </td>
-      </tr>
-    ))}
-  </tbody>
-</table>
-<div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
-  <input id="new-zone-name" type="text" placeholder="Zone name" style={{ flex: 1 }} />
-  <input id="new-zone-fee" type="number" placeholder="Fee" style={{ width: 160 }} />
-  <button
-    onClick={() => {
-      const n = String(document.getElementById("new-zone-name").value || "").trim();
-      const f = Number(document.getElementById("new-zone-fee").value || 0);
-      if (!n) return;
-      setDeliveryZones(arr => [...arr, { id: `z_${Date.now()}`, name: n, fee: Math.max(0, f) }]);
-      document.getElementById("new-zone-name").value = "";
-      document.getElementById("new-zone-fee").value = "";
-    }}
-    style={{ background: "#1976d2", color: "#fff", border: "none", borderRadius: 6, padding: "8px 12px", cursor: "pointer" }}
-  >
-    Add Zone
-  </button>
+{/* ── Delivery Zones & Fees (UNDER Workers/Payment/Order Type, ABOVE Admin block) ── */}
+<div
+  style={{
+    border: `1px solid ${cardBorder}`,
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 12,
+    background: dark ? "#151515" : "#fafafa",
+  }}
+>
+  <h3 style={{ marginTop: 0 }}>Delivery Zones & Fees</h3>
+  <p style={{ marginTop: 4, opacity: 0.8 }}>
+    These zones appear in <b>Orders → Order Type = Delivery</b> and auto-set the delivery fee.
+  </p>
+
+  {/* Add new zone */}
+  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+    <input
+      type="text"
+      placeholder="Zone name (e.g., Zone A — Nearby)"
+      value={newZoneName}
+      onChange={(e) => setNewZoneName(e.target.value)}
+      style={{ minWidth: 260, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+    />
+    <input
+      type="number"
+      placeholder="Fee (E£)"
+      value={newZoneFee}
+      onChange={(e) => setNewZoneFee(Number(e.target.value || 0))}
+      style={{ width: 140, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+    />
+    <button
+      onClick={addZone}
+      style={{ padding: "6px 10px", borderRadius: 6, border: "none", background: "#42a5f5", color: "#fff", cursor: "pointer" }}
+    >
+      Add zone
+    </button>
+  </div>
+
+  {/* Existing zones */}
+  <div style={{ overflowX: "auto" }}>
+    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <thead>
+        <tr>
+          <th style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Zone</th>
+          <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Fee (E£)</th>
+          <th style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}></th>
+        </tr>
+      </thead>
+      <tbody>
+        {deliveryZones.map((z, idx) => (
+          <tr key={z.id}>
+            <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>
+              <input
+                type="text"
+                value={z.name}
+                onChange={(e) =>
+                  setDeliveryZones((list) =>
+                    list.map((it) => (it.id === z.id ? { ...it, name: e.target.value } : it))
+                  )
+                }
+                style={{ width: "100%", padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+              />
+            </td>
+            <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
+              <input
+                type="number"
+                value={Number(z.fee || 0)}
+                onChange={(e) =>
+                  setDeliveryZones((list) =>
+                    list.map((it) =>
+                      it.id === z.id ? { ...it, fee: Math.max(0, Number(e.target.value || 0)) } : it
+                    )
+                  )
+                }
+                style={{ width: 120, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, textAlign: "right" }}
+              />
+            </td>
+            <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, whiteSpace: "nowrap" }}>
+              {/* Optional reordering if you want (uses your existing moveByIndex) */}
+              <button
+                onClick={() => setDeliveryZones((arr) => moveByIndex(arr, idx, -1))}
+                disabled={idx === 0}
+                title="Move up"
+                style={{ marginRight: 6 }}
+              >
+                ↑
+              </button>
+              <button
+                onClick={() => setDeliveryZones((arr) => moveByIndex(arr, idx, +1))}
+                disabled={idx === deliveryZones.length - 1}
+                title="Move down"
+                style={{ marginRight: 10 }}
+              >
+                ↓
+              </button>
+
+              <button
+                onClick={() => removeZone(z.id)}
+                style={{ background: "#ef5350", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}
+              >
+                Delete
+              </button>
+            </td>
+          </tr>
+        ))}
+
+        {deliveryZones.length === 0 && (
+          <tr>
+            <td colSpan={3} style={{ padding: 10, opacity: 0.7 }}>
+              No zones yet. Add your first zone above.
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  </div>
 </div>
 
 
@@ -5999,6 +6060,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
