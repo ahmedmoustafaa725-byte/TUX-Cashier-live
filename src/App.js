@@ -5857,15 +5857,13 @@ const generatePurchasesPDF = () => {
   }}
 >
   <h3 style={{ marginTop: 0 }}>Delivery Zones & Fees</h3>
-  <p style={{ marginTop: 4, opacity: 0.8 }}>
-    These zones appear in <b>Orders → Order Type = Delivery</b> and auto-set the delivery fee.
-  </p>
+ 
 
   {/* Add new zone */}
   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
     <input
       type="text"
-      placeholder="Zone name (e.g., Zone A — Nearby)"
+      placeholder="Zone name"
       value={newZoneName}
       onChange={(e) => setNewZoneName(e.target.value)}
       style={{ minWidth: 260, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
@@ -6082,6 +6080,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
