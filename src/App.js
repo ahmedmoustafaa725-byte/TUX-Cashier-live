@@ -871,6 +871,25 @@ function dedupeCustomers(list = []) {
 // Expenses from returned orders are "locked"
 const isExpenseLocked = (e) =>
   !!(e?.locked || e?.source === "order_return" || e?.orderNo != null);
+// Bank tx that must never be deleted (auto margin init)
+const isBankLocked = (t) =>
+  !!(
+    t?.locked ||
+    t?.source === "auto_day_margin" ||
+    (t?.type === "init" && /Auto Init from day margin/i.test(t?.note || ""))
+  );
+
+ const removeBankTx = (id) => {
+  setBankTx(arr => {
+    const row = arr.find(t => t.id === id);
+    if (!row) return arr;
+    if (isBankLocked(row)) {
+      alert("This Auto Init from day margin transaction is locked and cannot be removed.");
+      return arr;
+    }
+    return arr.filter(t => t.id !== id);
+  });
+};
 
 
 export default function App() {
@@ -1036,6 +1055,22 @@ useEffect(() => {
   }
   lastLockedRef.current = lockedNow;
 }, [expenses]);
+
+  // 🔒 Safety-net for bank: never allow locked "Auto Init from day margin" to disappear
+const lastLockedBankRef = useRef([]);
+
+useEffect(() => {
+  const lockedNow = (bankTx || []).filter(isBankLocked);
+  const missing = lastLockedBankRef.current.filter(
+    prev => !lockedNow.some(cur => cur.id === prev.id)
+  );
+  if (missing.length) {
+    // Put them back in front — unremoveable by design
+    setBankTx(arr => [...missing, ...arr]);
+  }
+  lastLockedBankRef.current = lockedNow;
+}, [bankTx]);
+
 
   const [newExpName, setNewExpName] = useState("");
   const [newExpUnit, setNewExpUnit] = useState("pcs");
@@ -2004,6 +2039,8 @@ function getPeriodRange(kind, dayMeta, dayStr, monthStr) {
         worker: endBy,
         note: "Auto Init from day margin",
         date: new Date(),
+        locked: true,                // ⬅️ make it unremovable
+   source: "auto_day_margin",
       });
     } else if (margin < 0) {
       txs.push({
@@ -2797,6 +2834,8 @@ const removeExpense = (id) => {
     return arr.filter((e) => e.id !== id);
   });
 };
+
+ 
 
 
 
@@ -5306,19 +5345,22 @@ const generatePurchasesPDF = () => {
                   <td style={{ padding: 6 }}>{t.date ? new Date(t.date).toLocaleString() : ""}</td>
                   <td style={{ padding: 6 }}>{t.note}</td>
                   <td style={{ padding: 6 }}>
-                    <button
-                      onClick={() => setBankTx((arr) => arr.filter((x) => x.id !== t.id))}
-                      style={{
-                        background: "#c62828",
-                        color: "#fff",
-                        border: "none",
-                        borderRadius: 6,
-                        padding: "6px 10px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Remove
-                    </button>
+                   <button
+                          onClick={() => removeBankTx(t.id)}
+                          disabled={isBankLocked(t)}
+                          title={isBankLocked(t) ? "Locked transaction" : "Remove"}
+                          style={{
+                            background: "#c62828",
+                            color: "#fff",
+                            border: "none",
+                            borderRadius: 6,
+                            padding: "6px 10px",
+                            cursor: isBankLocked(t) ? "not-allowed" : "pointer",
+                            opacity: isBankLocked(t) ? 0.6 : 1,
+                          }}
+                        >
+                          🗑
+                        </button>
                   </td>
                 </tr>
               ))}
@@ -6297,6 +6339,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
