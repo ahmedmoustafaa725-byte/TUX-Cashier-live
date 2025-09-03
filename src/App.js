@@ -879,17 +879,7 @@ const isBankLocked = (t) =>
     (t?.type === "init" && /Auto Init from day margin/i.test(t?.note || ""))
   );
 
- const removeBankTx = (id) => {
-  setBankTx(arr => {
-    const row = arr.find(t => t.id === id);
-    if (!row) return arr;
-    if (isBankLocked(row)) {
-      alert("This Auto Init from day margin transaction is locked and cannot be removed.");
-      return arr;
-    }
-    return arr.filter(t => t.id !== id);
-  });
-};
+ 
 
 
 export default function App() {
@@ -1091,6 +1081,18 @@ const [adminUnlocked, setAdminUnlocked] = useState(false);
     worker: "",
     note: "",
   });
+
+  const removeBankTx = (id) => {
+  setBankTx(arr => {
+    const row = arr.find(t => t.id === id);
+    if (!row) return arr;
+    if (isBankLocked(row)) {
+      alert("This Auto Init from day margin transaction is locked and cannot be removed.");
+      return arr;
+    }
+    return arr.filter(t => t.id !== id);
+  });
+};
 
   const [dayMeta, setDayMeta] = useState({
     startedBy: "",
@@ -6339,6 +6341,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
