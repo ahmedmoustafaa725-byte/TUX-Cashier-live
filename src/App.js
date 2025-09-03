@@ -398,7 +398,7 @@ const UNIT_MAP = {
   box:    { base: "box",    factor: 1 },
   carton: { base: "carton", factor: 1 },
   dozen:  { base: "piece",  factor: 12 }, // 1 dozen = 12 pieces
-    pcs:   { base: "piece",  factor: 1 },
+  pcs:   { base: "piece",  factor: 1 },
   pc:    { base: "piece",  factor: 1 },
   unit:  { base: "piece",  factor: 1 },
 
@@ -1073,6 +1073,8 @@ useEffect(() => {
   }
   lastLockedBankRef.current = lockedNow;
 }, [bankTx]);
+
+  
 
 
   const [newExpName, setNewExpName] = useState("");
@@ -2378,6 +2380,7 @@ if (orderType === "Delivery") {
 setDeliveryName("");
 setDeliveryPhone("");
 setDeliveryAddress("");
+setDeliveryZoneId("");   
 
     // reset split
     setSplitPay(false);
@@ -6370,6 +6373,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
