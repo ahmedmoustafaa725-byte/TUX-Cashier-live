@@ -377,7 +377,7 @@ function normalizePurchaseCategories(arr = []) {
 
 
 // Allowed units for Purchases
-const PURCHASE_UNITS = ["kg", "g", "L", "ml", "piece", "pack", "dozen", "bottle", "can", "bag", "box", "carton", "slice", "block"];
+const PURCHASE_UNITS = ["kg", "g", "L", "ml", "piece", "pack", "dozen", "bottle", "can", "bag", "box", "carton", "slice", "block","paper"];
 // --- Purchase → Inventory linking & unit conversion (ADD) ---
 const UNIT_MAP = {
   // mass
@@ -6373,6 +6373,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
