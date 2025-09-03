@@ -896,29 +896,6 @@ const [inventoryLockedAt, setInventoryLockedAt] = useState(null);
   // Low-stock UI state + derived list
 const [showLowStock, setShowLowStock] = useState(false);
 
-   const [bankTx, setBankTx] = useState([]);
-  const [bankForm, setBankForm] = useState({
-    type: "deposit",
-    amount: 0,
-    worker: "",
-    note: "",
-  });
-
-  // 🔒 Safety-net for bank: never allow locked "Auto Init from day margin" to disappear
-const lastLockedBankRef = useRef([]);
-
-useEffect(() => {
-  const lockedNow = (bankTx || []).filter(isBankLocked);
-  const missing = lastLockedBankRef.current.filter(
-    prev => !lockedNow.some(cur => cur.id === prev.id)
-  );
-  if (missing.length) {
-    // Put them back in front — unremoveable by design
-    setBankTx(arr => [...missing, ...arr]);
-  }
-  lastLockedBankRef.current = lockedNow;
-}, [bankTx]);
-
 const lowStockItems = useMemo(() => {
   return (inventory || []).filter(it => {
     const min = Number(it.minQty || 0);
@@ -992,13 +969,6 @@ const [newPurchase, setNewPurchase] = useState({
 const [deliveryZoneId, setDeliveryZoneId] = useState("");               // ⬅️ NEW
 const [customers, setCustomers] = useState([]);                         // {phone,name,address,zoneId}
 const [deliveryZones, setDeliveryZones] = useState(DEFAULT_ZONES);      // ⬅️ NEW
-
-  const onZoneChange = (id) => {
-  setDeliveryZoneId(id);
-  const z = deliveryZones.find((z) => z.id === id);
-  setDeliveryFee(z ? Number(z.fee || 0) : 0);
-};
-
   // --- Delivery Zones editor (Settings) ---
 const [newZoneName, setNewZoneName] = useState("");
 const [newZoneFee, setNewZoneFee] = useState(0);
@@ -1077,7 +1047,28 @@ useEffect(() => {
 }, [expenses]);
 
 
-  
+   const [bankTx, setBankTx] = useState([]);
+  const [bankForm, setBankForm] = useState({
+    type: "deposit",
+    amount: 0,
+    worker: "",
+    note: "",
+  });
+
+  // 🔒 Safety-net for bank: never allow locked "Auto Init from day margin" to disappear
+const lastLockedBankRef = useRef([]);
+
+useEffect(() => {
+  const lockedNow = (bankTx || []).filter(isBankLocked);
+  const missing = lastLockedBankRef.current.filter(
+    prev => !lockedNow.some(cur => cur.id === prev.id)
+  );
+  if (missing.length) {
+    // Put them back in front — unremoveable by design
+    setBankTx(arr => [...missing, ...arr]);
+  }
+  lastLockedBankRef.current = lockedNow;
+}, [bankTx]);
 
 
   const [newExpName, setNewExpName] = useState("");
@@ -4118,21 +4109,22 @@ const generatePurchasesPDF = () => {
       </small>
     </div>
     <div>  {/* Zone auto-sets fee */}                                    {/* ⬅️ NEW */}
-   <label>
-      Zone
-      <select
-        value={deliveryZoneId}
-        onChange={(e) => onZoneChange(e.target.value)}
-        style={{ marginLeft: 8 }}
-      >
-        <option value="">Select zone…</option>
-        {deliveryZones.map((z) => (
-          <option key={z.id} value={z.id}>
-            {z.name} — E£{z.fee}
-          </option>
-        ))}
-      </select>
-    </label>
+  <label>
+    Zone:&nbsp;
+    <select
+      value={deliveryZoneId}
+      onChange={(e) => {
+        const zid = e.target.value;
+        setDeliveryZoneId(zid);
+        const z = deliveryZones.find(z => z.id === zid);
+        if (z) setDeliveryFee(Number(z.fee || 0));
+      }}
+      style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+    >
+      <option value="">Select zone</option>
+      {deliveryZones.map(z => <option key={z.id} value={z.id}>{z.name} — E£{Number(z.fee||0).toFixed(2)}</option>)}
+    </select>
+  </label>
 </div>
 
 
@@ -6350,15 +6342,5 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
 
 
