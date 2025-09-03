@@ -4118,22 +4118,21 @@ const generatePurchasesPDF = () => {
       </small>
     </div>
     <div>  {/* Zone auto-sets fee */}                                    {/* ⬅️ NEW */}
-  <label>
-    Zone:&nbsp;
-    <select
-      value={deliveryZoneId}
-      onChange={(e) => {
-        const zid = e.target.value;
-        setDeliveryZoneId(zid);
-        const z = deliveryZones.find(z => z.id === zid);
-        if (z) setDeliveryFee(Number(z.fee || 0));
-      }}
-      style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-    >
-      <option value="">Select zone</option>
-      {deliveryZones.map(z => <option key={z.id} value={z.id}>{z.name} — E£{Number(z.fee||0).toFixed(2)}</option>)}
-    </select>
-  </label>
+   <label>
+      Zone
+      <select
+        value={deliveryZoneId}
+        onChange={(e) => onZoneChange(e.target.value)}
+        style={{ marginLeft: 8 }}
+      >
+        <option value="">Select zone…</option>
+        {deliveryZones.map((z) => (
+          <option key={z.id} value={z.id}>
+            {z.name} — E£{z.fee}
+          </option>
+        ))}
+      </select>
+    </label>
 </div>
 
 
@@ -6351,6 +6350,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
