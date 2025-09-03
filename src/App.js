@@ -1540,7 +1540,7 @@ if (ts && lastLocalEditAt && ts < lastLocalEditAt) return;
       if (unpacked.purchaseCategories) {
    setPurchaseCategories(normalizePurchaseCategories(unpacked.purchaseCategories));
  }
-      if (unpacked.customers) setCustomers(unpacked.customers);
+      if (unpacked.customers) setCustomers(dedupeCustomers(unpacked.customers));
       if (unpacked.deliveryZones) setDeliveryZones(unpacked.deliveryZones);
 
       setLastAppliedCloudAt(ts || Date.now());
@@ -2728,7 +2728,7 @@ if (targetItem) {
     id: `p_${Date.now()}`,
     categoryId,
     itemName: nameStr,
-    unit: String(unit || "piece"),
+    unit: String(unit || "piece").toLowerCase(),
     qty: Math.max(0, Number(qty || 0)),
     unitPrice: Math.max(0, Number(unitPrice || 0)),
     date: date ? new Date(date) : new Date(),
@@ -3041,7 +3041,7 @@ const prettyDate = (d) => fmtDate(d);
 const generatePurchasesPDF = () => {
   try {
     const doc = new jsPDF();
-    const [start, end] = getPeriodRange(purchaseFilter, dayMeta);
+    const [start, end] = getPeriodRange(purchaseFilter, dayMeta, purchaseDay, purchaseMonth);
     const title = `TUX — Purchases Report (${purchaseFilter.toUpperCase()})`;
     doc.text(title, 14, 12);
 
@@ -6297,6 +6297,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
