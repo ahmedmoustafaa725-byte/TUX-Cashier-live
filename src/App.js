@@ -1046,6 +1046,15 @@ useEffect(() => {
   lastLockedRef.current = lockedNow;
 }, [expenses]);
 
+
+   const [bankTx, setBankTx] = useState([]);
+  const [bankForm, setBankForm] = useState({
+    type: "deposit",
+    amount: 0,
+    worker: "",
+    note: "",
+  });
+
   // 🔒 Safety-net for bank: never allow locked "Auto Init from day margin" to disappear
 const lastLockedBankRef = useRef([]);
 
@@ -1073,14 +1082,6 @@ useEffect(() => {
   // User has unlocked the Admin area for this session
 const [adminUnlocked, setAdminUnlocked] = useState(false);
 
-
-  const [bankTx, setBankTx] = useState([]);
-  const [bankForm, setBankForm] = useState({
-    type: "deposit",
-    amount: 0,
-    worker: "",
-    note: "",
-  });
 
   const removeBankTx = (id) => {
   setBankTx(arr => {
@@ -6341,6 +6342,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
