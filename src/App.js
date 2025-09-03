@@ -398,6 +398,10 @@ const UNIT_MAP = {
   box:    { base: "box",    factor: 1 },
   carton: { base: "carton", factor: 1 },
   dozen:  { base: "piece",  factor: 12 }, // 1 dozen = 12 pieces
+    pcs:   { base: "piece",  factor: 1 },
+  pc:    { base: "piece",  factor: 1 },
+  unit:  { base: "piece",  factor: 1 },
+
 };
 
 
@@ -1193,6 +1197,22 @@ useEffect(() => {
 }, [purchases, purchaseCategories, setInventory]);
 
 
+  // Keep category.unit consistent with inventory unit if names match (run after hydration)
+useEffect(() => {
+  if (!localHydrated && !hydrated) return;
+  setPurchaseCategories(list =>
+    list.map(c => {
+      const inv = inventory.find(
+        it => it.name.toLowerCase() === String(c.name || "").toLowerCase()
+      );
+      return inv ? { ...c, unit: inv.unit } : c;
+    })
+  );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [inventory, localHydrated, hydrated]);
+
+
+
   useEffect(() => {
  if (!Array.isArray(purchaseCategories)) return;
   // wait for either local or cloud hydration to complete
@@ -1248,17 +1268,25 @@ useEffect(() => {
   })}`;
 });
 
-  // When user picks a category, default the purchase unit to that category's unit (unless user already set one)
+// When user picks a category, prefer the INVENTORY unit (so conversions will match)
 useEffect(() => {
   if (!newPurchase?.categoryId) return;
   const cat = purchaseCategories.find(c => c.id === newPurchase.categoryId);
   if (!cat) return;
-  setNewPurchase(p => {
-    // don't override if user already chose something custom this time
-   
-    return { ...p, unit: cat.unit || p.unit || "piece" };
-  });
-}, [newPurchase.categoryId, purchaseCategories]);
+
+  const invMatch = inventory.find(
+    it => it.name.toLowerCase() === String(cat.name || "").toLowerCase()
+  );
+
+  setNewPurchase(p => ({
+    ...p,
+    // Prefer the actual inventory unit; fall back to category unit; then existing; then piece
+    unit: invMatch?.unit || cat.unit || p.unit || "piece",
+    // also link the purchase to the inventory item if we found it
+    ingredientId: invMatch?.id || p.ingredientId || "",
+  }));
+}, [newPurchase.categoryId, purchaseCategories, inventory]);
+
 
 
 useEffect(() => {
@@ -6342,5 +6370,6 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
