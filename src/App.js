@@ -654,15 +654,6 @@ function fmtDateTime(d) {
   const time = dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   return `${fmtDate(dt)} ${time}`;
 }
-// YYYY-MM-DD in *local* time — used to group reconciliations by day
-function dayKeyLocal(d) {
-  const dt = d instanceof Date ? d : new Date(d);
-  const y = dt.getFullYear();
-  const m = String(dt.getMonth() + 1).padStart(2, "0");
-  const da = String(dt.getDate()).padStart(2, "0");
-  return `${y}-${m}-${da}`;
-}
-
 
 function buildReceiptHTML(order, widthMm = 80) {
   const m = Math.max(0, Math.min(4, 4)); // padding mm
@@ -1063,30 +1054,57 @@ const rawInflowByMethod = useMemo(() => sumPaymentsByMethod(orders), [orders]);
 
 
 
-// Expected per method: Cash uses (Raw Cash - Withdrawals + Init); others use raw directly.
+// Expected per method (Reconcile): raw inflow only; no withdrawals/init adjustments
 const expectedByMethod = useMemo(() => {
   const out = {};
   for (const m of paymentMethods || []) {
     const raw = Number(rawInflowByMethod[m] || 0);
-    if (m.toLowerCase() === "cash") {
-      out[m] = raw - withdrawalsInShift + openingInit;
-    } else {
-      out[m] = raw;
-    }
-  }
-  return out;
-}, [paymentMethods, rawInflowByMethod, withdrawalsInShift, openingInit]);
-
-// Variance (Actual - Expected)
-// Expected per method: just the raw inflow now (no withdrawals/init adjustments)
-const expectedByMethod = useMemo(() => {
-  const out = {};
-  for (const m of paymentMethods || []) {
-    const raw = Number((rawInflowByMethod || {})[m] || 0);
     out[m] = raw;
   }
   return out;
 }, [paymentMethods, rawInflowByMethod]);
+
+
+
+// Variance (Actual - Expected)
+const varianceByMethod = useMemo(() => {
+  const out = {};
+  for (const m of paymentMethods || []) {
+    const actual = Number(reconCounts[m] || 0);
+    const expected = Number(expectedByMethod[m] || 0);
+    out[m] = Number((actual - expected).toFixed(2));
+  }
+  return out;
+}, [paymentMethods, reconCounts, expectedByMethod]);
+
+  // All-time variance across all saved reconciliations (by payment method)
+const allTimeVarianceByMethod = useMemo(() => {
+  const out = {};
+  for (const m of paymentMethods || []) out[m] = 0;
+
+  for (const r of reconHistory || []) {
+    const bd = r?.breakdown || {};
+    for (const k of Object.keys(bd)) {
+      const v = Number(bd[k]?.variance || 0);
+      out[k] = Number(((out[k] || 0) + v).toFixed(2));
+    }
+  }
+  return out;
+}, [reconHistory, paymentMethods]);
+
+const allTimeVarianceTotal = useMemo(
+  () => Object.values(allTimeVarianceByMethod).reduce((s, v) => s + Number(v || 0), 0),
+  [allTimeVarianceByMethod]
+);
+
+// Admin-protected: wipe all saved reconciliations (and thus the all-time totals)
+const resetAllReconciliations = () => {
+  const okAdmin = !!promptAdminAndPin();
+  if (!okAdmin) return;
+  if (!window.confirm("Reset ALL saved reconciliations and variance totals? This cannot be undone.")) return;
+  setReconHistory([]);
+  alert("All reconciliations cleared.");
+};
 
 
 const totalVariance = useMemo(
@@ -1098,7 +1116,6 @@ const saveReconciliation = () => {
   const who = String(reconSavedBy || dayMeta.currentWorker || "").trim();
   if (!who) return alert("Select or type who saved it (Saved by).");
 
-  // Build per-method breakdown for THIS save
   const breakdown = {};
   for (const m of paymentMethods || []) {
     const expected = Number(expectedByMethod[m] || 0);
@@ -1110,63 +1127,17 @@ const saveReconciliation = () => {
     };
   }
 
-  // === NEW: figure out today's key and add day-to-date accumulations ===
-  const at = new Date();
-  const dayKey = dayKeyLocal(at);
-
-  // All previous saves for the same day
-  const prevToday = (reconHistory || []).filter(
-    (r) => (r.dayKey || dayKeyLocal(r.at)) === dayKey
-  );
-
-  // Sum of totalVariance for today so far
-  const prevTotalToday = prevToday.reduce(
-    (s, r) => s + Number(r.totalVariance || 0),
-    0
-  );
-
-  // Sum by method for today so far
-  const prevByMethod = {};
-  for (const r of prevToday) {
-    for (const k of Object.keys(r?.breakdown || {})) {
-      prevByMethod[k] =
-        (prevByMethod[k] || 0) + Number(r.breakdown[k]?.variance || 0);
-    }
-  }
-
-  // Current save totals
-  const thisTotal = Object.values(breakdown).reduce(
-    (s, b) => s + Number(b.variance || 0),
-    0
-  );
-
-  // Day-to-date after including *this* save
-  const cumulativeForDay = Number((prevTotalToday + thisTotal).toFixed(2));
-
-  // Day-to-date by method after including *this* save
-  const cumulativeByMethodForDay = {};
-  for (const m of paymentMethods || []) {
-    const prev = Number(prevByMethod[m] || 0);
-    const cur = Number(breakdown[m]?.variance || 0);
-    cumulativeByMethodForDay[m] = Number((prev + cur).toFixed(2));
-  }
-
   const rec = {
     id: `rec_${Date.now()}`,
     savedBy: who,
-    at,
-    dayKey,                             // <-- NEW (helps grouping)
+    at: new Date(),
     breakdown,
-    totalVariance: Number(thisTotal.toFixed(2)),
-    cumulativeForDay,                   // <-- NEW (sum of today's variances)
-    cumulativeByMethodForDay,           // <-- NEW (sum by method for today)
+    totalVariance: Number(totalVariance.toFixed(2)),
   };
-
-  setReconHistory((arr) => [rec, ...arr]);
-  setDayMeta((d) => ({ ...d, reconciledAt: new Date() }));
+  setReconHistory(arr => [rec, ...arr]);
+  setDayMeta(d => ({ ...d, reconciledAt: new Date() }));
   alert("Reconciliation saved ✅");
 };
-
 
 
 
@@ -1455,17 +1426,6 @@ useEffect(() => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [inventory, localHydrated, hydrated]);
 
-useEffect(() => {
-  if (!localHydrated && !hydrated) return;
-  setReconHistory((arr) => {
-    if (!arr?.length) return arr;
-    let changed = false;
-    const next = arr.map((r) =>
-      r.dayKey ? r : ((changed = true), { ...r, dayKey: dayKeyLocal(r.at) })
-    );
-    return changed ? next : arr;
-  });
-}, [localHydrated, hydrated]);
 
 
   useEffect(() => {
@@ -1792,22 +1752,6 @@ useEffect(() => {
     () => (db ? fsDoc(db, "shops", SHOP_ID, "state", "pos") : null),
     [db]
   );
-  // Daily totals, summed from all saves of each day
-// ⬇️ Sum of variances per calendar day (YYYY-MM-DD)
-const reconDailySummary = useMemo(() => {
-  const byDay = new Map();
-  for (const rec of reconHistory || []) {
-    const d = rec?.at instanceof Date ? rec.at : new Date(rec?.at);
-    const key = d.toISOString().slice(0, 10); // 'YYYY-MM-DD'
-    const v = Number(rec?.totalVariance || 0);
-    byDay.set(key, (byDay.get(key) || 0) + v);
-  }
-  return Array.from(byDay.entries())
-    .map(([dayKey, total]) => ({ dayKey, total }))
-    .sort((a, b) => (a.dayKey < b.dayKey ? 1 : a.dayKey > b.dayKey ? -1 : 0));
-}, [reconHistory]);
-
-
   const ordersColRef = useMemo(
     () => (db ? collection(db, "shops", SHOP_ID, "orders") : null),
     [db]
@@ -5252,300 +5196,212 @@ const generatePurchasesPDF = () => {
 
 {/* ───────────────────────── Reconcile TAB ───────────────────────── */}
 {activeTab === "reconcile" && (
-  <div style={{ display: "grid", gap: 12 }}>
-    {/* ───────────────── Top: live reconciliation (old layout) ───────────────── */}
-    <div
-      style={{
-        border: `1px solid ${cardBorder}`,
-        borderRadius: 8,
-        padding: 12,
-        background: softBg,
-      }}
-    >
-      <h3 style={{ marginTop: 0 }}>Cash Drawer Reconciliation</h3>
+  <div style={{ display: "grid", gap: 14 }}>
+    <div style={{ border:`1px solid ${cardBorder}`, borderRadius:12, padding:16, background: dark ? "#151515" : "#fafafa" }}>
+      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+        <h3 style={{ margin:0 }}>Cash Drawer — Expected vs Actual</h3>
+        {dayMeta.reconciledAt ? (
+          <span style={{ marginLeft:8, fontSize:12, padding:"2px 8px", borderRadius:999, background:"#e8f5e9", color:"#1b5e20", border:"1px solid #a5d6a7" }}>
+            Saved at {fmtDateTime(dayMeta.reconciledAt)}
+          </span>
+        ) : (
+          <span style={{ marginLeft:8, fontSize:12, padding:"2px 8px", borderRadius:999, background:"#fff3e0", color:"#bf360c", border:"1px solid #ffcc80" }}>
+            Not saved yet
+          </span>
+        )}
+        <div style={{ marginLeft:"auto", fontSize:12, opacity:.8 }}>
+          Shift: {dayMeta.startedAt ? fmtDateTime(dayMeta.startedAt) : "—"} → {dayMeta.endedAt ? fmtDateTime(dayMeta.endedAt) : "—"}
+        </div>
+      </div>
 
-     {/* Shift info row (simplified) */}
-<div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
-  <div>
-    <div style={{ fontWeight: 600 }}>Shift</div>
-    <div style={{ opacity: 0.8 }}>
-      {dayMeta?.startedAt ? `${fmtDateTime(dayMeta.startedAt)}` : "Not started"}
-      {dayMeta?.endedAt ? ` → ${fmtDateTime(dayMeta.endedAt)}` : ""}
-    </div>
-  </div>
-</div>
-
+      {/* KPIs bar */}
+   
+        <div style={{ padding:10, border:`1px solid ${cardBorder}`, borderRadius:10, background:dark?"#1d1d1d":"#fff" }}>
+          <div style={{ fontSize:12, opacity:.8 }}>Total Variance</div>
+          <div style={{
+            fontWeight:900,
+            textAlign:"right",
+            color: totalVariance === 0 ? "#1b5e20" : (totalVariance < 0 ? "#b71c1c" : "#e65100")
+          }}>
+            {totalVariance >= 0 ? "+" : ""}E£{totalVariance.toFixed(2)}
+          </div>
+        </div>
+      </div>
 
       {/* Methods table */}
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <div style={{ overflowX:"auto", marginTop:12 }}>
+        <table style={{ width:"100%", borderCollapse:"collapse" }}>
           <thead>
             <tr>
-              <th style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Method</th>
-              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Raw Inflow</th>
-              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Expected</th>
-              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Actual (Counted)</th>
-              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Variance</th>
+              <th style={{ textAlign:"left", padding:10, borderBottom:`1px solid ${cardBorder}` }}>Method</th>
+              <th style={{ textAlign:"right", padding:10, borderBottom:`1px solid ${cardBorder}` }}>Raw Inflow</th>
+              <th style={{ textAlign:"right", padding:10, borderBottom:`1px solid ${cardBorder}` }}>Expected</th>
+              <th style={{ textAlign:"right", padding:10, borderBottom:`1px solid ${cardBorder}` }}>Actual / Counted</th>
+              <th style={{ textAlign:"right", padding:10, borderBottom:`1px solid ${cardBorder}` }}>Variance</th>
             </tr>
           </thead>
           <tbody>
-            {paymentMethods.map((m) => {
-              const raw = Number((rawInflowByMethod || {})[m] || 0);
-              const exp = Number((expectedByMethod || {})[m] || 0);
-              const act = Number((reconCounts || {})[m] || 0);
-              const varc = Number((varianceByMethod || {})[m] || 0);
+            {(paymentMethods || []).map((m) => {
+              const raw = Number(rawInflowByMethod[m] || 0);
+              const exp = Number(expectedByMethod[m] || 0);
+              const act = Number(reconCounts[m] || 0);
+              const varc = Number((act - exp).toFixed(2));
+              const bg = varc === 0 ? (dark ? "rgba(46,125,50,.15)" : "#e8f5e9")
+                         : varc < 0 ? (dark ? "rgba(183,28,28,.20)" : "#ffebee")
+                         : (dark ? "rgba(230,81,0,.20)" : "#fff3e0");
+              const bd = varc === 0 ? (dark ? "#388e3c" : "#a5d6a7")
+                         : varc < 0 ? (dark ? "#c62828" : "#ef9a9a")
+                         : (dark ? "#ef6c00" : "#ffcc80");
               return (
                 <tr key={m}>
-                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{m}</td>
-                  <td style={{ padding: 8, textAlign: "right", borderBottom: `1px solid ${cardBorder}` }}>
-                    E£{raw.toFixed(2)}
-                  </td>
-                  <td style={{ padding: 8, textAlign: "right", borderBottom: `1px solid ${cardBorder}` }}>
-                    E£{exp.toFixed(2)}
-                  </td>
-                  <td style={{ padding: 8, textAlign: "right", borderBottom: `1px solid ${cardBorder}` }}>
+                  <td style={{ padding:10, borderBottom:`1px solid ${cardBorder}` }}>{m}</td>
+                  <td style={{ padding:10, borderBottom:`1px solid ${cardBorder}`, textAlign:"right" }}>E£{raw.toFixed(2)}</td>
+                  <td style={{ padding:10, borderBottom:`1px solid ${cardBorder}`, textAlign:"right" }}>E£{exp.toFixed(2)}</td>
+                  <td style={{ padding:10, borderBottom:`1px solid ${cardBorder}`, textAlign:"right" }}>
                     <input
                       type="number"
                       step="0.01"
-                      value={act}
-                      onChange={(e) =>
-                        setReconCounts((prev) => ({
-                          ...prev,
-                          [m]: Number(e.target.value || 0),
-                        }))
-                      }
-                      placeholder="0"
-                      style={{
-                        width: 140,
-                        padding: "6px 8px",
-                        borderRadius: 6,
-                        border: `1px solid ${btnBorder}`,
-                        background: dark ? "#1f1f1f" : "#fff",
-                        color: dark ? "#fff" : "#000",
-                        textAlign: "right",
-                      }}
+                      value={reconCounts[m] ?? 0}
+                      onChange={(e) => setReconCounts(rc => ({ ...rc, [m]: Number(e.target.value || 0) }))}
+                      style={{ width:120, padding:"6px 8px", borderRadius:8, border:`1px solid ${btnBorder}`, background:dark?"#1f1f1f":"#fff", color:dark?"#eee":"#000", textAlign:"right" }}
                     />
                   </td>
-                  <td
-                    style={{
-                      padding: 8,
-                      textAlign: "right",
-                      borderBottom: `1px solid ${cardBorder}`,
-                      color:
-                        varc === 0
-                          ? (dark ? "#9e9e9e" : "#666")
-                          : varc > 0
-                          ? "#2e7d32"
-                          : "#c62828",
-                      fontWeight: 700,
-                    }}
-                  >
-                    E£{varc.toFixed(2)}
+                  <td style={{ padding:10, borderBottom:`1px solid ${cardBorder}`, textAlign:"right" }}>
+                    <span style={{ display:"inline-block", minWidth:100, padding:"4px 8px", borderRadius:8, border:`1px solid ${bd}`, background:bg, fontWeight:700 }}>
+                      {varc >= 0 ? "+" : ""}E£{varc.toFixed(2)}
+                    </span>
                   </td>
                 </tr>
               );
             })}
-            {/* Total row */}
-            <tr>
-              <td style={{ padding: 8, borderTop: `2px solid ${cardBorder}`, fontWeight: 700 }}>
-                TOTAL
-              </td>
-              <td />
-              <td />
-              <td />
-              <td
-                style={{
-                  padding: 8,
-                  borderTop: `2px solid ${cardBorder}`,
-                  textAlign: "right",
-                  fontWeight: 900,
-                  color:
-                    Number(totalVariance || 0) === 0
-                      ? (dark ? "#fff" : "#000")
-                      : Number(totalVariance || 0) > 0
-                      ? "#2e7d32"
-                      : "#c62828",
-                }}
-              >
-                E£{Number(totalVariance || 0).toFixed(2)}
-              </td>
-            </tr>
           </tbody>
         </table>
       </div>
 
       {/* Save bar */}
-      <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
-        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <div style={{ marginTop:12, display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+        <label style={{ display:"flex", alignItems:"center", gap:8 }}>
           <span>Saved by</span>
           <input
-            type="text"
+            list="recon-workers"
+            placeholder="Select"
             value={reconSavedBy}
             onChange={(e) => setReconSavedBy(e.target.value)}
-            placeholder="Name"
-            style={{
-              padding: "6px 8px",
-              borderRadius: 6,
-              border: `1px solid ${btnBorder}`,
-              background: dark ? "#1f1f1f" : "#fff",
-              color: dark ? "#fff" : "#000",
-              minWidth: 160,
-            }}
+            style={{ width:220, padding:"8px 10px", borderRadius:8, border:`1px solid ${btnBorder}`, background:dark?"#1f1f1f":"#fff", color:dark?"#eee":"#000" }}
           />
+          <datalist id="recon-workers">
+            {(workers || []).map(w => <option key={w} value={w} />)}
+      
+            <option value="Hazem" />
+            <option value="Ahmed" />
+          </datalist>
         </label>
+
         <button
           onClick={saveReconciliation}
-          style={{
-            marginLeft: "auto",
-            background: "#2e7d32",
-            color: "#fff",
-            border: "none",
-            borderRadius: 6,
-            padding: "8px 12px",
-            cursor: "pointer",
-            fontWeight: 700,
-          }}
+          style={{ marginLeft:"auto", padding:"10px 16px", borderRadius:12, border:"none", background:"#00966a", color:"#fff", fontWeight:800, cursor:"pointer" }}
         >
           Save Reconciliation
         </button>
       </div>
     </div>
+     {/* All-time Variance summary (sums all saved reconciliations) */}
+<div
+  style={{
+    marginTop: 12,
+    padding: 10,
+    border: `1px solid ${cardBorder}`,
+    borderRadius: 8,
+    background: softBg,
+  }}
+>
+  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+    <h3 style={{ margin: 0 }}>All-time Variance Totals</h3>
+    <div style={{ marginLeft: "auto", fontWeight: 800 }}>
+      Overall: E£{Number(allTimeVarianceTotal || 0).toFixed(2)}
+    </div>
+  </div>
 
-    {/* ───────────────── Reconciliation History (old layout) ───────────────── */}
-    <div
+  <div style={{ overflowX: "auto", marginTop: 8 }}>
+    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <thead>
+        <tr>
+          <th style={{ textAlign: "left", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>
+            Payment
+          </th>
+          <th style={{ textAlign: "right", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>
+            Sum of Variances (E£)
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {paymentMethods.map((m) => (
+          <tr key={m}>
+            <td style={{ padding: 6, borderBottom: `1px solid ${cardBorder}` }}>{m}</td>
+            <td style={{ padding: 6, textAlign: "right", borderBottom: `1px solid ${cardBorder}` }}>
+              {Number(allTimeVarianceByMethod[m] || 0).toFixed(2)}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+    <button
+      onClick={resetAllReconciliations}
       style={{
-        border: `1px solid ${cardBorder}`,
-        borderRadius: 8,
-        padding: 10,
-        background: softBg,
+        padding: "6px 10px",
+        borderRadius: 6,
+        border: `1px solid ${btnBorder}`,
+        background: "#ffcdd2",
+        fontWeight: 700,
+        cursor: "pointer",
       }}
+      title="Clears all saved reconciliations (Admin PIN required)"
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-        <h3 style={{ margin: 0 }}>Reconciliation History</h3>
+      Reset All Reconciliations
+    </button>
+  </div>
+</div>
+                            
 
-        {/* ⬅️ NEW: compact Daily Variance (SUM) right under the title */}
-      </div>
-
-      {/* Mini table of Daily Variance (SUM) */}
-      <div style={{ marginBottom: 10, overflowX: "auto" }}>
-        <table style={{ width: "100%", maxWidth: 520, borderCollapse: "collapse" }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: "left", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>
-                Date
-              </th>
-              <th style={{ textAlign: "right", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>
-                Variance (SUM)
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {reconDailySummary.length === 0 ? (
-              <tr>
-                <td colSpan={2} style={{ padding: 6, opacity: 0.7 }}>No reconciliations yet.</td>
-              </tr>
-            ) : (
-              reconDailySummary.map((r) => (
-                <tr key={r.dayKey}>
-                  <td style={{ padding: 6, borderBottom: `1px solid ${cardBorder}` }}>{r.dayKey}</td>
-                  <td
-                    style={{
-                      padding: 6,
-                      textAlign: "right",
-                      borderBottom: `1px solid ${cardBorder}`,
-                      fontWeight: 700,
-                      color:
-                        Number(r.total || 0) === 0
-                          ? (dark ? "#fff" : "#000")
-                          : Number(r.total || 0) > 0
-                          ? "#2e7d32"
-                          : "#c62828",
-                    }}
-                  >
-                    E£{Number(r.total || 0).toFixed(2)}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Full history list (unchanged) */}
-      {(!reconHistory || reconHistory.length === 0) ? (
-        <div style={{ opacity: 0.7 }}>No reconciliations yet.</div>
+    {/* History */}
+    <div style={{ border:`1px solid ${cardBorder}`, borderRadius:12, padding:16, background: dark ? "#151515" : "#fafafa" }}>
+      <h3 style={{ marginTop:0 }}>Reconciliation History</h3>
+      {!reconHistory.length ? (
+        <div style={{ opacity:.7 }}>No saved sessions yet.</div>
       ) : (
-        <div style={{ display: "grid", gap: 8 }}>
-          {reconHistory.map((r) => (
-            <div
-              key={r.id}
-              style={{
-                border: `1px solid ${cardBorder}`,
-                borderRadius: 8,
-                padding: 10,
-                background: dark ? "#151515" : "#fff",
-              }}
-            >
-              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
-                <div style={{ fontWeight: 700 }}>
-                  {r.at ? fmtDateTime(r.at) : "-"}
-                </div>
-                <div style={{ opacity: 0.8 }}>• Saved by: <b>{r.savedBy || "-"}</b></div>
-                <div style={{ marginLeft: "auto", fontWeight: 800 }}>
-                  Total Var:{" "}
-                  <span
-                    style={{
-                      color:
-                        Number(r.totalVariance || 0) === 0
-                          ? (dark ? "#fff" : "#000")
-                          : Number(r.totalVariance || 0) > 0
-                          ? "#2e7d32"
-                          : "#c62828",
-                    }}
-                  >
-                    E£{Number(r.totalVariance || 0).toFixed(2)}
-                  </span>
+        <div style={{ display:"grid", gap:12 }}>
+          {reconHistory.map(rec => (
+            <div key={rec.id} style={{ border:`1px solid ${cardBorder}`, borderRadius:10, padding:12, background:dark?"#1d1d1d":"#fff" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                <strong>Saved by:</strong> {rec.savedBy}
+                <span style={{ marginLeft:8, opacity:.8 }}>{fmtDateTime(rec.at)}</span>
+                <div style={{ marginLeft:"auto", fontWeight:900, color: rec.totalVariance === 0 ? "#1b5e20" : (rec.totalVariance < 0 ? "#b71c1c" : "#e65100") }}>
+                  Total: {rec.totalVariance >= 0 ? "+" : ""}E£{Number(rec.totalVariance || 0).toFixed(2)}
                 </div>
               </div>
-
-              {/* per-method breakdown */}
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <div style={{ overflowX:"auto", marginTop:8 }}>
+                <table style={{ width:"100%", borderCollapse:"collapse" }}>
                   <thead>
                     <tr>
-                      <th style={{ textAlign: "left", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>Method</th>
-                      <th style={{ textAlign: "right", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>Expected</th>
-                      <th style={{ textAlign: "right", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>Actual</th>
-                      <th style={{ textAlign: "right", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>Variance</th>
+                      <th style={{ textAlign:"left", padding:8, borderBottom:`1px solid ${cardBorder}` }}>Method</th>
+                      <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>Expected</th>
+                      <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>Actual</th>
+                      <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>Variance</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {paymentMethods.map((m) => {
-                      const row = r?.breakdown?.[m] || { expected: 0, actual: 0, variance: 0 };
+                    {Object.keys(rec.breakdown || {}).map((m) => {
+                      const r = rec.breakdown[m] || {};
                       return (
                         <tr key={m}>
-                          <td style={{ padding: 6, borderBottom: `1px solid ${cardBorder}` }}>{m}</td>
-                          <td style={{ padding: 6, textAlign: "right", borderBottom: `1px solid ${cardBorder}` }}>
-                            E£{Number(row.expected || 0).toFixed(2)}
-                          </td>
-                          <td style={{ padding: 6, textAlign: "right", borderBottom: `1px solid ${cardBorder}` }}>
-                            E£{Number(row.actual || 0).toFixed(2)}
-                          </td>
-                          <td
-                            style={{
-                              padding: 6,
-                              textAlign: "right",
-                              borderBottom: `1px solid ${cardBorder}`,
-                              color:
-                                Number(row.variance || 0) === 0
-                                  ? (dark ? "#9e9e9e" : "#666")
-                                  : Number(row.variance || 0) > 0
-                                  ? "#2e7d32"
-                                  : "#c62828",
-                              fontWeight: 700,
-                            }}
-                          >
-                            E£{Number(row.variance || 0).toFixed(2)}
+                          <td style={{ padding:8, borderBottom:`1px solid ${cardBorder}` }}>{m}</td>
+                          <td style={{ padding:8, borderBottom:`1px solid ${cardBorder}`, textAlign:"right" }}>E£{Number(r.expected || 0).toFixed(2)}</td>
+                          <td style={{ padding:8, borderBottom:`1px solid ${cardBorder}`, textAlign:"right" }}>E£{Number(r.actual || 0).toFixed(2)}</td>
+                          <td style={{ padding:8, borderBottom:`1px solid ${cardBorder}`, textAlign:"right" }}>
+                            {Number(r.variance || 0) >= 0 ? "+" : ""}E£{Number(r.variance || 0).toFixed(2)}
                           </td>
                         </tr>
                       );
@@ -7202,23 +7058,5 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
