@@ -900,7 +900,13 @@ const [adminSubTab, setAdminSubTab] = useState("inventory");
 
   const [dark, setDark] = useState(false);
 
-const addMenuFromForm = () => {
+
+
+const [newItemName, setNewItemName] = useState("");
+const [newItemPrice, setNewItemPrice] = useState(0);
+const [newItemColor, setNewItemColor] = useState("#ffffff");
+
+  const addMenuFromForm = () => {
   const name = String(newItemName || "").trim();
   if (!name) return alert("Name required.");
 
@@ -921,10 +927,6 @@ const addMenuFromForm = () => {
   setNewItemPrice(0);
   setNewItemColor("#ffffff");
 };
-
-
-
-
 
 const [inventory, setInventory] = useState(DEFAULT_INVENTORY);
 const [inventoryLocked, setInventoryLocked] = useState(false);
@@ -6455,6 +6457,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
