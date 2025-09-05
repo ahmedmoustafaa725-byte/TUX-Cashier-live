@@ -910,30 +910,6 @@ const [targetMarginPct, setTargetMarginPct] = useState(() => {
 
 
 
-useEffect(() => {
-  if (!purchases?.length || !syncCostsFromPurchases) return;
-
-  setInventory(current => {
-    let changed = false;
-
-    const next = current.map(it => {
-      const last = getLatestPurchaseForInv(it, purchases, purchaseCategories);
-      if (!last) return it;
-
-      const cpu = unitPriceToInventoryCost(last.unitPrice, last.unit, it.unit);
-      if (cpu == null) return it;
-
-      const v = Number(cpu.toFixed(4));
-      if (Number(it.costPerUnit || 0) === v) return it; // no change
-
-      changed = true;
-      return { ...it, costPerUnit: v };
-    });
-
-    return changed ? next : current;
-  });
-}, [purchases, purchaseCategories, setInventory, syncCostsFromPurchases]);
-
 
 
 const [newItemName, setNewItemName] = useState("");
@@ -1544,6 +1520,32 @@ const [syncCostsFromPurchases, setSyncCostsFromPurchases] = useState(() => {
   return typeof l?.syncCostsFromPurchases === "boolean" ? l.syncCostsFromPurchases : true;
 });
 useEffect(() => { saveLocalPartial({ syncCostsFromPurchases }); }, [syncCostsFromPurchases]);
+
+
+// --- Auto-sync Cost/Unit from Purchases → Inventory ---
+useEffect(() => {
+  if (!purchases?.length || !syncCostsFromPurchases) return;
+
+  setInventory(current => {
+    let changed = false;
+
+    const next = current.map(it => {
+      const last = getLatestPurchaseForInv(it, purchases, purchaseCategories);
+      if (!last) return it;
+
+      const cpu = unitPriceToInventoryCost(last.unitPrice, last.unit, it.unit);
+      if (cpu == null) return it;
+
+      const v = Number(cpu.toFixed(4));
+      if (Number(it.costPerUnit || 0) === v) return it;
+
+      changed = true;
+      return { ...it, costPerUnit: v };
+    });
+
+    return changed ? next : current;
+  });
+}, [purchases, purchaseCategories, syncCostsFromPurchases]);
 
 
 
@@ -6616,6 +6618,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
