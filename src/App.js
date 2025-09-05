@@ -499,23 +499,19 @@ function sumBankByType(bankTx = [], types = [], start=null, end=null) {
 }
 
 // Opening float detection: prefer 'init' during the shift; if none, take the last 'init' within 12h before shift start
+// Opening float detection: only count 'init' during the active shift.
+// Default is 0 unless an 'init' happens *within* the shift window.
 function getOpeningInit(bankTx = [], shiftStart, shiftEnd) {
   if (!shiftStart) return 0;
-  const initInShift = sumBankByType(bankTx, ["init"], shiftStart, shiftEnd || new Date());
-  if (initInShift > 0) return initInShift;
-
-  const twelveHoursBefore = new Date(shiftStart.getTime() - 12 * 60 * 60 * 1000);
-  // pick the latest single 'init' in [-12h, shiftStart]
-  let best = 0, bestTs = 0;
-  for (const t of bankTx) {
-    if (t?.type !== "init") continue;
-    const when = t?.date instanceof Date ? t.date : new Date(t?.date);
-    if (when < twelveHoursBefore || when > shiftStart) continue;
-    const ts = when.getTime();
-    if (ts > bestTs) { bestTs = ts; best = Number(t.amount || 0); }
-  }
-  return best;
+  const initInShift = sumBankByType(
+    bankTx,
+    ["init"],
+    shiftStart,
+    shiftEnd || new Date()
+  );
+  return initInShift || 0;
 }
+
 
 
 /* ⬇️ ADD THIS BLOCK RIGHT HERE (still top-level, before the App component) */
@@ -6990,6 +6986,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
