@@ -1800,35 +1800,20 @@ useEffect(() => {
     [db]
   );
   // Daily totals, summed from all saves of each day
-// ⬇️ Daily variance sums by calendar day (YYYY-MM-DD)
+// ⬇️ Sum of variances per calendar day (YYYY-MM-DD)
 const reconDailySummary = useMemo(() => {
   const byDay = new Map();
   for (const rec of reconHistory || []) {
     const d = rec?.at instanceof Date ? rec.at : new Date(rec?.at);
     const key = d.toISOString().slice(0, 10); // 'YYYY-MM-DD'
-
-    if (!byDay.has(key)) {
-      const seed = { dayKey: key, total: 0, byMethod: {} };
-      // seed all known methods for stable column order
-      for (const m of paymentMethods || []) seed.byMethod[m] = 0;
-      byDay.set(key, seed);
-    }
-
-    const node = byDay.get(key);
-    node.total += Number(rec.totalVariance || 0);
-
-    // add per-method variances
-    for (const m of paymentMethods || []) {
-      const v = rec?.breakdown?.[m]?.variance ?? 0;
-      node.byMethod[m] += Number(v || 0);
-    }
+    const v = Number(rec?.totalVariance || 0);
+    byDay.set(key, (byDay.get(key) || 0) + v);
   }
+  return Array.from(byDay.entries())
+    .map(([dayKey, total]) => ({ dayKey, total }))
+    .sort((a, b) => (a.dayKey < b.dayKey ? 1 : a.dayKey > b.dayKey ? -1 : 0));
+}, [reconHistory]);
 
-  // newest day first
-  return Array.from(byDay.values()).sort((a, b) =>
-    a.dayKey < b.dayKey ? 1 : a.dayKey > b.dayKey ? -1 : 0
-  );
-}, [reconHistory, paymentMethods]);
 
   const ordersColRef = useMemo(
     () => (db ? collection(db, "shops", SHOP_ID, "orders") : null),
@@ -5275,7 +5260,7 @@ const generatePurchasesPDF = () => {
 {/* ───────────────────────── Reconcile TAB ───────────────────────── */}
 {activeTab === "reconcile" && (
   <div style={{ display: "grid", gap: 12 }}>
-    {/* ───────────────── Top: live reconciliation ───────────────── */}
+    {/* ───────────────── Top: live reconciliation (old layout) ───────────────── */}
     <div
       style={{
         border: `1px solid ${cardBorder}`,
@@ -5286,28 +5271,22 @@ const generatePurchasesPDF = () => {
     >
       <h3 style={{ marginTop: 0 }}>Cash Drawer Reconciliation</h3>
 
-      {/* Shift info */}
+      {/* Shift info row */}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
         <div>
           <div style={{ fontWeight: 600 }}>Shift</div>
           <div style={{ opacity: 0.8 }}>
-            {dayMeta?.startedAt
-              ? `${fmtDateTime(dayMeta.startedAt)}`
-              : "Not started"}
+            {dayMeta?.startedAt ? `${fmtDateTime(dayMeta.startedAt)}` : "Not started"}
             {dayMeta?.endedAt ? ` → ${fmtDateTime(dayMeta.endedAt)}` : ""}
           </div>
         </div>
         <div>
           <div style={{ fontWeight: 600 }}>Opening Init (Cash)</div>
-          <div style={{ opacity: 0.9 }}>
-            E£{Number(openingInit || 0).toFixed(2)}
-          </div>
+          <div style={{ opacity: 0.9 }}>E£{Number(openingInit || 0).toFixed(2)}</div>
         </div>
         <div>
           <div style={{ fontWeight: 600 }}>Withdrawals (in shift)</div>
-          <div style={{ opacity: 0.9 }}>
-            E£{Number(withdrawalsInShift || 0).toFixed(2)}
-          </div>
+          <div style={{ opacity: 0.9 }}>E£{Number(withdrawalsInShift || 0).toFixed(2)}</div>
         </div>
       </div>
 
@@ -5332,13 +5311,13 @@ const generatePurchasesPDF = () => {
               return (
                 <tr key={m}>
                   <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{m}</td>
-                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
+                  <td style={{ padding: 8, textAlign: "right", borderBottom: `1px solid ${cardBorder}` }}>
                     E£{raw.toFixed(2)}
                   </td>
-                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
+                  <td style={{ padding: 8, textAlign: "right", borderBottom: `1px solid ${cardBorder}` }}>
                     E£{exp.toFixed(2)}
                   </td>
-                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
+                  <td style={{ padding: 8, textAlign: "right", borderBottom: `1px solid ${cardBorder}` }}>
                     <input
                       type="number"
                       step="0.01"
@@ -5364,10 +5343,14 @@ const generatePurchasesPDF = () => {
                   <td
                     style={{
                       padding: 8,
-                      borderBottom: `1px solid ${cardBorder}`,
                       textAlign: "right",
-                      color: varc === 0 ? (dark ? "#9e9e9e" : "#666")
-                          : varc > 0 ? "#2e7d32" : "#c62828",
+                      borderBottom: `1px solid ${cardBorder}`,
+                      color:
+                        varc === 0
+                          ? (dark ? "#9e9e9e" : "#666")
+                          : varc > 0
+                          ? "#2e7d32"
+                          : "#c62828",
                       fontWeight: 700,
                     }}
                   >
@@ -5442,165 +5425,152 @@ const generatePurchasesPDF = () => {
       </div>
     </div>
 
-    {/* ─────────────── Side-by-side: History + Daily Variance (SUM) ─────────────── */}
+    {/* ───────────────── Reconciliation History (old layout) ───────────────── */}
     <div
       style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))",
-        gap: 12,
-        alignItems: "start",
+        border: `1px solid ${cardBorder}`,
+        borderRadius: 8,
+        padding: 10,
+        background: softBg,
       }}
     >
-      {/* LEFT: Reconciliation History */}
-      <div
-        style={{
-          border: `1px solid ${cardBorder}`,
-          borderRadius: 8,
-          padding: 10,
-          background: softBg,
-        }}
-      >
-        <h3 style={{ marginTop: 0 }}>Reconciliation History</h3>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <h3 style={{ margin: 0 }}>Reconciliation History</h3>
 
-        {(!reconHistory || reconHistory.length === 0) ? (
-          <div style={{ opacity: 0.7 }}>No reconciliations yet.</div>
-        ) : (
-          <div style={{ display: "grid", gap: 8 }}>
-            {reconHistory.map((r) => (
-              <div
-                key={r.id}
-                style={{
-                  border: `1px solid ${cardBorder}`,
-                  borderRadius: 8,
-                  padding: 10,
-                  background: dark ? "#151515" : "#fff",
-                }}
-              >
-                <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
-                  <div style={{ fontWeight: 700 }}>
-                    {r.at ? fmtDateTime(r.at) : "-"}
-                  </div>
-                  <div style={{ opacity: 0.8 }}>• Saved by: <b>{r.savedBy || "-"}</b></div>
-                  <div style={{ marginLeft: "auto", fontWeight: 800 }}>
-                    Total Var:{" "}
-                    <span
-                      style={{
-                        color:
-                          Number(r.totalVariance || 0) === 0
-                            ? (dark ? "#fff" : "#000")
-                            : Number(r.totalVariance || 0) > 0
-                            ? "#2e7d32"
-                            : "#c62828",
-                      }}
-                    >
-                      E£{Number(r.totalVariance || 0).toFixed(2)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* per-method breakdown */}
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead>
-                      <tr>
-                        <th style={{ textAlign: "left", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>Method</th>
-                        <th style={{ textAlign: "right", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>Expected</th>
-                        <th style={{ textAlign: "right", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>Actual</th>
-                        <th style={{ textAlign: "right", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>Variance</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paymentMethods.map((m) => {
-                        const row = r?.breakdown?.[m] || { expected: 0, actual: 0, variance: 0 };
-                        return (
-                          <tr key={m}>
-                            <td style={{ padding: 6, borderBottom: `1px solid ${cardBorder}` }}>{m}</td>
-                            <td style={{ padding: 6, textAlign: "right", borderBottom: `1px solid ${cardBorder}` }}>
-                              E£{Number(row.expected || 0).toFixed(2)}
-                            </td>
-                            <td style={{ padding: 6, textAlign: "right", borderBottom: `1px solid ${cardBorder}` }}>
-                              E£{Number(row.actual || 0).toFixed(2)}
-                            </td>
-                            <td
-                              style={{
-                                padding: 6,
-                                textAlign: "right",
-                                borderBottom: `1px solid ${cardBorder}`,
-                                color:
-                                  Number(row.variance || 0) === 0
-                                    ? (dark ? "#9e9e9e" : "#666")
-                                    : Number(row.variance || 0) > 0
-                                    ? "#2e7d32"
-                                    : "#c62828",
-                                fontWeight: 700,
-                              }}
-                            >
-                              E£{Number(row.variance || 0).toFixed(2)}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        {/* ⬅️ NEW: compact Daily Variance (SUM) right under the title */}
       </div>
 
-      {/* RIGHT: Daily Variance (SUM) */}
-      <div
-        style={{
-          border: `1px solid ${cardBorder}`,
-          borderRadius: 8,
-          padding: 10,
-          background: softBg,
-        }}
-      >
-        <h3 style={{ marginTop: 0 }}>Reconciliation History — Daily Variance (SUM)</h3>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
+      {/* Mini table of Daily Variance (SUM) */}
+      <div style={{ marginBottom: 10, overflowX: "auto" }}>
+        <table style={{ width: "100%", maxWidth: 520, borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>
+                Date
+              </th>
+              <th style={{ textAlign: "right", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>
+                Variance (SUM)
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {reconDailySummary.length === 0 ? (
               <tr>
-                <th style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Date</th>
-                <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Total</th>
-                {paymentMethods.map((m) => (
-                  <th key={m} style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>
-                    {m}
-                  </th>
-                ))}
+                <td colSpan={2} style={{ padding: 6, opacity: 0.7 }}>No reconciliations yet.</td>
               </tr>
-            </thead>
-            <tbody>
-              {reconDailySummary.length === 0 ? (
-                <tr>
-                  <td colSpan={2 + paymentMethods.length} style={{ padding: 8, opacity: 0.7 }}>
-                    No reconciliations yet.
+            ) : (
+              reconDailySummary.map((r) => (
+                <tr key={r.dayKey}>
+                  <td style={{ padding: 6, borderBottom: `1px solid ${cardBorder}` }}>{r.dayKey}</td>
+                  <td
+                    style={{
+                      padding: 6,
+                      textAlign: "right",
+                      borderBottom: `1px solid ${cardBorder}`,
+                      fontWeight: 700,
+                      color:
+                        Number(r.total || 0) === 0
+                          ? (dark ? "#fff" : "#000")
+                          : Number(r.total || 0) > 0
+                          ? "#2e7d32"
+                          : "#c62828",
+                    }}
+                  >
+                    E£{Number(r.total || 0).toFixed(2)}
                   </td>
                 </tr>
-              ) : (
-                reconDailySummary.map((d) => (
-                  <tr key={d.dayKey}>
-                    <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{d.dayKey}</td>
-                    <td style={{ padding: 8, textAlign: "right", borderBottom: `1px solid ${cardBorder}`, fontWeight: 700 }}>
-                      E£{Number(d.total || 0).toFixed(2)}
-                    </td>
-                    {paymentMethods.map((m) => (
-                      <td
-                        key={m}
-                        style={{ padding: 8, textAlign: "right", borderBottom: `1px solid ${cardBorder}` }}
-                      >
-                        E£{Number(d.byMethod?.[m] || 0).toFixed(2)}
-                      </td>
-                    ))}
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
+
+      {/* Full history list (unchanged) */}
+      {(!reconHistory || reconHistory.length === 0) ? (
+        <div style={{ opacity: 0.7 }}>No reconciliations yet.</div>
+      ) : (
+        <div style={{ display: "grid", gap: 8 }}>
+          {reconHistory.map((r) => (
+            <div
+              key={r.id}
+              style={{
+                border: `1px solid ${cardBorder}`,
+                borderRadius: 8,
+                padding: 10,
+                background: dark ? "#151515" : "#fff",
+              }}
+            >
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                <div style={{ fontWeight: 700 }}>
+                  {r.at ? fmtDateTime(r.at) : "-"}
+                </div>
+                <div style={{ opacity: 0.8 }}>• Saved by: <b>{r.savedBy || "-"}</b></div>
+                <div style={{ marginLeft: "auto", fontWeight: 800 }}>
+                  Total Var:{" "}
+                  <span
+                    style={{
+                      color:
+                        Number(r.totalVariance || 0) === 0
+                          ? (dark ? "#fff" : "#000")
+                          : Number(r.totalVariance || 0) > 0
+                          ? "#2e7d32"
+                          : "#c62828",
+                    }}
+                  >
+                    E£{Number(r.totalVariance || 0).toFixed(2)}
+                  </span>
+                </div>
+              </div>
+
+              {/* per-method breakdown */}
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: "left", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>Method</th>
+                      <th style={{ textAlign: "right", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>Expected</th>
+                      <th style={{ textAlign: "right", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>Actual</th>
+                      <th style={{ textAlign: "right", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>Variance</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paymentMethods.map((m) => {
+                      const row = r?.breakdown?.[m] || { expected: 0, actual: 0, variance: 0 };
+                      return (
+                        <tr key={m}>
+                          <td style={{ padding: 6, borderBottom: `1px solid ${cardBorder}` }}>{m}</td>
+                          <td style={{ padding: 6, textAlign: "right", borderBottom: `1px solid ${cardBorder}` }}>
+                            E£{Number(row.expected || 0).toFixed(2)}
+                          </td>
+                          <td style={{ padding: 6, textAlign: "right", borderBottom: `1px solid ${cardBorder}` }}>
+                            E£{Number(row.actual || 0).toFixed(2)}
+                          </td>
+                          <td
+                            style={{
+                              padding: 6,
+                              textAlign: "right",
+                              borderBottom: `1px solid ${cardBorder}`,
+                              color:
+                                Number(row.variance || 0) === 0
+                                  ? (dark ? "#9e9e9e" : "#666")
+                                  : Number(row.variance || 0) > 0
+                                  ? "#2e7d32"
+                                  : "#c62828",
+                              fontWeight: 700,
+                            }}
+                          >
+                            E£{Number(row.variance || 0).toFixed(2)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   </div>
 )}
@@ -7246,6 +7216,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
