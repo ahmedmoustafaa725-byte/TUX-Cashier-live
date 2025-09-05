@@ -1250,11 +1250,6 @@ useEffect(() => {
 
 
 
-  // ==== Reconciliation state ====
-// { Cash: <number>, Card: <number>, ... }
-const [reconSavedBy, setReconSavedBy] = useState("");
-const [reconHistory, setReconHistory] = useState([]);   // [{id,savedBy,at,breakdown:{method:{expected,actual,variance}}, totalVariance}]
-
   const [bankForm, setBankForm] = useState({
     type: "deposit",
     amount: 0,
@@ -7012,6 +7007,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
