@@ -961,6 +961,10 @@ export default function App() {
 const [adminSubTab, setAdminSubTab] = useState("inventory"); 
 
   const [dark, setDark] = useState(false);
+  const [workers, setWorkers] = useState(BASE_WORKERS);
+const [newWorker, setNewWorker] = useState("");
+const [paymentMethods, setPaymentMethods] = useState(DEFAULT_PAYMENT_METHODS);
+const [newPayment, setNewPayment] = useState("");
 
   // Target margin (0.60 = 60%). Persisted below.
 const [targetMarginPct, setTargetMarginPct] = useState(() => {
@@ -1052,15 +1056,15 @@ const shiftEnd = useMemo(
 // Raw inflow by method (orders in current UI already reflect active shift when realtimeOrders=true)
 const rawInflowByMethod = useMemo(() => sumPaymentsByMethod(orders), [orders]);
 
-// Bank modifiers during shift
 const withdrawalsInShift = useMemo(
   () => sumBankByType(bankTx, ["withdraw"], shiftStart, shiftEnd || new Date()),
-  [bankTx, shiftStartMs, shiftEndMs]
+  [bankTx, shiftStart, shiftEnd]
 );
 const openingInit = useMemo(
   () => getOpeningInit(bankTx, shiftStart, shiftEnd || new Date()),
-  [bankTx, shiftStartMs, shiftEndMs]
+  [bankTx, shiftStart, shiftEnd]
 );
+
 
 // Expected per method: Cash uses (Raw Cash - Withdrawals + Init); others use raw directly.
 const expectedByMethod = useMemo(() => {
@@ -1124,10 +1128,6 @@ const saveReconciliation = () => {
   const [menu, setMenu] = useState(BASE_MENU);
   const [extraList, setExtraList] = useState(BASE_EXTRAS);
  
-  const [workers, setWorkers] = useState(BASE_WORKERS);
-  const [newWorker, setNewWorker] = useState("");
-  const [paymentMethods, setPaymentMethods] = useState(DEFAULT_PAYMENT_METHODS);
-  const [newPayment, setNewPayment] = useState("");
 
   const [orderTypes, setOrderTypes] = useState(DEFAULT_ORDER_TYPES);
   const [defaultDeliveryFee, setDefaultDeliveryFee] = useState(DEFAULT_DELIVERY_FEE);
@@ -2048,6 +2048,7 @@ useEffect(() => {
   dayMeta,
   bankTx,
   realtimeOrders,
+   reconHistory,
 ]);
 
 
