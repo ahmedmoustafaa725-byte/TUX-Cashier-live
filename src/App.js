@@ -355,7 +355,7 @@ const DEFAULT_INVENTORY = [
 ];
 
 
-const BASE_WORKERS = ["Hassan","Andiel" "Warda", "Ahmed", "Hazem",];
+const BASE_WORKERS = ["Hassan","Andiel", "Warda", "Ahmed", "Hazem",];
 const DEFAULT_PAYMENT_METHODS = ["Cash", "Card", "Instapay"];
 const DEFAULT_ORDER_TYPES = ["Take-Away", "Dine-in", "Delivery"];
 const DEFAULT_DELIVERY_FEE = 20;
@@ -7000,6 +7000,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
