@@ -448,6 +448,13 @@ function getLatestPurchaseForInv(inventoryItem, purchases, purchaseCategories) {
 }
 
 
+// Place near other top-level helpers (before the App component)
+const getNextMenuId = (menu=[]) =>
+  (menu.reduce((m, it) => Math.max(m, Number(it?.id ?? 0)), 0) || 0) + 1;
+
+
+
+
 
 /* ⬇️ ADD THIS BLOCK RIGHT HERE (still top-level, before the App component) */
 const DEFAULT_INV_UNIT_BY_CATNAME = {
@@ -892,6 +899,18 @@ export default function App() {
 const [adminSubTab, setAdminSubTab] = useState("inventory"); 
 
   const [dark, setDark] = useState(false);
+
+  // ——— Add NEW ITEM / EXTRA handlers (inside App) ———
+const addMenuItem = () => {
+  const name = window.prompt("New item name:", "");
+  if (!name) return;
+  const price = Math.max(0, Number(window.prompt("Price (E£):", "0") || 0));
+  const id = getNextMenuId(menu);
+  setMenu((arr) => [...arr, { id, name: String(name).trim(), price, uses: {} }]);
+};
+
+
+
 
 const [inventory, setInventory] = useState(DEFAULT_INVENTORY);
 const [inventoryLocked, setInventoryLocked] = useState(false);
@@ -5528,7 +5547,7 @@ const generatePurchasesPDF = () => {
         </div>
       )}
 
-      {/* EDIT (was "Prices") */}
+      
       {activeTab === "admin" && adminSubTab === "edit" && (
         <div>
           <h2>Edit</h2>
@@ -5678,6 +5697,26 @@ const generatePurchasesPDF = () => {
                 </tr>
               )}
             </tbody>
+                <tfoot>
+  <tr>
+    <td colSpan={5} style={{ padding: 8 }}>
+      <button
+        onClick={addMenuItem}
+        style={{
+          padding: "8px 12px",
+          borderRadius: 6,
+          border: `1px solid ${btnBorder}`,
+          background: dark ? "#2c2c2c" : "#fff",
+          cursor: "pointer",
+          fontWeight: 700,
+        }}
+      >
+        + Add Item
+      </button>
+    </td>
+  </tr>
+</tfoot>
+
           </table>
 
 
@@ -6373,6 +6412,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
