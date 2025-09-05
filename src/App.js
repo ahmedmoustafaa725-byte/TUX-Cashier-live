@@ -907,10 +907,32 @@ const [targetMarginPct, setTargetMarginPct] = useState(() => {
   return isFinite(v) ? v : 0.5; // default 50% like your screenshot
 });
 
-// Which menu item is selected in the helper
-const [cogsSelectedId, setCogsSelectedId] = useState(null);
 
 
+
+useEffect(() => {
+  if (!purchases?.length || !syncCostsFromPurchases) return;
+
+  setInventory(current => {
+    let changed = false;
+
+    const next = current.map(it => {
+      const last = getLatestPurchaseForInv(it, purchases, purchaseCategories);
+      if (!last) return it;
+
+      const cpu = unitPriceToInventoryCost(last.unitPrice, last.unit, it.unit);
+      if (cpu == null) return it;
+
+      const v = Number(cpu.toFixed(4));
+      if (Number(it.costPerUnit || 0) === v) return it; // no change
+
+      changed = true;
+      return { ...it, costPerUnit: v };
+    });
+
+    return changed ? next : current;
+  });
+}, [purchases, purchaseCategories, setInventory, syncCostsFromPurchases]);
 
 
 
@@ -1136,6 +1158,7 @@ useEffect(() => {
 const [adminUnlocked, setAdminUnlocked] = useState(false);
 
 
+
   const removeBankTx = (id) => {
   setBankTx(arr => {
     const row = arr.find(t => t.id === id);
@@ -1220,30 +1243,6 @@ const writeSeqRef = useRef(0);
     setNewPurchase(p => ({ ...p, date: purchaseDay }));
   }
 }, [purchaseFilter, purchaseDay]);
-
-useEffect(() => {
-  if (!purchases?.length || !syncCostsFromPurchases) return;
-
-  setInventory(current => {
-    let changed = false;
-
-    const next = current.map(it => {
-      const last = getLatestPurchaseForInv(it, purchases, purchaseCategories);
-      if (!last) return it;
-
-      const cpu = unitPriceToInventoryCost(last.unitPrice, last.unit, it.unit);
-      if (cpu == null) return it;
-
-      const v = Number(cpu.toFixed(4));
-      if (Number(it.costPerUnit || 0) === v) return it; // no change
-
-      changed = true;
-      return { ...it, costPerUnit: v };
-    });
-
-    return changed ? next : current;
-  });
-}, [purchases, purchaseCategories, setInventory, syncCostsFromPurchases]);
 
 
 
@@ -6617,6 +6616,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
