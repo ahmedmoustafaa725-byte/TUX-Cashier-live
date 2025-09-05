@@ -1222,7 +1222,7 @@ const writeSeqRef = useRef(0);
 }, [purchaseFilter, purchaseDay]);
 
 useEffect(() => {
-  if (!purchases?.length) return;
+  if (!purchases?.length || !syncCostsFromPurchases) return;
 
   setInventory(current => {
     let changed = false;
@@ -1243,7 +1243,8 @@ useEffect(() => {
 
     return changed ? next : current;
   });
-}, [purchases, purchaseCategories, setInventory]);
+}, [purchases, purchaseCategories, setInventory, syncCostsFromPurchases]);
+
 
 
   // Keep category.unit consistent with inventory unit if names match (run after hydration)
@@ -1453,6 +1454,7 @@ useEffect(() => { saveLocalPartial({ dark }); }, [dark]);
   
 useEffect(() => { saveLocalPartial({ targetMarginPct }); }, [targetMarginPct]);
 
+
 useEffect(() => {
   if (orderType !== "Delivery") return;
   const p = String(deliveryPhone || "").trim();
@@ -1527,12 +1529,23 @@ useEffect(() => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [orderTypes]);
 
-// Pick the first menu item by default
+
+// ---- COGS helper selection (one list for menu + extras)
+const [cogsKey, setCogsKey] = useState("");
 useEffect(() => {
-  if (!cogsSelectedId && menu.length) {
-    setCogsSelectedId(menu[0].id);
+  if (!cogsKey) {
+    if (menu.length) setCogsKey(`m-${menu[0].id}`);
+    else if (extraList.length) setCogsKey(`e-${extraList[0].id}`);
   }
-}, [cogsSelectedId, menu]);
+}, [cogsKey, menu, extraList]);
+
+// ---- Toggle: auto-sync Cost/Unit from Purchases
+const [syncCostsFromPurchases, setSyncCostsFromPurchases] = useState(() => {
+  const l = loadLocal();
+  return typeof l?.syncCostsFromPurchases === "boolean" ? l.syncCostsFromPurchases : true;
+});
+useEffect(() => { saveLocalPartial({ syncCostsFromPurchases }); }, [syncCostsFromPurchases]);
+
 
 
   const db = useMemo(() => (fbReady ? ensureFirebase().db : null), [fbReady]);
@@ -6604,6 +6617,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
