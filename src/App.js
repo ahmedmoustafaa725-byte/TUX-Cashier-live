@@ -1061,14 +1061,6 @@ const shiftEnd = useMemo(
 // Raw inflow by method (orders in current UI already reflect active shift when realtimeOrders=true)
 const rawInflowByMethod = useMemo(() => sumPaymentsByMethod(orders), [orders]);
 
-const withdrawalsInShift = useMemo(
-  () => sumBankByType(bankTx, ["withdraw"], shiftStart, shiftEnd || new Date()),
-  [bankTx, shiftStart, shiftEnd]
-);
-const openingInit = useMemo(
-  () => getOpeningInit(bankTx, shiftStart, shiftEnd || new Date()),
-  [bankTx, shiftStart, shiftEnd]
-);
 
 
 // Expected per method: Cash uses (Raw Cash - Withdrawals + Init); others use raw directly.
@@ -1086,15 +1078,16 @@ const expectedByMethod = useMemo(() => {
 }, [paymentMethods, rawInflowByMethod, withdrawalsInShift, openingInit]);
 
 // Variance (Actual - Expected)
-const varianceByMethod = useMemo(() => {
+// Expected per method: just the raw inflow now (no withdrawals/init adjustments)
+const expectedByMethod = useMemo(() => {
   const out = {};
   for (const m of paymentMethods || []) {
-    const actual = Number(reconCounts[m] || 0);
-    const expected = Number(expectedByMethod[m] || 0);
-    out[m] = Number((actual - expected).toFixed(2));
+    const raw = Number((rawInflowByMethod || {})[m] || 0);
+    out[m] = raw;
   }
   return out;
-}, [paymentMethods, reconCounts, expectedByMethod]);
+}, [paymentMethods, rawInflowByMethod]);
+
 
 const totalVariance = useMemo(
   () => Object.values(varianceByMethod).reduce((s, v) => s + Number(v || 0), 0),
@@ -5271,24 +5264,17 @@ const generatePurchasesPDF = () => {
     >
       <h3 style={{ marginTop: 0 }}>Cash Drawer Reconciliation</h3>
 
-      {/* Shift info row */}
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
-        <div>
-          <div style={{ fontWeight: 600 }}>Shift</div>
-          <div style={{ opacity: 0.8 }}>
-            {dayMeta?.startedAt ? `${fmtDateTime(dayMeta.startedAt)}` : "Not started"}
-            {dayMeta?.endedAt ? ` → ${fmtDateTime(dayMeta.endedAt)}` : ""}
-          </div>
-        </div>
-        <div>
-          <div style={{ fontWeight: 600 }}>Opening Init (Cash)</div>
-          <div style={{ opacity: 0.9 }}>E£{Number(openingInit || 0).toFixed(2)}</div>
-        </div>
-        <div>
-          <div style={{ fontWeight: 600 }}>Withdrawals (in shift)</div>
-          <div style={{ opacity: 0.9 }}>E£{Number(withdrawalsInShift || 0).toFixed(2)}</div>
-        </div>
-      </div>
+     {/* Shift info row (simplified) */}
+<div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
+  <div>
+    <div style={{ fontWeight: 600 }}>Shift</div>
+    <div style={{ opacity: 0.8 }}>
+      {dayMeta?.startedAt ? `${fmtDateTime(dayMeta.startedAt)}` : "Not started"}
+      {dayMeta?.endedAt ? ` → ${fmtDateTime(dayMeta.endedAt)}` : ""}
+    </div>
+  </div>
+</div>
+
 
       {/* Methods table */}
       <div style={{ overflowX: "auto" }}>
@@ -7216,6 +7202,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
