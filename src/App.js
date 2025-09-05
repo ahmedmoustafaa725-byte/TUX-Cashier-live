@@ -5272,14 +5272,14 @@ const generatePurchasesPDF = () => {
           <span>Saved by</span>
           <input
             list="recon-workers"
-            placeholder="Hassan / Hazem / Ahmed …"
+            placeholder="Select"
             value={reconSavedBy}
             onChange={(e) => setReconSavedBy(e.target.value)}
             style={{ width:220, padding:"8px 10px", borderRadius:8, border:`1px solid ${btnBorder}`, background:dark?"#1f1f1f":"#fff", color:dark?"#eee":"#000" }}
           />
           <datalist id="recon-workers">
             {(workers || []).map(w => <option key={w} value={w} />)}
-            <option value="Hassan" />
+      
             <option value="Hazem" />
             <option value="Ahmed" />
           </datalist>
@@ -6986,6 +6986,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
