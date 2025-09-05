@@ -5254,10 +5254,10 @@ const generatePurchasesPDF = () => {
                   style={{ width:220, padding:"8px 10px", borderRadius:8, border:`1px solid ${btnBorder}`, background:dark?"#1f1f1f":"#fff", color:dark?"#eee":"#000" }}
                 >
                   <option value="">Select a worker…</option>
-                  {(workers || []).map(w => (
-                    <option key={w} value={w}>{w}</option>
-                  ))}
-                </select>
+                      {[...new Set([...(workers || []), "Ahmed", "Hazem"])].map((w) => (
+                        <option key={w} value={w}>{w}</option>
+                      ))}
+                    </select>
               </label>
 
         <button
@@ -7038,6 +7038,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
