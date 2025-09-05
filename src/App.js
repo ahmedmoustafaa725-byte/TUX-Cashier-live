@@ -1016,10 +1016,38 @@ const lowStockItems = useMemo(() => {
 }, [inventory]);
 
 const lowStockCount = lowStockItems.length;
+  // put these BEFORE "// Shift window"
+const [dayMeta, setDayMeta] = useState({
+  startedBy: "",
+  currentWorker: "",
+  startedAt: null,
+  endedAt: null,
+  endedBy: "",
+  lastReportAt: null,
+  resetBy: "",
+  resetAt: null,
+  shiftChanges: [],
+});
 
-  // Shift window
-const shiftStart = dayMeta?.startedAt ? new Date(dayMeta.startedAt) : null;
-const shiftEnd   = dayMeta?.endedAt ? new Date(dayMeta.endedAt) : null;
+const [orders, setOrders] = useState([]);
+const [bankTx, setBankTx] = useState([]);
+const [reconCounts, setReconCounts] = useState({});
+// (If your file had paymentMethods below, move it up here too)
+
+
+  // AFTER (stable across renders)
+const shiftStartMs = dayMeta?.startedAt ? +new Date(dayMeta.startedAt) : null;
+const shiftEndMs   = dayMeta?.endedAt ? +new Date(dayMeta.endedAt) : null;
+
+const shiftStart = useMemo(
+  () => (shiftStartMs ? new Date(shiftStartMs) : null),
+  [shiftStartMs]
+);
+const shiftEnd = useMemo(
+  () => (shiftEndMs ? new Date(shiftEndMs) : null),
+  [shiftEndMs]
+);
+
 
 // Raw inflow by method (orders in current UI already reflect active shift when realtimeOrders=true)
 const rawInflowByMethod = useMemo(() => sumPaymentsByMethod(orders), [orders]);
@@ -1027,11 +1055,11 @@ const rawInflowByMethod = useMemo(() => sumPaymentsByMethod(orders), [orders]);
 // Bank modifiers during shift
 const withdrawalsInShift = useMemo(
   () => sumBankByType(bankTx, ["withdraw"], shiftStart, shiftEnd || new Date()),
-  [bankTx, shiftStart, shiftEnd]
+  [bankTx, shiftStartMs, shiftEndMs]
 );
 const openingInit = useMemo(
   () => getOpeningInit(bankTx, shiftStart, shiftEnd || new Date()),
-  [bankTx, shiftStart, shiftEnd]
+  [bankTx, shiftStartMs, shiftEndMs]
 );
 
 // Expected per method: Cash uses (Raw Cash - Withdrawals + Init); others use raw directly.
@@ -1213,7 +1241,7 @@ const unlockAdminPin = (n) => {
 
   const [unlockedPins, setUnlockedPins] = useState({}); 
   
-  const [orders, setOrders] = useState([]);
+
   const [nextOrderNo, setNextOrderNo] = useState(1);
 
   const [expenses, setExpenses] = useState([]);
@@ -1233,9 +1261,9 @@ useEffect(() => {
 }, [expenses]);
 
 
-   const [bankTx, setBankTx] = useState([]);
+
   // ==== Reconciliation state ====
-const [reconCounts, setReconCounts] = useState({});     // { Cash: <number>, Card: <number>, ... }
+// { Cash: <number>, Card: <number>, ... }
 const [reconSavedBy, setReconSavedBy] = useState("");
 const [reconHistory, setReconHistory] = useState([]);   // [{id,savedBy,at,breakdown:{method:{expected,actual,variance}}, totalVariance}]
 
@@ -1291,17 +1319,7 @@ const [adminUnlocked, setAdminUnlocked] = useState(false);
   });
 };
 
-  const [dayMeta, setDayMeta] = useState({
-    startedBy: "",
-    currentWorker: "",
-    startedAt: null,
-    endedAt: null,
-    endedBy: "",
-    lastReportAt: null,
-    resetBy: "",
-    resetAt: null,
-    shiftChanges: [],
-  });
+ 
 
   const sortBy = "date-desc";
 
@@ -1982,6 +2000,7 @@ useEffect(() => {
         deliveryZones,
         dayMeta,
         bankTx,
+         realtimeOrders,
          reconHistory,   
       });
 
