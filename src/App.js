@@ -486,31 +486,7 @@ function sumPaymentsByMethod(orders = []) {
   return m;
 }
 
-// Filter bank transactions within a time window and by type
-function sumBankByType(bankTx = [], types = [], start=null, end=null) {
-  return bankTx.reduce((s, t) => {
-    const okType = types.includes(t?.type);
-    if (!okType) return s;
-    const when = t?.date instanceof Date ? t.date : new Date(t?.date);
-    if (start && when < start) return s;
-    if (end && when > end) return s;
-    return s + Number(t.amount || 0);
-  }, 0);
-}
 
-// Opening float detection: prefer 'init' during the shift; if none, take the last 'init' within 12h before shift start
-// Opening float detection: only count 'init' during the active shift.
-// Default is 0 unless an 'init' happens *within* the shift window.
-function getOpeningInit(bankTx = [], shiftStart, shiftEnd) {
-  if (!shiftStart) return 0;
-  const initInShift = sumBankByType(
-    bankTx,
-    ["init"],
-    shiftStart,
-    shiftEnd || new Date()
-  );
-  return initInShift || 0;
-}
 
 
 
@@ -1033,20 +1009,16 @@ const [orders, setOrders] = useState([]);
 const [bankTx, setBankTx] = useState([]);
 const [reconCounts, setReconCounts] = useState({});
 // (If your file had paymentMethods below, move it up here too)
+  // ==== Reconciliation state ====
+const [reconSavedBy, setReconSavedBy] = useState("");
+const [reconHistory, setReconHistory] = useState([]); // [{id,savedBy,at,breakdown..., totalVariance}]
+
 
 
   // AFTER (stable across renders)
 const shiftStartMs = dayMeta?.startedAt ? +new Date(dayMeta.startedAt) : null;
 const shiftEndMs   = dayMeta?.endedAt ? +new Date(dayMeta.endedAt) : null;
 
-const shiftStart = useMemo(
-  () => (shiftStartMs ? new Date(shiftStartMs) : null),
-  [shiftStartMs]
-);
-const shiftEnd = useMemo(
-  () => (shiftEndMs ? new Date(shiftEndMs) : null),
-  [shiftEndMs]
-);
 
 
 // Raw inflow by method (orders in current UI already reflect active shift when realtimeOrders=true)
@@ -7040,6 +7012,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
