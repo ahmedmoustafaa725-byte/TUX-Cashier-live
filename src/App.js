@@ -3559,7 +3559,7 @@ const generatePurchasesPDF = () => {
 {activeTab === "admin" && adminSubTab === "cogs" && (
   <div style={{ display: "grid", gap: 14 }}>
 
-    {/* ── Target Margin Price Helper ───────────────────────────────────── */}
+    {/* ── Target Margin Price Helper (Menu + Extras) ───────────────────── */}
     <div
       style={{
         border: `1px solid ${cardBorder}`,
@@ -3578,12 +3578,12 @@ const generatePurchasesPDF = () => {
           alignItems: "start",
         }}
       >
-        {/* Left: menu item select + current stats */}
+        {/* Left: one select for both Menu and Extras + current stats */}
         <div>
           <div style={{ marginBottom: 6, fontWeight: 600 }}>Menu item</div>
           <select
-            value={cogsSelectedId || ""}
-            onChange={(e) => setCogsSelectedId(Number(e.target.value))}
+            value={cogsKey}
+            onChange={(e) => setCogsKey(e.target.value)}
             style={{
               width: "100%",
               padding: "10px 12px",
@@ -3593,26 +3593,42 @@ const generatePurchasesPDF = () => {
               color: dark ? "#eee" : "#000",
             }}
           >
-            {menu.map((def) => {
-              const cogs = computeCOGSForItemDef(def, invById);
-              const price = Number(def.price || 0);
-              const money = (v) => `E£${Number(v || 0).toFixed(2)}`;
-              return (
-                <option key={def.id} value={def.id}>
-                  {`${def.name} — COGS ${money(cogs)} • Price ${money(price)}`}
-                </option>
-              );
-            })}
+            <optgroup label="Menu">
+              {menu.map(def => {
+                const cogs = computeCOGSForItemDef(def, invById);
+                return (
+                  <option key={`m-${def.id}`} value={`m-${def.id}`}>
+                    {`${def.name} — COGS E£${cogs.toFixed(2)} • Price E£${Number(def.price||0).toFixed(2)}`}
+                  </option>
+                );
+              })}
+            </optgroup>
+            <optgroup label="Extras">
+              {extraList.map(def => {
+                const cogs = computeCOGSForItemDef(def, invById);
+                return (
+                  <option key={`e-${def.id}`} value={`e-${def.id}`}>
+                    {`${def.name} — COGS E£${cogs.toFixed(2)} • Price E£${Number(def.price||0).toFixed(2)}`}
+                  </option>
+                );
+              })}
+            </optgroup>
           </select>
 
-          {/* Current stats */}
+          {/* Current stats for selection */}
           {(() => {
-            const row = menu.find((m) => m.id === cogsSelectedId);
+            if (!cogsKey) return null;
+            const [kind, idStr] = cogsKey.split("-");
+            const id = Number(idStr);
+            const row = kind === "e"
+              ? extraList.find(e => e.id === id)
+              : menu.find(m => m.id === id);
             if (!row) return null;
-            const money = (v) => `E£${Number(v || 0).toFixed(2)}`;
+
             const price = Number(row.price || 0);
             const cogs = computeCOGSForItemDef(row, invById);
             const marginPct = price > 0 ? ((price - cogs) / price) * 100 : 0;
+            const money = (v) => `E£${Number(v || 0).toFixed(2)}`;
 
             return (
               <div
@@ -3644,7 +3660,7 @@ const generatePurchasesPDF = () => {
               onChange={(e) =>
                 setTargetMarginPct(Math.max(0, Math.min(95, Number(e.target.value))) / 100)
               }
-              style={{ width: "100%", accentColor: "#b71c1c" }}
+              style={{ width: "100%" }}
             />
             <input
               type="number"
@@ -3671,17 +3687,26 @@ const generatePurchasesPDF = () => {
 
           {/* Suggested + Apply */}
           {(() => {
-            const row = menu.find((m) => m.id === cogsSelectedId);
+            if (!cogsKey) return null;
+            const [kind, idStr] = cogsKey.split("-");
+            const id = Number(idStr);
+            const row = kind === "e"
+              ? extraList.find(e => e.id === id)
+              : menu.find(m => m.id === id);
             if (!row) return null;
+
             const cogs = computeCOGSForItemDef(row, invById);
             const safeM = Math.min(targetMarginPct, 0.95);
-            const raw = cogs / (1 - safeM);
-            const suggested = Math.max(0, Math.round(raw));
+            const suggested = Math.max(0, Math.round(cogs / (1 - safeM)));
             const money = (v) => `E£${Number(v || 0).toFixed(2)}`;
 
-            const applyToMenu = () => {
+            const applyToItem = () => {
               if (!window.confirm(`Set "${row.name}" price to ${money(suggested)}?`)) return;
-              setMenu((arr) => arr.map((it) => (it.id === row.id ? { ...it, price: suggested } : it)));
+              if (kind === "e") {
+                setExtraList((arr) => arr.map((it) => (it.id === row.id ? { ...it, price: suggested } : it)));
+              } else {
+                setMenu((arr) => arr.map((it) => (it.id === row.id ? { ...it, price: suggested } : it)));
+              }
             };
 
             return (
@@ -3698,7 +3723,7 @@ const generatePurchasesPDF = () => {
                   <b>Suggested price:</b> {money(suggested)}
                 </div>
                 <button
-                  onClick={applyToMenu}
+                  onClick={applyToItem}
                   style={{
                     marginTop: 12,
                     padding: "10px 16px",
@@ -3718,7 +3743,7 @@ const generatePurchasesPDF = () => {
         </div>
       </div>
 
-      {/* Items list under helper */}
+      {/* Single items list (Menu + Extras) under helper */}
       <div style={{ marginTop: 18, overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
@@ -3730,29 +3755,27 @@ const generatePurchasesPDF = () => {
             </tr>
           </thead>
           <tbody>
-            {menu.map((def) => {
-              const money = (v) => `E£${Number(v || 0).toFixed(2)}`;
-              const price = Number(def.price || 0);
-              const cogs = computeCOGSForItemDef(def, invById);
-              const marginPct = price > 0 ? ((price - cogs) / price) * 100 : 0;
-              return (
-                <tr key={def.id}>
-                  <td style={{ padding: 10, borderBottom: `1px solid ${cardBorder}` }}>{def.name}</td>
-                  <td style={{ padding: 10, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{money(cogs)}</td>
-                  <td style={{ padding: 10, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{money(price)}</td>
-                  <td style={{ padding: 10, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{marginPct.toFixed(1)}%</td>
-                </tr>
-              );
-            })}
-            {menu.length === 0 && (
-              <tr><td colSpan={4} style={{ padding: 10, opacity: 0.7 }}>No menu items yet.</td></tr>
-            )}
+            {[...menu.map(d => ({ ...d, _k:`m-${d.id}` })), ...extraList.map(d => ({ ...d, _k:`e-${d.id}` }))]
+              .map((def) => {
+                const price = Number(def.price || 0);
+                const cogs = computeCOGSForItemDef(def, invById);
+                const pct  = price > 0 ? ((price - cogs) / price) * 100 : 0;
+                const money = (v) => `E£${Number(v || 0).toFixed(2)}`;
+                return (
+                  <tr key={def._k}>
+                    <td style={{ padding: 10, borderBottom: `1px solid ${cardBorder}` }}>{def.name}</td>
+                    <td style={{ padding: 10, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{money(cogs)}</td>
+                    <td style={{ padding: 10, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{money(price)}</td>
+                    <td style={{ padding: 10, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{pct.toFixed(1)}%</td>
+                  </tr>
+                );
+              })}
           </tbody>
         </table>
       </div>
     </div>
 
-    {/* ── Inventory Costs (E£ / unit) ───────────────────────────────────── */}
+    {/* ── Inventory Costs (edit Cost/Unit, with auto-sync toggle) ───────── */}
     <div
       style={{
         border: `1px solid ${cardBorder}`,
@@ -3762,7 +3785,18 @@ const generatePurchasesPDF = () => {
       }}
     >
       <h3 style={{ marginTop: 0 }}>Inventory Costs (E£ / unit)</h3>
-      <p style={{ marginTop: 4, opacity: 0.8 }}>Set the cost per inventory unit and the Min Level.</p>
+      <p style={{ margin: "4px 0 12px", opacity: 0.8 }}>
+        Set the cost per inventory unit and the Min Level.
+      </p>
+
+      <label style={{ display: "inline-flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <input
+          type="checkbox"
+          checked={syncCostsFromPurchases}
+          onChange={(e) => setSyncCostsFromPurchases(e.target.checked)}
+        />
+        Auto-sync Cost/Unit from Purchases
+      </label>
 
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -3810,96 +3844,17 @@ const generatePurchasesPDF = () => {
               </tr>
             ))}
             {inventory.length === 0 && (
-              <tr><td colSpan={4} style={{ padding: 8, opacity: 0.7 }}>No inventory yet. Add items in <b>Admin → Inventory</b>.</td></tr>
+              <tr>
+                <td colSpan={4} style={{ padding: 8, opacity: 0.7 }}>
+                  No inventory yet. Add items in <b>Admin → Inventory</b>.
+                </td>
+              </tr>
             )}
           </tbody>
         </table>
       </div>
     </div>
 
-    {/* ── COGS per Menu Item (auto) + Extras ────────────────────────────── */}
-    <div
-      style={{
-        border: `1px solid ${cardBorder}`,
-        borderRadius: 10,
-        padding: 12,
-        background: dark ? "#151515" : "#fafafa",
-      }}
-    >
-      <h3 style={{ marginTop: 0 }}>COGS per Menu Item (auto)</h3>
-
-      {/* MENU */}
-      <h4 style={{ margin: "10px 0 6px" }}>Menu</h4>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: "left",  padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Item</th>
-              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Price (E£)</th>
-              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>COGS (E£)</th>
-              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Gross Margin (E£)</th>
-              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Margin %</th>
-            </tr>
-          </thead>
-          <tbody>
-            {menu.map((def) => {
-              const price = Number(def.price || 0);
-              const cogs = computeCOGSForItemDef(def, invById);
-              const gm = price - cogs;
-              const mp = price > 0 ? (gm / price) * 100 : 0;
-              return (
-                <tr key={`m_${def.id}`}>
-                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{def.name}</td>
-                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{currency(price)}</td>
-                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{currency(cogs)}</td>
-                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{currency(gm)}</td>
-                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{mp.toFixed(1)}%</td>
-                </tr>
-              );
-            })}
-            {menu.length === 0 && (
-              <tr><td colSpan={5} style={{ padding: 8, opacity: 0.7 }}>No menu items yet.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* EXTRAS */}
-      <h4 style={{ margin: "16px 0 6px" }}>Extras</h4>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: "left",  padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Extra</th>
-              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Price (E£)</th>
-              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>COGS (E£)</th>
-              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Gross Margin (E£)</th>
-              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Margin %</th>
-            </tr>
-          </thead>
-          <tbody>
-            {extraList.map((def) => {
-              const price = Number(def.price || 0);
-              const cogs = computeCOGSForItemDef(def, invById);
-              const gm = price - cogs;
-              const mp = price > 0 ? (gm / price) * 100 : 0;
-              return (
-                <tr key={`e_${def.id}`}>
-                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{def.name}</td>
-                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{currency(price)}</td>
-                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{currency(cogs)}</td>
-                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{currency(gm)}</td>
-                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{mp.toFixed(1)}%</td>
-                </tr>
-              );
-            })}
-            {extraList.length === 0 && (
-              <tr><td colSpan={5} style={{ padding: 8, opacity: 0.7 }}>No extras yet.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
   </div>
 )}
 
