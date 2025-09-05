@@ -900,14 +900,28 @@ const [adminSubTab, setAdminSubTab] = useState("inventory");
 
   const [dark, setDark] = useState(false);
 
-  // ——— Add NEW ITEM / EXTRA handlers (inside App) ———
-const addMenuItem = () => {
-  const name = window.prompt("New item name:", "");
-  if (!name) return;
-  const price = Math.max(0, Number(window.prompt("Price (E£):", "0") || 0));
+const addMenuFromForm = () => {
+  const name = String(newItemName || "").trim();
+  if (!name) return alert("Name required.");
+
   const id = getNextMenuId(menu);
-  setMenu((arr) => [...arr, { id, name: String(name).trim(), price, uses: {} }]);
+  setMenu((arr) => [
+    ...arr,
+    {
+      id,
+      name,
+      price: Math.max(0, Number(newItemPrice || 0)),
+      uses: {},
+      color: newItemColor || "#ffffff",
+    },
+  ]);
+
+  // clear inputs
+  setNewItemName("");
+  setNewItemPrice(0);
+  setNewItemColor("#ffffff");
 };
+
 
 
 
@@ -5700,22 +5714,51 @@ const generatePurchasesPDF = () => {
                 <tfoot>
   <tr>
     <td colSpan={5} style={{ padding: 8 }}>
-      <button
-        onClick={addMenuItem}
-        style={{
-          padding: "8px 12px",
-          borderRadius: 6,
-          border: `1px solid ${btnBorder}`,
-          background: dark ? "#2c2c2c" : "#fff",
-          cursor: "pointer",
-          fontWeight: 700,
-        }}
-      >
-        + Add Item
-      </button>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <input
+          type="text"
+          placeholder="New item name"
+          value={newItemName}
+          onChange={(e) => setNewItemName(e.target.value)}
+          style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 220 }}
+        />
+        <input
+          type="number"
+          placeholder="Price (E£)"
+          value={newItemPrice}
+          onChange={(e) => setNewItemPrice(Number(e.target.value || 0))}
+          style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 160, textAlign: "right" }}
+        />
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <span style={{ opacity: 0.8 }}>Color</span>
+          <input
+            type="color"
+            value={newItemColor}
+            onChange={(e) => setNewItemColor(e.target.value)}
+            style={{ width: 40, height: 28, border: "none", background: "none", cursor: "pointer" }}
+          />
+        </label>
+
+        <button
+          onClick={addMenuFromForm}
+          style={{
+            background: "#2e7d32",
+            color: "#fff",
+            border: "none",
+            borderRadius: 6,
+            padding: "8px 12px",
+            cursor: "pointer",
+            fontWeight: 700,
+          }}
+        >
+          + Add Item
+        </button>
+      </div>
     </td>
   </tr>
 </tfoot>
+
+
 
           </table>
 
@@ -6412,6 +6455,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
