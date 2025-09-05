@@ -5305,7 +5305,7 @@ const generatePurchasesPDF = () => {
         </button>
       </div>
     </div>
-     {/* All-time Variance summary (sums all saved reconciliations) */}
+{/* All-time Variance summary (sums all saved reconciliations) */}
 <div
   style={{
     marginTop: 12,
@@ -5315,55 +5315,41 @@ const generatePurchasesPDF = () => {
     background: softBg,
   }}
 >
-  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-    <h3 style={{ margin: 0 }}>All-time Variance Totals</h3>
-    <div style={{ marginLeft: "auto", fontWeight: 800 }}>
-      Overall: E£{Number(allTimeVarianceTotal || 0).toFixed(2)}
-    </div>
+  <h4 style={{ margin: 0 }}>All-time Variance</h4>
+
+  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+    {(paymentMethods || []).map((m) => (
+      <div
+        key={m}
+        style={{
+          padding: 8,
+          border: `1px solid ${cardBorder}`,
+          borderRadius: 6,
+          minWidth: 120,
+        }}
+      >
+        <div style={{ fontSize: 12, opacity: 0.8 }}>{m}</div>
+        <div style={{ fontWeight: 700 }}>
+          {(allTimeVarianceByMethod?.[m] || 0).toFixed(2)}
+        </div>
+      </div>
+    ))}
   </div>
 
-  <div style={{ overflowX: "auto", marginTop: 8 }}>
-    <table style={{ width: "100%", borderCollapse: "collapse" }}>
-      <thead>
-        <tr>
-          <th style={{ textAlign: "left", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>
-            Payment
-          </th>
-          <th style={{ textAlign: "right", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>
-            Sum of Variances (E£)
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {paymentMethods.map((m) => (
-          <tr key={m}>
-            <td style={{ padding: 6, borderBottom: `1px solid ${cardBorder}` }}>{m}</td>
-            <td style={{ padding: 6, textAlign: "right", borderBottom: `1px solid ${cardBorder}` }}>
-              {Number(allTimeVarianceByMethod[m] || 0).toFixed(2)}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+  <div style={{ marginTop: 8, fontWeight: 800 }}>
+    Total: {allTimeVarianceTotal.toFixed(2)}
   </div>
 
-  <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+  <div style={{ marginTop: 8 }}>
     <button
       onClick={resetAllReconciliations}
-      style={{
-        padding: "6px 10px",
-        borderRadius: 6,
-        border: `1px solid ${btnBorder}`,
-        background: "#ffcdd2",
-        fontWeight: 700,
-        cursor: "pointer",
-      }}
-      title="Clears all saved reconciliations (Admin PIN required)"
+      style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${btnBorder}` }}
     >
-      Reset All Reconciliations
+      Reset all saved reconciliations
     </button>
   </div>
 </div>
+
                             
 
     {/* History */}
@@ -7058,5 +7044,6 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
