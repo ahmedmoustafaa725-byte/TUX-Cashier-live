@@ -5157,156 +5157,201 @@ const generatePurchasesPDF = () => {
 
 {/* ───────────────────────── Reconcile TAB ───────────────────────── */}
 {activeTab === "reconcile" && (
-  <div style={{ display: "grid", gap: 14 }}>
-    {/* Card: Cash Drawer */}
-    <div style={{ border:`1px solid ${cardBorder}`, borderRadius:12, padding:16, background: dark ? "#151515" : "#fafafa" }}>
-      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-        <h3 style={{ margin:0 }}>Cash Drawer — Expected vs Actual</h3>
-        {dayMeta.reconciledAt ? (
-          <span style={{ marginLeft:8, fontSize:12, padding:"2px 8px", borderRadius:999, background:"#e8f5e9", color:"#1b5e20", border:"1px solid #a5d6a7" }}>
-            Saved at {fmtDateTime(dayMeta.reconciledAt)}
-          </span>
-        ) : (
-          <span style={{ marginLeft:8, fontSize:12, padding:"2px 8px", borderRadius:999, background:"#fff3e0", color:"#bf360c", border:"1px solid #ffcc80" }}>
-            Not saved yet
-          </span>
-        )}
-        <div style={{ marginLeft:"auto", fontSize:12, opacity:.8 }}>
-          Shift: {dayMeta.startedAt ? fmtDateTime(dayMeta.startedAt) : "—"} → {dayMeta.endedAt ? fmtDateTime(dayMeta.endedAt) : "—"}
-        </div>
-      </div>
+  <div
+    style={{
+      border: `1px solid ${cardBorder}`,
+      borderRadius: 12,
+      padding: 16,
+      background: dark ? "#151515" : "#fafafa",
+    }}
+  >
+    <h3 style={{ marginTop: 0, marginBottom: 12 }}>
+      Cash Drawer — Expected vs Actual
+    </h3>
 
-  
+    {/* Methods table */}
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            <th style={{ textAlign: "left", padding: 10, borderBottom: `1px solid ${cardBorder}` }}>Method</th>
+            <th style={{ textAlign: "right", padding: 10, borderBottom: `1px solid ${cardBorder}` }}>Raw Inflow</th>
+            <th style={{ textAlign: "right", padding: 10, borderBottom: `1px solid ${cardBorder}` }}>Expected</th>
+            <th style={{ textAlign: "right", padding: 10, borderBottom: `1px solid ${cardBorder}` }}>Actual / Counted</th>
+            <th style={{ textAlign: "right", padding: 10, borderBottom: `1px solid ${cardBorder}` }}>Variance</th>
+          </tr>
+        </thead>
+        <tbody>
+          {(paymentMethods || []).map((m) => {
+            const raw = Number(rawInflowByMethod[m] || 0);
+            const exp = Number(expectedByMethod[m] || 0);
+            const act = Number(reconCounts[m] || 0);
+            const varc = Number((act - exp).toFixed(2));
+            const col =
+              varc > 0 ? "#1b5e20" : varc < 0 ? "#b71c1c" : (dark ? "#aaa" : "#555");
 
-      {/* Methods table */}
-      <div style={{ overflowX:"auto", marginTop:12 }}>
-        <table style={{ width:"100%", borderCollapse:"collapse" }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign:"left", padding:10, borderBottom:`1px solid ${cardBorder}` }}>Method</th>
-              <th style={{ textAlign:"right", padding:10, borderBottom:`1px solid ${cardBorder}` }}>Raw Inflow</th>
-              <th style={{ textAlign:"right", padding:10, borderBottom:`1px solid ${cardBorder}` }}>Expected</th>
-              <th style={{ textAlign:"right", padding:10, borderBottom:`1px solid ${cardBorder}` }}>Actual / Counted</th>
-              <th style={{ textAlign:"right", padding:10, borderBottom:`1px solid ${cardBorder}` }}>Variance</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(paymentMethods || []).map((m) => {
-              const raw = Number(rawInflowByMethod[m] || 0);
-              const exp = Number(expectedByMethod[m] || 0);
-              const act = Number(reconCounts[m] || 0);
-              const varc = Number((act - exp).toFixed(2));
-             const bg = varc > 0 ? (dark ? "rgba(46,125,50,.15)" : "#e8f5e9")
-           : varc < 0 ? (dark ? "rgba(183,28,28,.20)" : "#ffebee")
-           : (dark ? "rgba(0,0,0,.15)" : "#f5f5f5"); // neutral for 0
-           const bd = varc > 0 ? (dark ? "#388e3c" : "#a5d6a7")
-                     : varc < 0 ? (dark ? "#c62828" : "#ef9a9a")
-                     : (dark ? "#666" : "#ddd");
-              return (
-                <tr key={m}>
-                  <td style={{ padding:10, borderBottom:`1px solid ${cardBorder}` }}>{m}</td>
-                  <td style={{ padding:10, borderBottom:`1px solid ${cardBorder}`, textAlign:"right" }}>E£{raw.toFixed(2)}</td>
-                  <td style={{ padding:10, borderBottom:`1px solid ${cardBorder}`, textAlign:"right" }}>E£{exp.toFixed(2)}</td>
-                  <td style={{ padding:10, borderBottom:`1px solid ${cardBorder}`, textAlign:"right" }}>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={reconCounts[m] ?? 0}
-                      onChange={(e) => setReconCounts(rc => ({ ...rc, [m]: Number(e.target.value || 0) }))}
-                      style={{ width:120, padding:"6px 8px", borderRadius:8, border:`1px solid ${btnBorder}`, background:dark?"#1f1f1f":"#fff", color:dark?"#eee":"#000", textAlign:"right" }}
-                    />
-                  </td>
-                  <td style={{ padding:10, borderBottom:`1px solid ${cardBorder}`, textAlign:"right" }}>
-                    <span style={{ display:"inline-block", minWidth:100, padding:"4px 8px", borderRadius:8, border:`1px solid ${bd}`, background:bg, fontWeight:700 }}>
-                      {varc >= 0 ? "+" : ""}E£{varc.toFixed(2)}
-                    </span>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    {/* KPIs bar */}
-      <div style={{ padding:10, border:`1px solid ${cardBorder}`, borderRadius:10, background:dark?"#1d1d1d":"#fff", marginTop:10 }}>
-        <div style={{ fontSize:12, opacity:.8 }}>Total Variance</div>
-        <div
-          style={{
-            fontWeight:900,
-            textAlign:"right",
-            color: totalVariance > 0 ? "#1b5e20" : (totalVariance < 0 ? "#b71c1c" : (dark ? "#aaa" : "#555"))
-          }}
-        >
-          {totalVariance >= 0 ? "+" : ""}E£{totalVariance.toFixed(2)}
-        </div>
-      </div>
-
-      {/* Save bar */}
-      <div style={{ marginTop:12, display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
-     <label style={{ display:"flex", alignItems:"center", gap:8 }}>
-                <span>Saved by</span>
-                <select
-                  value={reconSavedBy}
-                  onChange={(e) => setReconSavedBy(e.target.value)}
-                  style={{ width:220, padding:"8px 10px", borderRadius:8, border:`1px solid ${btnBorder}`, background:dark?"#1f1f1f":"#fff", color:dark?"#eee":"#000" }}
+            return (
+              <tr key={m}>
+                <td style={{ padding: 10, borderBottom: `1px solid ${cardBorder}` }}>{m}</td>
+                <td style={{ padding: 10, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
+                  E£{raw.toFixed(2)}
+                </td>
+                <td style={{ padding: 10, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
+                  E£{exp.toFixed(2)}
+                </td>
+                <td style={{ padding: 10, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
+                  <input
+                    type="number"
+                    value={reconCounts[m] ?? 0}
+                    onChange={(e) =>
+                      setReconCounts((s) => ({ ...s, [m]: Number(e.target.value || 0) }))
+                    }
+                    style={{
+                      width: 140,
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      border: `1px solid ${cardBorder}`,
+                      background: dark ? "#1f1f1f" : "#fff",
+                      color: dark ? "#eee" : "#000",
+                      textAlign: "right",
+                      fontWeight: 700,
+                    }}
+                  />
+                </td>
+                <td
+                  style={{
+                    padding: 10,
+                    borderBottom: `1px solid ${cardBorder}`,
+                    textAlign: "right",
+                    fontWeight: 800,
+                    color: col,             // ← color only (no background)
+                  }}
                 >
-                  <option value="">Select a worker…</option>
-                  {(workers || []).map(w => (
-                    <option key={w} value={w}>{w}</option>
-                  ))}
-                </select>
-              </label>
-
-        <button
-          onClick={saveReconciliation}
-          style={{ marginLeft:"auto", padding:"10px 16px", borderRadius:12, border:"none", background:"#00966a", color:"#fff", fontWeight:800, cursor:"pointer" }}
-        >
-          Save Reconciliation
-        </button>
-      </div>
+                  {varc > 0 ? "+" : ""}E£{varc.toFixed(2)}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
 
-    {/* All-time Variance summary (sums all saved reconciliations) */}
+    {/* Total Variance — now BELOW the table */}
     <div
       style={{
         marginTop: 12,
-        padding: 10,
-        border: `1px solid ${cardBorder}`,
-        borderRadius: 8,
-        background: softBg,
+        paddingTop: 8,
+        borderTop: `1px solid ${cardBorder}`,
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        fontWeight: 900,
       }}
     >
-      <h4 style={{ margin: 0 }}>All-time Variance</h4>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-        {(paymentMethods || []).map((m) => (
-          <div
-            key={m}
-            style={{
-              padding: 8,
-              border: `1px solid ${cardBorder}`,
-              borderRadius: 6,
-              minWidth: 120,
-            }}
-          >
-            <div style={{ fontSize: 12, opacity: 0.8 }}>{m}</div>
-            <div style={{ fontWeight: 700 }}>
-              {(allTimeVarianceByMethod?.[m] || 0).toFixed(2)}
-            </div>
-          </div>
-        ))}
-      </div>
-      <div style={{ marginTop: 8, fontWeight: 800 }}>
-        Total: {allTimeVarianceTotal.toFixed(2)}
-      </div>
-      <div style={{ marginTop: 8 }}>
-        <button
-          onClick={resetAllReconciliations}
-          style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${btnBorder}` }}
-        >
-          Reset all saved reconciliations
-        </button>
+      <div>Total Variance</div>
+      <div
+        style={{
+          color:
+            totalVariance > 0
+              ? "#1b5e20"
+              : totalVariance < 0
+              ? "#b71c1c"
+              : (dark ? "#aaa" : "#555"),
+        }}
+      >
+        {totalVariance > 0 ? "+" : ""}E£{totalVariance.toFixed(2)}
       </div>
     </div>
+
+    {/* Saved by + button */}
+    <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 14 }}>
+      <label style={{ fontWeight: 600 }}>Saved by</label>
+      <select
+        value={reconSavedBy}
+        onChange={(e) => setReconSavedBy(e.target.value)}
+        style={{
+          minWidth: 180,
+          padding: "8px 10px",
+          borderRadius: 8,
+          border: `1px solid ${cardBorder}`,
+          background: dark ? "#1f1f1f" : "#fff",
+          color: dark ? "#eee" : "#000",
+          fontWeight: 700,
+        }}
+      >
+        <option value="" disabled>Select worker…</option>
+        {(workers || []).map((w) => (
+          <option key={w} value={w}>{w}</option>
+        ))}
+      </select>
+
+      <button
+        onClick={saveReconciliation}
+        style={{
+          marginLeft: "auto",
+          background: "#0d47a1",
+          color: "#fff",
+          border: "none",
+          borderRadius: 10,
+          padding: "10px 14px",
+          cursor: "pointer",
+          fontWeight: 800,
+        }}
+      >
+        Save Reconciliation
+      </button>
+    </div>
+
+    {/* All-time Variance */}
+    <div style={{ marginTop: 18 }}>
+      <h4 style={{ margin: "8px 0" }}>All-time Variance</h4>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        {(paymentMethods || []).map((m) => {
+          const v = Number(allTimeVarianceByMethod?.[m] || 0);
+          const col = v > 0 ? "#1b5e20" : v < 0 ? "#b71c1c" : (dark ? "#aaa" : "#555");
+          return (
+            <div
+              key={m}
+              style={{
+                padding: 10,
+                border: `1px solid ${cardBorder}`,
+                borderRadius: 8,
+                minWidth: 160,
+              }}
+            >
+              <div style={{ fontSize: 12, opacity: 0.8 }}>{m}</div>
+              <div style={{ fontWeight: 900, color: col }}>
+                {v > 0 ? "+" : ""}E£{v.toFixed(2)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div
+        style={{
+          marginTop: 10,
+          fontWeight: 900,
+          display: "flex",
+          justifyContent: "space-between",
+          borderTop: `1px dashed ${cardBorder}`,
+          paddingTop: 8,
+          color:
+            allTimeVarianceTotal > 0
+              ? "#1b5e20"
+              : allTimeVarianceTotal < 0
+              ? "#b71c1c"
+              : (dark ? "#aaa" : "#555"),
+        }}
+      >
+        <span>Total</span>
+        <span>
+          {allTimeVarianceTotal > 0 ? "+" : ""}E£{allTimeVarianceTotal.toFixed(2)}
+        </span>
+      </div>
+    </div>
+  </div>
+)}
+
 
     {/* History */}
     <div style={{ border:`1px solid ${cardBorder}`, borderRadius:12, padding:16, background: dark ? "#151515" : "#fafafa" }}>
@@ -7000,6 +7045,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
