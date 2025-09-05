@@ -82,6 +82,7 @@ function packStateForCloud(state) {
     expenses,
     dayMeta,
     bankTx,
+     reconHistory,
   } = state;
 
 const purchases = Array.isArray(state.purchases)
@@ -138,6 +139,7 @@ restockedAt: toIso(o.restockedAt),
  endedAt: toIso(dayMeta.endedAt),
  lastReportAt: toIso(dayMeta.lastReportAt),
  resetAt: toIso(dayMeta.resetAt),
+         reconciledAt: toIso(dayMeta.reconciledAt),
           shiftChanges: Array.isArray(dayMeta.shiftChanges)
             ? dayMeta.shiftChanges.map((c) => ({
                 ...c,
@@ -149,6 +151,10 @@ restockedAt: toIso(o.restockedAt),
     bankTx: (bankTx || []).map((t) => ({
       ...t,
       date: toIso(t.date),
+    })),
+     reconHistory: (reconHistory || []).map(r => ({
+      ...r,
+      at: toIso(r.at),
     })),
   };
 }
@@ -192,6 +198,7 @@ function unpackStateFromCloud(data, fallbackDayMeta = {}) {
       currentWorker: data.dayMeta.currentWorker || "",
       startedAt: data.dayMeta.startedAt ? new Date(data.dayMeta.startedAt) : null,
       endedAt: data.dayMeta.endedAt ? new Date(data.dayMeta.endedAt) : null,
+        reconciledAt: data.dayMeta.reconciledAt ? new Date(data.dayMeta.reconciledAt) : null,
       endedBy: data.dayMeta.endedBy || "",
       lastReportAt: data.dayMeta.lastReportAt ? new Date(data.dayMeta.lastReportAt) : null,
       resetBy: data.dayMeta.resetBy || "",
@@ -206,6 +213,11 @@ function unpackStateFromCloud(data, fallbackDayMeta = {}) {
   } else {
     out.dayMeta = fallbackDayMeta;
   }
+   if (Array.isArray(data.reconHistory)) {
+  out.reconHistory = data.reconHistory.map(r => ({
+    ...r, at: r.at ? new Date(r.at) : new Date()
+  }));
+}
 
   if (data.menu) out.menu = data.menu;
   if (data.extras) out.extraList = data.extras;
@@ -454,6 +466,56 @@ const getNextMenuId = (menu=[]) =>
 
 
 
+// ==== Cash Drawer / Reconciliation helpers ====
+
+// Sum order inflows by payment method (uses paymentParts if present)
+function sumPaymentsByMethod(orders = []) {
+  const m = {};
+  for (const o of orders || []) {
+    if (o.voided) continue;
+    if (Array.isArray(o.paymentParts) && o.paymentParts.length) {
+      for (const p of o.paymentParts) {
+        const k = String(p.method || "Unknown");
+        m[k] = (m[k] || 0) + Number(p.amount || 0);
+      }
+    } else {
+      const k = String(o.payment || "Unknown");
+      m[k] = (m[k] || 0) + Number(o.total || 0);
+    }
+  }
+  return m;
+}
+
+// Filter bank transactions within a time window and by type
+function sumBankByType(bankTx = [], types = [], start=null, end=null) {
+  return bankTx.reduce((s, t) => {
+    const okType = types.includes(t?.type);
+    if (!okType) return s;
+    const when = t?.date instanceof Date ? t.date : new Date(t?.date);
+    if (start && when < start) return s;
+    if (end && when > end) return s;
+    return s + Number(t.amount || 0);
+  }, 0);
+}
+
+// Opening float detection: prefer 'init' during the shift; if none, take the last 'init' within 12h before shift start
+function getOpeningInit(bankTx = [], shiftStart, shiftEnd) {
+  if (!shiftStart) return 0;
+  const initInShift = sumBankByType(bankTx, ["init"], shiftStart, shiftEnd || new Date());
+  if (initInShift > 0) return initInShift;
+
+  const twelveHoursBefore = new Date(shiftStart.getTime() - 12 * 60 * 60 * 1000);
+  // pick the latest single 'init' in [-12h, shiftStart]
+  let best = 0, bestTs = 0;
+  for (const t of bankTx) {
+    if (t?.type !== "init") continue;
+    const when = t?.date instanceof Date ? t.date : new Date(t?.date);
+    if (when < twelveHoursBefore || when > shiftStart) continue;
+    const ts = when.getTime();
+    if (ts > bestTs) { bestTs = ts; best = Number(t.amount || 0); }
+  }
+  return best;
+}
 
 
 /* ⬇️ ADD THIS BLOCK RIGHT HERE (still top-level, before the App component) */
@@ -955,6 +1017,81 @@ const lowStockItems = useMemo(() => {
 
 const lowStockCount = lowStockItems.length;
 
+  // Shift window
+const shiftStart = dayMeta?.startedAt ? new Date(dayMeta.startedAt) : null;
+const shiftEnd   = dayMeta?.endedAt ? new Date(dayMeta.endedAt) : null;
+
+// Raw inflow by method (orders in current UI already reflect active shift when realtimeOrders=true)
+const rawInflowByMethod = useMemo(() => sumPaymentsByMethod(orders), [orders]);
+
+// Bank modifiers during shift
+const withdrawalsInShift = useMemo(
+  () => sumBankByType(bankTx, ["withdraw"], shiftStart, shiftEnd || new Date()),
+  [bankTx, shiftStart, shiftEnd]
+);
+const openingInit = useMemo(
+  () => getOpeningInit(bankTx, shiftStart, shiftEnd || new Date()),
+  [bankTx, shiftStart, shiftEnd]
+);
+
+// Expected per method: Cash uses (Raw Cash - Withdrawals + Init); others use raw directly.
+const expectedByMethod = useMemo(() => {
+  const out = {};
+  for (const m of paymentMethods || []) {
+    const raw = Number(rawInflowByMethod[m] || 0);
+    if (m.toLowerCase() === "cash") {
+      out[m] = raw - withdrawalsInShift + openingInit;
+    } else {
+      out[m] = raw;
+    }
+  }
+  return out;
+}, [paymentMethods, rawInflowByMethod, withdrawalsInShift, openingInit]);
+
+// Variance (Actual - Expected)
+const varianceByMethod = useMemo(() => {
+  const out = {};
+  for (const m of paymentMethods || []) {
+    const actual = Number(reconCounts[m] || 0);
+    const expected = Number(expectedByMethod[m] || 0);
+    out[m] = Number((actual - expected).toFixed(2));
+  }
+  return out;
+}, [paymentMethods, reconCounts, expectedByMethod]);
+
+const totalVariance = useMemo(
+  () => Object.values(varianceByMethod).reduce((s, v) => s + Number(v || 0), 0),
+  [varianceByMethod]
+);
+const saveReconciliation = () => {
+  if (!dayMeta.startedAt) return alert("Start a shift first.");
+  const who = String(reconSavedBy || dayMeta.currentWorker || "").trim();
+  if (!who) return alert("Select or type who saved it (Saved by).");
+
+  const breakdown = {};
+  for (const m of paymentMethods || []) {
+    const expected = Number(expectedByMethod[m] || 0);
+    const actual = Number(reconCounts[m] || 0);
+    breakdown[m] = {
+      expected: Number(expected.toFixed(2)),
+      actual: Number(actual.toFixed(2)),
+      variance: Number((actual - expected).toFixed(2)),
+    };
+  }
+
+  const rec = {
+    id: `rec_${Date.now()}`,
+    savedBy: who,
+    at: new Date(),
+    breakdown,
+    totalVariance: Number(totalVariance.toFixed(2)),
+  };
+  setReconHistory(arr => [rec, ...arr]);
+  setDayMeta(d => ({ ...d, reconciledAt: new Date() }));
+  alert("Reconciliation saved ✅");
+};
+
+
 
   const [menu, setMenu] = useState(BASE_MENU);
   const [extraList, setExtraList] = useState(BASE_EXTRAS);
@@ -1097,12 +1234,19 @@ useEffect(() => {
 
 
    const [bankTx, setBankTx] = useState([]);
+  // ==== Reconciliation state ====
+const [reconCounts, setReconCounts] = useState({});     // { Cash: <number>, Card: <number>, ... }
+const [reconSavedBy, setReconSavedBy] = useState("");
+const [reconHistory, setReconHistory] = useState([]);   // [{id,savedBy,at,breakdown:{method:{expected,actual,variance}}, totalVariance}]
+
   const [bankForm, setBankForm] = useState({
     type: "deposit",
     amount: 0,
     worker: "",
     note: "",
   });
+
+  
 
   // 🔒 Safety-net for bank: never allow locked "Auto Init from day margin" to disappear
 const lastLockedBankRef = useRef([]);
@@ -1193,6 +1337,18 @@ const writeSeqRef = useRef(0);
   // Printing preferences (kept)
   const [autoPrintOnCheckout, setAutoPrintOnCheckout] = useState(true);
   const [preferredPaperWidthMm, setPreferredPaperWidthMm] = useState(80);
+
+  useEffect(() => {
+  if (!dayMeta.startedAt) {
+    setReconCounts({}); setReconSavedBy("");
+    return;
+  }
+  // initialize zeros for all current payment methods
+  const init = {};
+  for (const m of paymentMethods || []) init[m] = 0;
+  setReconCounts((prev) => ({ ...init, ...prev })); // preserve any already typed values
+}, [dayMeta.startedAt, paymentMethods]);
+
 
   useEffect(() => {
     try {
@@ -1345,7 +1501,12 @@ useEffect(() => {
   if (l.adminPins) setAdminPins((prev) => ({ ...prev, ...l.adminPins }));
   if (typeof l.dark === "boolean") setDark(l.dark);
 
-  
+  if (Array.isArray(l.reconHistory)) {
+  setReconHistory(l.reconHistory.map(r => ({ ...r, at: r.at ? new Date(r.at) : new Date() })));
+}
+if (l.reconCounts && typeof l.reconCounts === "object") setReconCounts(l.reconCounts);
+if (typeof l.reconSavedBy === "string") setReconSavedBy(l.reconSavedBy);
+
 
    /* === ADD BELOW THIS LINE (other tabs & settings) === */
  if (Array.isArray(l.expenses)) {
@@ -1412,6 +1573,9 @@ useEffect(() => {
   const l = loadLocal();
   if (typeof l.adminSubTab === "string") setAdminSubTab(l.adminSubTab);
 }, []); // put near your other local hydration logic
+useEffect(() => { saveLocalPartial({ reconHistory }); }, [reconHistory]);
+useEffect(() => { saveLocalPartial({ reconCounts }); }, [reconCounts]);
+useEffect(() => { saveLocalPartial({ reconSavedBy }); }, [reconSavedBy]);
 
 useEffect(() => { saveLocalPartial({ purchaseCategories }); }, [purchaseCategories]); // ⬅️ NEW
 useEffect(() => { saveLocalPartial({ purchaseFilter }); }, [purchaseFilter]);        // ⬅️ NEW
@@ -1585,6 +1749,7 @@ useEffect(() => {
           const unpacked = unpackStateFromCloud(data, dayMeta);
           if (!realtimeOrders && unpacked.orders) setOrders(unpacked.orders);
           if (unpacked.menu) setMenu(unpacked.menu);
+          if (unpacked.reconHistory) setReconHistory(unpacked.reconHistory);
           if (unpacked.extraList) setExtraList(unpacked.extraList);
           if (unpacked.inventory) setInventory(unpacked.inventory);
           if (unpacked.nextOrderNo != null) setNextOrderNo(unpacked.nextOrderNo);
@@ -1655,6 +1820,8 @@ if (ts && lastLocalEditAt && ts < lastLocalEditAt) return;
 
       // NOTE: when realtimeOrders = true, orders flow is already handled via the "orders" collection listener
       if (unpacked.menu) setMenu(unpacked.menu);
+      if (unpacked.reconHistory) setReconHistory(unpacked.reconHistory);
+
       if (unpacked.extraList) setExtraList(unpacked.extraList);
       if (unpacked.inventory) setInventory(unpacked.inventory);
       if (typeof unpacked.nextOrderNo === "number") setNextOrderNo(unpacked.nextOrderNo);
@@ -1698,6 +1865,7 @@ if (ts && lastLocalEditAt && ts < lastLocalEditAt) return;
       const unpacked = unpackStateFromCloud(data, dayMeta);
       if (!realtimeOrders && unpacked.orders) setOrders(unpacked.orders);
       if (unpacked.menu) setMenu(unpacked.menu);
+
       if (unpacked.extraList) setExtraList(unpacked.extraList);
       if (unpacked.inventory) setInventory(unpacked.inventory);
       if (unpacked.nextOrderNo != null) setNextOrderNo(unpacked.nextOrderNo);
@@ -1743,6 +1911,7 @@ if (ts && lastLocalEditAt && ts < lastLocalEditAt) return;
       orders: realtimeOrders ? [] : orders,
       inventory,
       nextOrderNo,
+       reconHistory,
       dark,
       workers,
       paymentMethods,
@@ -1813,6 +1982,7 @@ useEffect(() => {
         deliveryZones,
         dayMeta,
         bankTx,
+         reconHistory,   
       });
 
       // Fence fields
@@ -2084,7 +2254,10 @@ function getPeriodRange(kind, dayMeta, dayStr, monthStr) {
     const who = window.prompt("Enter your name to END THE DAY:", "");
     const endBy = norm(who);
     if (!endBy) return alert("Name is required.");
-
+  if (!dayMeta.reconciledAt || !dayMeta.startedAt || (dayMeta.reconciledAt < dayMeta.startedAt)) {
+    alert("You must save a Cash Drawer Reconciliation before ending the day. Go to the Reconcile tab.");
+    return;
+  }
     const endTime = new Date();
     const metaForReport = { ...dayMeta, endedAt: endTime, endedBy: endBy };
 
@@ -2168,6 +2341,10 @@ function getPeriodRange(kind, dayMeta, dayStr, monthStr) {
       resetAt: null,
       shiftChanges: [],
     });
+    setReconCounts({});
+setReconSavedBy("");
+// reconHistory NOT cleared (per your requirement)
+
 
     alert(`Day ended by ${endBy}. Report downloaded and day reset ✅`);
   };
@@ -3513,6 +3690,7 @@ const generatePurchasesPDF = () => {
     ["orders", "Orders"],
     ["board", "Orders Board"],
     ["expenses", "Expenses"],
+     ["reconcile","Reconcile"],
     ["admin", "Admin"], // <-- new consolidated tab
   ].map(([key, label]) => (
     <button
@@ -4978,6 +5156,180 @@ const generatePurchasesPDF = () => {
           </table>
         </div>
       )}
+
+
+{/* ───────────────────────── Reconcile TAB ───────────────────────── */}
+{activeTab === "reconcile" && (
+  <div style={{ display: "grid", gap: 14 }}>
+    <div style={{ border:`1px solid ${cardBorder}`, borderRadius:12, padding:16, background: dark ? "#151515" : "#fafafa" }}>
+      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+        <h3 style={{ margin:0 }}>Cash Drawer — Expected vs Actual</h3>
+        {dayMeta.reconciledAt ? (
+          <span style={{ marginLeft:8, fontSize:12, padding:"2px 8px", borderRadius:999, background:"#e8f5e9", color:"#1b5e20", border:"1px solid #a5d6a7" }}>
+            Saved at {fmtDateTime(dayMeta.reconciledAt)}
+          </span>
+        ) : (
+          <span style={{ marginLeft:8, fontSize:12, padding:"2px 8px", borderRadius:999, background:"#fff3e0", color:"#bf360c", border:"1px solid #ffcc80" }}>
+            Not saved yet
+          </span>
+        )}
+        <div style={{ marginLeft:"auto", fontSize:12, opacity:.8 }}>
+          Shift: {dayMeta.startedAt ? fmtDateTime(dayMeta.startedAt) : "—"} → {dayMeta.endedAt ? fmtDateTime(dayMeta.endedAt) : "—"}
+        </div>
+      </div>
+
+      {/* KPIs bar */}
+      <div style={{ display:"flex", gap:12, flexWrap:"wrap", marginTop:12 }}>
+        <div style={{ padding:10, border:`1px solid ${cardBorder}`, borderRadius:10, background:dark?"#1d1d1d":"#fff" }}>
+          <div style={{ fontSize:12, opacity:.8 }}>Withdrawals (shift)</div>
+          <div style={{ fontWeight:800, textAlign:"right" }}>E£{withdrawalsInShift.toFixed(2)}</div>
+        </div>
+        <div style={{ padding:10, border:`1px solid ${cardBorder}`, borderRadius:10, background:dark?"#1d1d1d":"#fff" }}>
+          <div style={{ fontSize:12, opacity:.8 }}>Opening Init</div>
+          <div style={{ fontWeight:800, textAlign:"right" }}>E£{openingInit.toFixed(2)}</div>
+        </div>
+        <div style={{ padding:10, border:`1px solid ${cardBorder}`, borderRadius:10, background:dark?"#1d1d1d":"#fff" }}>
+          <div style={{ fontSize:12, opacity:.8 }}>Total Variance</div>
+          <div style={{
+            fontWeight:900,
+            textAlign:"right",
+            color: totalVariance === 0 ? "#1b5e20" : (totalVariance < 0 ? "#b71c1c" : "#e65100")
+          }}>
+            {totalVariance >= 0 ? "+" : ""}E£{totalVariance.toFixed(2)}
+          </div>
+        </div>
+      </div>
+
+      {/* Methods table */}
+      <div style={{ overflowX:"auto", marginTop:12 }}>
+        <table style={{ width:"100%", borderCollapse:"collapse" }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign:"left", padding:10, borderBottom:`1px solid ${cardBorder}` }}>Method</th>
+              <th style={{ textAlign:"right", padding:10, borderBottom:`1px solid ${cardBorder}` }}>Raw Inflow</th>
+              <th style={{ textAlign:"right", padding:10, borderBottom:`1px solid ${cardBorder}` }}>Expected</th>
+              <th style={{ textAlign:"right", padding:10, borderBottom:`1px solid ${cardBorder}` }}>Actual / Counted</th>
+              <th style={{ textAlign:"right", padding:10, borderBottom:`1px solid ${cardBorder}` }}>Variance</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(paymentMethods || []).map((m) => {
+              const raw = Number(rawInflowByMethod[m] || 0);
+              const exp = Number(expectedByMethod[m] || 0);
+              const act = Number(reconCounts[m] || 0);
+              const varc = Number((act - exp).toFixed(2));
+              const bg = varc === 0 ? (dark ? "rgba(46,125,50,.15)" : "#e8f5e9")
+                         : varc < 0 ? (dark ? "rgba(183,28,28,.20)" : "#ffebee")
+                         : (dark ? "rgba(230,81,0,.20)" : "#fff3e0");
+              const bd = varc === 0 ? (dark ? "#388e3c" : "#a5d6a7")
+                         : varc < 0 ? (dark ? "#c62828" : "#ef9a9a")
+                         : (dark ? "#ef6c00" : "#ffcc80");
+              return (
+                <tr key={m}>
+                  <td style={{ padding:10, borderBottom:`1px solid ${cardBorder}` }}>{m}</td>
+                  <td style={{ padding:10, borderBottom:`1px solid ${cardBorder}`, textAlign:"right" }}>E£{raw.toFixed(2)}</td>
+                  <td style={{ padding:10, borderBottom:`1px solid ${cardBorder}`, textAlign:"right" }}>E£{exp.toFixed(2)}</td>
+                  <td style={{ padding:10, borderBottom:`1px solid ${cardBorder}`, textAlign:"right" }}>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={reconCounts[m] ?? 0}
+                      onChange={(e) => setReconCounts(rc => ({ ...rc, [m]: Number(e.target.value || 0) }))}
+                      style={{ width:120, padding:"6px 8px", borderRadius:8, border:`1px solid ${btnBorder}`, background:dark?"#1f1f1f":"#fff", color:dark?"#eee":"#000", textAlign:"right" }}
+                    />
+                  </td>
+                  <td style={{ padding:10, borderBottom:`1px solid ${cardBorder}`, textAlign:"right" }}>
+                    <span style={{ display:"inline-block", minWidth:100, padding:"4px 8px", borderRadius:8, border:`1px solid ${bd}`, background:bg, fontWeight:700 }}>
+                      {varc >= 0 ? "+" : ""}E£{varc.toFixed(2)}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Save bar */}
+      <div style={{ marginTop:12, display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+        <label style={{ display:"flex", alignItems:"center", gap:8 }}>
+          <span>Saved by</span>
+          <input
+            list="recon-workers"
+            placeholder="Hassan / Hazem / Ahmed …"
+            value={reconSavedBy}
+            onChange={(e) => setReconSavedBy(e.target.value)}
+            style={{ width:220, padding:"8px 10px", borderRadius:8, border:`1px solid ${btnBorder}`, background:dark?"#1f1f1f":"#fff", color:dark?"#eee":"#000" }}
+          />
+          <datalist id="recon-workers">
+            {(workers || []).map(w => <option key={w} value={w} />)}
+            <option value="Hassan" />
+            <option value="Hazem" />
+            <option value="Ahmed" />
+          </datalist>
+        </label>
+
+        <button
+          onClick={saveReconciliation}
+          style={{ marginLeft:"auto", padding:"10px 16px", borderRadius:12, border:"none", background:"#00966a", color:"#fff", fontWeight:800, cursor:"pointer" }}
+        >
+          Save Reconciliation
+        </button>
+      </div>
+    </div>
+
+    {/* History */}
+    <div style={{ border:`1px solid ${cardBorder}`, borderRadius:12, padding:16, background: dark ? "#151515" : "#fafafa" }}>
+      <h3 style={{ marginTop:0 }}>Reconciliation History</h3>
+      {!reconHistory.length ? (
+        <div style={{ opacity:.7 }}>No saved sessions yet.</div>
+      ) : (
+        <div style={{ display:"grid", gap:12 }}>
+          {reconHistory.map(rec => (
+            <div key={rec.id} style={{ border:`1px solid ${cardBorder}`, borderRadius:10, padding:12, background:dark?"#1d1d1d":"#fff" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                <strong>Saved by:</strong> {rec.savedBy}
+                <span style={{ marginLeft:8, opacity:.8 }}>{fmtDateTime(rec.at)}</span>
+                <div style={{ marginLeft:"auto", fontWeight:900, color: rec.totalVariance === 0 ? "#1b5e20" : (rec.totalVariance < 0 ? "#b71c1c" : "#e65100") }}>
+                  Total: {rec.totalVariance >= 0 ? "+" : ""}E£{Number(rec.totalVariance || 0).toFixed(2)}
+                </div>
+              </div>
+              <div style={{ overflowX:"auto", marginTop:8 }}>
+                <table style={{ width:"100%", borderCollapse:"collapse" }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign:"left", padding:8, borderBottom:`1px solid ${cardBorder}` }}>Method</th>
+                      <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>Expected</th>
+                      <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>Actual</th>
+                      <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>Variance</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.keys(rec.breakdown || {}).map((m) => {
+                      const r = rec.breakdown[m] || {};
+                      return (
+                        <tr key={m}>
+                          <td style={{ padding:8, borderBottom:`1px solid ${cardBorder}` }}>{m}</td>
+                          <td style={{ padding:8, borderBottom:`1px solid ${cardBorder}`, textAlign:"right" }}>E£{Number(r.expected || 0).toFixed(2)}</td>
+                          <td style={{ padding:8, borderBottom:`1px solid ${cardBorder}`, textAlign:"right" }}>E£{Number(r.actual || 0).toFixed(2)}</td>
+                          <td style={{ padding:8, borderBottom:`1px solid ${cardBorder}`, textAlign:"right" }}>
+                            {Number(r.variance || 0) >= 0 ? "+" : ""}E£{Number(r.variance || 0).toFixed(2)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  </div>
+)}
+
+
 
        {/* Purchase Tab */}
 {activeTab === "admin" && adminSubTab === "purchases" && (
@@ -6618,6 +6970,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
