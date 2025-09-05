@@ -1015,12 +1015,6 @@ const [reconHistory, setReconHistory] = useState([]); // [{id,savedBy,at,breakdo
 
 
 
-  // AFTER (stable across renders)
-const shiftStartMs = dayMeta?.startedAt ? +new Date(dayMeta.startedAt) : null;
-const shiftEndMs   = dayMeta?.endedAt ? +new Date(dayMeta.endedAt) : null;
-
-
-
 // Raw inflow by method (orders in current UI already reflect active shift when realtimeOrders=true)
 const rawInflowByMethod = useMemo(() => sumPaymentsByMethod(orders), [orders]);
 
@@ -7007,6 +7001,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
