@@ -5197,6 +5197,7 @@ const generatePurchasesPDF = () => {
 {/* ───────────────────────── Reconcile TAB ───────────────────────── */}
 {activeTab === "reconcile" && (
   <div style={{ display: "grid", gap: 14 }}>
+    {/* Card: Cash Drawer */}
     <div style={{ border:`1px solid ${cardBorder}`, borderRadius:12, padding:16, background: dark ? "#151515" : "#fafafa" }}>
       <div style={{ display:"flex", alignItems:"center", gap:8 }}>
         <h3 style={{ margin:0 }}>Cash Drawer — Expected vs Actual</h3>
@@ -5215,16 +5216,16 @@ const generatePurchasesPDF = () => {
       </div>
 
       {/* KPIs bar */}
-   
-        <div style={{ padding:10, border:`1px solid ${cardBorder}`, borderRadius:10, background:dark?"#1d1d1d":"#fff" }}>
-          <div style={{ fontSize:12, opacity:.8 }}>Total Variance</div>
-          <div style={{
+      <div style={{ padding:10, border:`1px solid ${cardBorder}`, borderRadius:10, background:dark?"#1d1d1d":"#fff", marginTop:10 }}>
+        <div style={{ fontSize:12, opacity:.8 }}>Total Variance</div>
+        <div
+          style={{
             fontWeight:900,
             textAlign:"right",
             color: totalVariance === 0 ? "#1b5e20" : (totalVariance < 0 ? "#b71c1c" : "#e65100")
-          }}>
-            {totalVariance >= 0 ? "+" : ""}E£{totalVariance.toFixed(2)}
-          </div>
+          }}
+        >
+          {totalVariance >= 0 ? "+" : ""}E£{totalVariance.toFixed(2)}
         </div>
       </div>
 
@@ -5247,11 +5248,11 @@ const generatePurchasesPDF = () => {
               const act = Number(reconCounts[m] || 0);
               const varc = Number((act - exp).toFixed(2));
               const bg = varc === 0 ? (dark ? "rgba(46,125,50,.15)" : "#e8f5e9")
-                         : varc < 0 ? (dark ? "rgba(183,28,28,.20)" : "#ffebee")
-                         : (dark ? "rgba(230,81,0,.20)" : "#fff3e0");
+                        : varc < 0 ? (dark ? "rgba(183,28,28,.20)" : "#ffebee")
+                        : (dark ? "rgba(230,81,0,.20)" : "#fff3e0");
               const bd = varc === 0 ? (dark ? "#388e3c" : "#a5d6a7")
-                         : varc < 0 ? (dark ? "#c62828" : "#ef9a9a")
-                         : (dark ? "#ef6c00" : "#ffcc80");
+                        : varc < 0 ? (dark ? "#c62828" : "#ef9a9a")
+                        : (dark ? "#ef6c00" : "#ffcc80");
               return (
                 <tr key={m}>
                   <td style={{ padding:10, borderBottom:`1px solid ${cardBorder}` }}>{m}</td>
@@ -5291,7 +5292,6 @@ const generatePurchasesPDF = () => {
           />
           <datalist id="recon-workers">
             {(workers || []).map(w => <option key={w} value={w} />)}
-      
             <option value="Hazem" />
             <option value="Ahmed" />
           </datalist>
@@ -5305,52 +5305,48 @@ const generatePurchasesPDF = () => {
         </button>
       </div>
     </div>
-{/* All-time Variance summary (sums all saved reconciliations) */}
-<div
-  style={{
-    marginTop: 12,
-    padding: 10,
-    border: `1px solid ${cardBorder}`,
-    borderRadius: 8,
-    background: softBg,
-  }}
->
-  <h4 style={{ margin: 0 }}>All-time Variance</h4>
 
-  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-    {(paymentMethods || []).map((m) => (
-      <div
-        key={m}
-        style={{
-          padding: 8,
-          border: `1px solid ${cardBorder}`,
-          borderRadius: 6,
-          minWidth: 120,
-        }}
-      >
-        <div style={{ fontSize: 12, opacity: 0.8 }}>{m}</div>
-        <div style={{ fontWeight: 700 }}>
-          {(allTimeVarianceByMethod?.[m] || 0).toFixed(2)}
-        </div>
-      </div>
-    ))}
-  </div>
-
-  <div style={{ marginTop: 8, fontWeight: 800 }}>
-    Total: {allTimeVarianceTotal.toFixed(2)}
-  </div>
-
-  <div style={{ marginTop: 8 }}>
-    <button
-      onClick={resetAllReconciliations}
-      style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${btnBorder}` }}
+    {/* All-time Variance summary (sums all saved reconciliations) */}
+    <div
+      style={{
+        marginTop: 12,
+        padding: 10,
+        border: `1px solid ${cardBorder}`,
+        borderRadius: 8,
+        background: softBg,
+      }}
     >
-      Reset all saved reconciliations
-    </button>
-  </div>
-</div>
-
-                            
+      <h4 style={{ margin: 0 }}>All-time Variance</h4>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+        {(paymentMethods || []).map((m) => (
+          <div
+            key={m}
+            style={{
+              padding: 8,
+              border: `1px solid ${cardBorder}`,
+              borderRadius: 6,
+              minWidth: 120,
+            }}
+          >
+            <div style={{ fontSize: 12, opacity: 0.8 }}>{m}</div>
+            <div style={{ fontWeight: 700 }}>
+              {(allTimeVarianceByMethod?.[m] || 0).toFixed(2)}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ marginTop: 8, fontWeight: 800 }}>
+        Total: {allTimeVarianceTotal.toFixed(2)}
+      </div>
+      <div style={{ marginTop: 8 }}>
+        <button
+          onClick={resetAllReconciliations}
+          style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${btnBorder}` }}
+        >
+          Reset all saved reconciliations
+        </button>
+      </div>
+    </div>
 
     {/* History */}
     <div style={{ border:`1px solid ${cardBorder}`, borderRadius:12, padding:16, background: dark ? "#151515" : "#fafafa" }}>
@@ -7044,6 +7040,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
