@@ -355,7 +355,7 @@ const DEFAULT_INVENTORY = [
 ];
 
 
-const BASE_WORKERS = ["Hassan", "Warda", "Ahmed"];
+const BASE_WORKERS = ["Hassan","Andiel" "Warda", "Ahmed", "Hazem",];
 const DEFAULT_PAYMENT_METHODS = ["Cash", "Card", "Instapay"];
 const DEFAULT_ORDER_TYPES = ["Take-Away", "Dine-in", "Delivery"];
 const DEFAULT_DELIVERY_FEE = 20;
@@ -5176,19 +5176,7 @@ const generatePurchasesPDF = () => {
         </div>
       </div>
 
-      {/* KPIs bar */}
-      <div style={{ padding:10, border:`1px solid ${cardBorder}`, borderRadius:10, background:dark?"#1d1d1d":"#fff", marginTop:10 }}>
-        <div style={{ fontSize:12, opacity:.8 }}>Total Variance</div>
-        <div
-          style={{
-            fontWeight:900,
-            textAlign:"right",
-            color: totalVariance === 0 ? "#1b5e20" : (totalVariance < 0 ? "#b71c1c" : "#e65100")
-          }}
-        >
-          {totalVariance >= 0 ? "+" : ""}E£{totalVariance.toFixed(2)}
-        </div>
-      </div>
+  
 
       {/* Methods table */}
       <div style={{ overflowX:"auto", marginTop:12 }}>
@@ -5208,12 +5196,12 @@ const generatePurchasesPDF = () => {
               const exp = Number(expectedByMethod[m] || 0);
               const act = Number(reconCounts[m] || 0);
               const varc = Number((act - exp).toFixed(2));
-              const bg = varc === 0 ? (dark ? "rgba(46,125,50,.15)" : "#e8f5e9")
-                        : varc < 0 ? (dark ? "rgba(183,28,28,.20)" : "#ffebee")
-                        : (dark ? "rgba(230,81,0,.20)" : "#fff3e0");
-              const bd = varc === 0 ? (dark ? "#388e3c" : "#a5d6a7")
-                        : varc < 0 ? (dark ? "#c62828" : "#ef9a9a")
-                        : (dark ? "#ef6c00" : "#ffcc80");
+             const bg = varc > 0 ? (dark ? "rgba(46,125,50,.15)" : "#e8f5e9")
+           : varc < 0 ? (dark ? "rgba(183,28,28,.20)" : "#ffebee")
+           : (dark ? "rgba(0,0,0,.15)" : "#f5f5f5"); // neutral for 0
+           const bd = varc > 0 ? (dark ? "#388e3c" : "#a5d6a7")
+                     : varc < 0 ? (dark ? "#c62828" : "#ef9a9a")
+                     : (dark ? "#666" : "#ddd");
               return (
                 <tr key={m}>
                   <td style={{ padding:10, borderBottom:`1px solid ${cardBorder}` }}>{m}</td>
@@ -5239,24 +5227,35 @@ const generatePurchasesPDF = () => {
           </tbody>
         </table>
       </div>
+    {/* KPIs bar */}
+      <div style={{ padding:10, border:`1px solid ${cardBorder}`, borderRadius:10, background:dark?"#1d1d1d":"#fff", marginTop:10 }}>
+        <div style={{ fontSize:12, opacity:.8 }}>Total Variance</div>
+        <div
+          style={{
+            fontWeight:900,
+            textAlign:"right",
+            color: totalVariance > 0 ? "#1b5e20" : (totalVariance < 0 ? "#b71c1c" : (dark ? "#aaa" : "#555"))
+          }}
+        >
+          {totalVariance >= 0 ? "+" : ""}E£{totalVariance.toFixed(2)}
+        </div>
+      </div>
 
       {/* Save bar */}
       <div style={{ marginTop:12, display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
-        <label style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <span>Saved by</span>
-          <input
-            list="recon-workers"
-            placeholder="Select"
-            value={reconSavedBy}
-            onChange={(e) => setReconSavedBy(e.target.value)}
-            style={{ width:220, padding:"8px 10px", borderRadius:8, border:`1px solid ${btnBorder}`, background:dark?"#1f1f1f":"#fff", color:dark?"#eee":"#000" }}
-          />
-          <datalist id="recon-workers">
-            {(workers || []).map(w => <option key={w} value={w} />)}
-            <option value="Hazem" />
-            <option value="Ahmed" />
-          </datalist>
-        </label>
+     <label style={{ display:"flex", alignItems:"center", gap:8 }}>
+                <span>Saved by</span>
+                <select
+                  value={reconSavedBy}
+                  onChange={(e) => setReconSavedBy(e.target.value)}
+                  style={{ width:220, padding:"8px 10px", borderRadius:8, border:`1px solid ${btnBorder}`, background:dark?"#1f1f1f":"#fff", color:dark?"#eee":"#000" }}
+                >
+                  <option value="">Select a worker…</option>
+                  {(workers || []).map(w => (
+                    <option key={w} value={w}>{w}</option>
+                  ))}
+                </select>
+              </label>
 
         <button
           onClick={saveReconciliation}
@@ -5321,7 +5320,7 @@ const generatePurchasesPDF = () => {
               <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                 <strong>Saved by:</strong> {rec.savedBy}
                 <span style={{ marginLeft:8, opacity:.8 }}>{fmtDateTime(rec.at)}</span>
-                <div style={{ marginLeft:"auto", fontWeight:900, color: rec.totalVariance === 0 ? "#1b5e20" : (rec.totalVariance < 0 ? "#b71c1c" : "#e65100") }}>
+                <div style={{ marginLeft:"auto", fontWeight:900, color: rec.totalVariance > 0 ? "#1b5e20" : (rec.totalVariance < 0 ? "#b71c1c" : (dark ? "#aaa" : "#555")) }}>
                   Total: {rec.totalVariance >= 0 ? "+" : ""}E£{Number(rec.totalVariance || 0).toFixed(2)}
                 </div>
               </div>
@@ -7001,6 +7000,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
