@@ -1031,7 +1031,7 @@ const [dayMeta, setDayMeta] = useState({
 const [workerProfiles, setWorkerProfiles] = useState(BASE_WORKER_PROFILES);
 // Every sign-in/out interval is one session
 // { id, name, pin, signInAt: Date, signOutAt: Date|null }
-const [workerSessions, setWorkerSessions] = useState([]);
+const [, setWorkerSessions] = useState([]);
 
 // Worker Log filter
 const [workerLogFilter, setWorkerLogFilter] = useState("month"); // 'day' | 'month'
@@ -7387,4 +7387,5 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
