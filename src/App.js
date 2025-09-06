@@ -127,8 +127,6 @@ restockedAt: toIso(o.restockedAt),
     nextOrderNo,
     dark,
     workers,
-    workerProfiles,
- workerSessions,
     paymentMethods,
     inventoryLocked,
     inventorySnapshot,
@@ -7305,6 +7303,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
