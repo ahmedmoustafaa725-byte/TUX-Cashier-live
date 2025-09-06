@@ -901,7 +901,7 @@ const [orders, setOrders] = useState([]);
 const [bankTx, setBankTx] = useState([]);
 const [reconCounts, setReconCounts] = useState({});
 const [reconSavedBy, setReconSavedBy] = useState("");
-const [reconHistory, setReconHistory] = useState([]); // [{id,savedBy,at,breakdown..., totalVariance}]
+const [reconHistory, setReconHistory] = useState([]); 
 const rawInflowByMethod = useMemo(() => sumPaymentsByMethod(orders), [orders]);
 const expectedByMethod = useMemo(() => {
   const out = {};
@@ -1096,7 +1096,6 @@ useEffect(() => {
     prev => !lockedNow.some(cur => cur.id === prev.id)
   );
   if (missing.length) {
-    // Put them back in front — unremoveable by design
     setBankTx(arr => [...missing, ...arr]);
   }
   lastLockedBankRef.current = lockedNow;
@@ -1121,10 +1120,8 @@ const [adminUnlocked, setAdminUnlocked] = useState(false);
   const sortBy = "date-desc";
   const [newExtraName, setNewExtraName] = useState("");
   const [newExtraPrice, setNewExtraPrice] = useState(0);
-
   const [localHydrated, setLocalHydrated] = useState(false);
 const [lastLocalEditAt, setLastLocalEditAt] = useState(0);
-
   /* --------------------------- FIREBASE STATE --------------------------- */
   const [fbReady, setFbReady] = useState(false);
   const [fbUser, setFbUser] = useState(null);
@@ -1148,10 +1145,9 @@ const writeSeqRef = useRef(0);
     setReconCounts({}); setReconSavedBy("");
     return;
   }
-  // initialize zeros for all current payment methods
   const init = {};
   for (const m of paymentMethods || []) init[m] = 0;
-  setReconCounts((prev) => ({ ...init, ...prev })); // preserve any already typed values
+  setReconCounts((prev) => ({ ...init, ...prev }));
 }, [dayMeta.startedAt, paymentMethods]);
   useEffect(() => {
     try {
@@ -1178,7 +1174,6 @@ const writeSeqRef = useRef(0);
     setNewPurchase(p => ({ ...p, date: purchaseDay }));
   }
 }, [purchaseFilter, purchaseDay]);
-
 useEffect(() => {
   if (!localHydrated && !hydrated) return;
   setPurchaseCategories(list =>
@@ -1194,16 +1189,13 @@ useEffect(() => {
 
   useEffect(() => {
  if (!Array.isArray(purchaseCategories)) return;
-  // wait for either local or cloud hydration to complete
   if (!localHydrated && !hydrated) return;
   setInventory((prev) => {
     let changed = false;
     let out = [...prev];
-
     for (const c of purchaseCategories) {
       const catName = String(c?.name || "").trim();
       if (!catName) continue;
-
       const exists = out.some(
         (it) => it.name.toLowerCase() === catName.toLowerCase()
       );
@@ -1224,8 +1216,6 @@ useEffect(() => {
     return changed ? out : prev;
   });
 }, [purchaseCategories, localHydrated, hydrated]);
-
-  // Auto-link purchase to an inventory item by category name (if possible)
 useEffect(() => {
   if (!newPurchase.categoryId || newPurchase.ingredientId) return;
   const cat = purchaseCategories.find(c => c.id === newPurchase.categoryId);
@@ -1235,39 +1225,28 @@ useEffect(() => {
     setNewPurchase(p => ({ ...p, ingredientId: match.id })); 
   }
 }, [newPurchase.categoryId, newPurchase.ingredientId, purchaseCategories, inventory]);
-
-
   const [localDateTime, setLocalDateTime] = useState(() => {
   const now = new Date();
   return `${fmtDate(now)} ${now.toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
-     second: "2-digit", // ← uncomment if you want seconds
-    hour12: true,        // 24-hour like your Cairo clock
+     second: "2-digit", 
+    hour12: true,        
   })}`;
 });
-
-// When user picks a category, prefer the INVENTORY unit (so conversions will match)
 useEffect(() => {
   if (!newPurchase?.categoryId) return;
   const cat = purchaseCategories.find(c => c.id === newPurchase.categoryId);
   if (!cat) return;
-
   const invMatch = inventory.find(
     it => it.name.toLowerCase() === String(cat.name || "").toLowerCase()
   );
-
   setNewPurchase(p => ({
     ...p,
-    // Prefer the actual inventory unit; fall back to category unit; then existing; then piece
     unit: invMatch?.unit || cat.unit || p.unit || "piece",
-    // also link the purchase to the inventory item if we found it
     ingredientId: invMatch?.id || p.ingredientId || "",
   }));
 }, [newPurchase.categoryId, purchaseCategories, inventory]);
-
-
-
 useEffect(() => {
   const id = setInterval(() => {
     const now = new Date();
@@ -1283,12 +1262,11 @@ useEffect(() => {
   return () => clearInterval(id);
 }, []);
 
-  /* === ADD BELOW THIS LINE (hydrate from local) === */
+  /*hydrate from local*/
 useEffect(() => {
   if (localHydrated) return;
   const l = loadLocal();
   if (l.menu) setMenu(l.menu);
-  
   if (l.extraList) setExtraList(l.extraList);
   if (l.workers) setWorkers(l.workers);
   if (l.paymentMethods) setPaymentMethods(l.paymentMethods);
@@ -1305,26 +1283,21 @@ useEffect(() => {
       signOutAt: s.signOutAt ? new Date(s.signOutAt) : null,
     })));
   }
-
   if (Array.isArray(l.reconHistory)) {
   setReconHistory(l.reconHistory.map(r => ({ ...r, at: r.at ? new Date(r.at) : new Date() })));
 }
 if (l.reconCounts && typeof l.reconCounts === "object") setReconCounts(l.reconCounts);
 if (typeof l.reconSavedBy === "string") setReconSavedBy(l.reconSavedBy);
-
-
-   /* === ADD BELOW THIS LINE (other tabs & settings) === */
  if (Array.isArray(l.expenses)) {
    setExpenses(l.expenses.map(e => ({ ...e, date: e.date ? new Date(e.date) : new Date() })));
  }
    if (Array.isArray(l.purchaseCategories)) setPurchaseCategories(normalizePurchaseCategories(l.purchaseCategories)); // ⬅️ NEW
 if (Array.isArray(l.purchases)) setPurchases(
   l.purchases.map(p => ({ ...p, date: p.date ? new Date(p.date) : new Date() }))
-); // ⬅️ NEW
-if (typeof l.purchaseFilter === "string") setPurchaseFilter(l.purchaseFilter); // ⬅️ NEW
+); 
+if (typeof l.purchaseFilter === "string") setPurchaseFilter(l.purchaseFilter); 
 if (Array.isArray(l.customers)) setCustomers(dedupeCustomers(l.customers));
-if (Array.isArray(l.deliveryZones)) setDeliveryZones(l.deliveryZones); // ⬅️ NEW
-
+if (Array.isArray(l.deliveryZones)) setDeliveryZones(l.deliveryZones); 
    if (Array.isArray(l.bankTx)) {
    setBankTx(l.bankTx.map(t => ({ ...t, date: t.date ? new Date(t.date) : new Date() })));
 }
@@ -1348,8 +1321,6 @@ if (Array.isArray(l.deliveryZones)) setDeliveryZones(l.deliveryZones); // ⬅️
   if (typeof l.cloudEnabled === "boolean") setCloudEnabled(l.cloudEnabled);
   if (typeof l.realtimeOrders === "boolean") setRealtimeOrders(l.realtimeOrders);
   if (typeof l.nextOrderNo === "number") setNextOrderNo(l.nextOrderNo);
-
-  // If you run with realtimeOrders = false and want orders to survive refresh:
   if (Array.isArray(l.orders)) {
     setOrders(
       l.orders.map((o) => ({
@@ -1359,18 +1330,14 @@ if (Array.isArray(l.deliveryZones)) setDeliveryZones(l.deliveryZones); // ⬅️
       }))
     );
   }
-  /* === END ADD === */
   setLocalHydrated(true);
 }, [localHydrated]);
-/* === END ADD === */
-/* === MIRROR TO LOCAL (all tabs & settings) === */
 useEffect(() => { saveLocalPartial({ menu }); }, [menu]);
   useEffect(() => {
 saveLocalPartial({
   purchases: purchases.map(p => ({ ...p, date: toIso(p.date) }))
 });
-
-}, [purchases]); // ⬅️ NEW
+}, [purchases]);
   useEffect(() => { saveLocalPartial({ workerProfiles }); }, [workerProfiles]);
 useEffect(() => {
   saveLocalPartial({
@@ -1381,22 +1348,18 @@ useEffect(() => {
     }))
   });
 }, [workerSessions]);
-
-
   useEffect(() => { saveLocalPartial({ adminSubTab }); }, [adminSubTab]);
 useEffect(() => {
   const l = loadLocal();
   if (typeof l.adminSubTab === "string") setAdminSubTab(l.adminSubTab);
-}, []); // put near your other local hydration logic
+}, []); 
 useEffect(() => { saveLocalPartial({ reconHistory }); }, [reconHistory]);
 useEffect(() => { saveLocalPartial({ reconCounts }); }, [reconCounts]);
 useEffect(() => { saveLocalPartial({ reconSavedBy }); }, [reconSavedBy]);
-
 useEffect(() => { saveLocalPartial({ purchaseCategories }); }, [purchaseCategories]); // ⬅️ NEW
 useEffect(() => { saveLocalPartial({ purchaseFilter }); }, [purchaseFilter]);        // ⬅️ NEW
 useEffect(() => { saveLocalPartial({ customers }); }, [customers]);                  // ⬅️ NEW
 useEffect(() => { saveLocalPartial({ deliveryZones }); }, [deliveryZones]);          // ⬅️ NEW
-
 useEffect(() => { saveLocalPartial({ extraList }); }, [extraList]);
 useEffect(() => { saveLocalPartial({ workers }); }, [workers]);
 useEffect(() => { saveLocalPartial({ paymentMethods }); }, [paymentMethods]);
@@ -1410,10 +1373,8 @@ useEffect(() => {
   if (orderType !== "Delivery") return;
   const p = String(deliveryPhone || "").trim();
   if (p.length !== 11) return;
-
   const found = customers.find((c) => c.phone === p);
   if (!found) return;
-
   setDeliveryName((v) => v || found.name || "");
   setDeliveryAddress((v) => v || found.address || "");
   if (found.zoneId) {
@@ -1423,15 +1384,11 @@ useEffect(() => {
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [orderType, deliveryPhone, customers, deliveryZones]);
-
-
-  // === OPTIONAL: auto-select first category in add form if none selected
 useEffect(() => {
   if (!newPurchase.categoryId && purchaseCategories.length) {
     setNewPurchase(p => ({ ...p, categoryId: purchaseCategories[0].id }));
   }
 }, [newPurchase.categoryId, purchaseCategories]);
-
 useEffect(() => { saveLocalPartial({ expenses }); }, [expenses]);
 useEffect(() => { saveLocalPartial({ bankTx }); }, [bankTx]);
 useEffect(() => { saveLocalPartial({ dayMeta }); }, [dayMeta]);
@@ -1443,8 +1400,6 @@ useEffect(() => { saveLocalPartial({ preferredPaperWidthMm }); }, [preferredPape
 useEffect(() => { saveLocalPartial({ cloudEnabled }); }, [cloudEnabled]);
 useEffect(() => { saveLocalPartial({ realtimeOrders }); }, [realtimeOrders]);
 useEffect(() => { saveLocalPartial({ nextOrderNo }); }, [nextOrderNo]);
-
-// Optional: persist orders when NOT using realtime board
 useEffect(() => {
   if (!realtimeOrders) saveLocalPartial({ orders });
 }, [orders, realtimeOrders]);
@@ -1455,14 +1410,11 @@ useEffect(() => {
 }, [
   menu, extraList, workers, paymentMethods, orderTypes, defaultDeliveryFee,
   inventory, adminPins, dark,
-  // added:
   expenses, bankTx, dayMeta, inventoryLocked, inventorySnapshot, inventoryLockedAt,
   autoPrintOnCheckout, preferredPaperWidthMm, cloudEnabled, realtimeOrders, nextOrderNo,
    purchases, purchaseCategories, customers, deliveryZones, purchaseFilter, purchaseDay, purchaseMonth,workerProfiles,
  workerSessions,
-  // (intentionally NOT including `orders`; realtime listener drives those)
 ]);
-
 useEffect(() => {
   if (!orderTypes.includes(orderType)) {
     const def = orderTypes[0] || "";
@@ -1471,9 +1423,6 @@ useEffect(() => {
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [orderTypes]);
-
-
-// ---- COGS helper selection (one list for menu + extras)
 const [cogsKey, setCogsKey] = useState("");
 useEffect(() => {
   if (!cogsKey) {
@@ -1481,40 +1430,28 @@ useEffect(() => {
     else if (extraList.length) setCogsKey(`e-${extraList[0].id}`);
   }
 }, [cogsKey, menu, extraList]);
-
-// ---- Toggle: auto-sync Cost/Unit from Purchases
 const [syncCostsFromPurchases, setSyncCostsFromPurchases] = useState(() => {
   const l = loadLocal();
   return typeof l?.syncCostsFromPurchases === "boolean" ? l.syncCostsFromPurchases : true;
 });
 useEffect(() => { saveLocalPartial({ syncCostsFromPurchases }); }, [syncCostsFromPurchases]);
-
-
-// --- Auto-sync Cost/Unit from Purchases → Inventory ---
 useEffect(() => {
   if (!purchases?.length || !syncCostsFromPurchases) return;
-
   setInventory(current => {
     let changed = false;
-
     const next = current.map(it => {
       const last = getLatestPurchaseForInv(it, purchases, purchaseCategories);
       if (!last) return it;
-
       const cpu = unitPriceToInventoryCost(last.unitPrice, last.unit, it.unit);
       if (cpu == null) return it;
-
       const v = Number(cpu.toFixed(4));
       if (Number(it.costPerUnit || 0) === v) return it;
-
       changed = true;
       return { ...it, costPerUnit: v };
     });
-
     return changed ? next : current;
   });
 }, [purchases, purchaseCategories, syncCostsFromPurchases]);
-
   const db = useMemo(() => (fbReady ? ensureFirebase().db : null), [fbReady]);
   const stateDocRef = useMemo(
     () => (db ? fsDoc(db, "shops", SHOP_ID, "state", "pos") : null),
@@ -1528,8 +1465,6 @@ useEffect(() => {
     () => (db ? fsDoc(db, "shops", SHOP_ID, "state", "counters") : null),
     [db]
   );
-
-  // Keep UI's "next order #" in sync with the shared counter
   useEffect(() => {
     if (!counterDocRef || !fbUser) return;
     const unsub = onSnapshot(counterDocRef, (snap) => {
@@ -1538,11 +1473,8 @@ useEffect(() => {
     });
     return () => unsub();
   }, [counterDocRef, fbUser]);
-
-  // One-time initial load for non-realtime state
   useEffect(() => {
     if (!stateDocRef || !fbUser || hydrated) return;
-
     (async () => {
       try {
         const snap = await getDoc(stateDocRef);
@@ -1559,7 +1491,6 @@ useEffect(() => {
           if (unpacked.workers) setWorkers(unpacked.workers);
           if (unpacked.paymentMethods) setPaymentMethods(unpacked.paymentMethods);
           if (unpacked.customers) setCustomers(dedupeCustomers(unpacked.customers));
-
           if (unpacked.inventoryLocked != null)
             setInventoryLocked(unpacked.inventoryLocked);
           if (unpacked.inventorySnapshot)
@@ -1576,12 +1507,10 @@ useEffect(() => {
           if (unpacked.bankTx) setBankTx(unpacked.bankTx);
                   if (unpacked.workerProfiles) setWorkerProfiles(unpacked.workerProfiles);
         if (unpacked.workerSessions) setWorkerSessions(unpacked.workerSessions);
-
            if (unpacked.purchases) setPurchases(unpacked.purchases);
        if (unpacked.purchaseCategories) {
    setPurchaseCategories(normalizePurchaseCategories(unpacked.purchaseCategories));
 }
-     
         if (unpacked.deliveryZones) setDeliveryZones(unpacked.deliveryZones);
           setCloudStatus((s) => ({ ...s, lastLoadAt: new Date(), error: null }));
         }
@@ -1593,40 +1522,27 @@ useEffect(() => {
       }
     })();
   }, [stateDocRef, fbUser, hydrated, dayMeta, realtimeOrders]);
-
   useEffect(() => {
   if (!cloudEnabled || !stateDocRef || !fbUser) return;
-
   const unsub = onSnapshot(stateDocRef, (snap) => {
     try {
       if (!snap.exists()) return;
-      if (snap.metadata.hasPendingWrites) return; // ignore our own in-flight writes
-
+      if (snap.metadata.hasPendingWrites) return; 
       const data = snap.data() || {};
-       // FENCE: ignore our own echoes up to our current write sequence
       if (data.writerId === clientIdRef.current) {
         const seq = Number(data.writeSeq || 0);
-        if (seq && seq <= writeSeqRef.current) return; // we've already applied this (or it's older)
-        // if it's newer than we know, accept and advance our local sequence
+        if (seq && seq <= writeSeqRef.current) return; 
         writeSeqRef.current = Math.max(writeSeqRef.current, seq);
       }
       const ts =
         data.updatedAt instanceof Timestamp
           ? data.updatedAt.toMillis()
           : (data.updatedAt ? new Date(data.updatedAt).getTime() : 0);
-
-      // ignore older/equal updates we've already applied
       if (ts && ts <= (lastAppliedCloudAt || 0)) return;
-      // === ADD THIS LINE (do not overwrite fresher local edits) ===
 if (ts && lastLocalEditAt && ts < lastLocalEditAt) return;
-
-
       const unpacked = unpackStateFromCloud(data, dayMeta);
-
-      // NOTE: when realtimeOrders = true, orders flow is already handled via the "orders" collection listener
       if (unpacked.menu) setMenu(unpacked.menu);
       if (unpacked.reconHistory) setReconHistory(unpacked.reconHistory);
-
       if (unpacked.extraList) setExtraList(unpacked.extraList);
       if (unpacked.inventory) setInventory(unpacked.inventory);
       if (typeof unpacked.nextOrderNo === "number") setNextOrderNo(unpacked.nextOrderNo);
@@ -1657,9 +1573,6 @@ if (ts && lastLocalEditAt && ts < lastLocalEditAt) return;
 
   return () => unsub();
 }, [cloudEnabled, stateDocRef, fbUser, dayMeta, lastAppliedCloudAt, lastLocalEditAt]);
-
-
-
   // Manual pull
   const loadFromCloud = async () => {
     if (!stateDocRef || !fbUser) return alert("Firebase not ready.");
@@ -1672,7 +1585,6 @@ if (ts && lastLocalEditAt && ts < lastLocalEditAt) return;
       if (unpacked.menu) setMenu(unpacked.menu);
 if (unpacked.workerProfiles) setWorkerProfiles(unpacked.workerProfiles);
 if (unpacked.workerSessions) setWorkerSessions(unpacked.workerSessions);
-
       if (unpacked.extraList) setExtraList(unpacked.extraList);
       if (unpacked.inventory) setInventory(unpacked.inventory);
       if (unpacked.nextOrderNo != null) setNextOrderNo(unpacked.nextOrderNo);
@@ -1699,9 +1611,7 @@ if (unpacked.workerSessions) setWorkerSessions(unpacked.workerSessions);
    if (unpacked.purchaseCategories) {
    setPurchaseCategories(normalizePurchaseCategories(unpacked.purchaseCategories));
  }
-    
     if (unpacked.deliveryZones) setDeliveryZones(unpacked.deliveryZones);
-
       setCloudStatus((s) => ({ ...s, lastLoadAt: new Date(), error: null }));
       alert("Loaded from cloud ✔");
     } catch (e) {
@@ -1738,8 +1648,6 @@ if (unpacked.workerSessions) setWorkerSessions(unpacked.workerSessions);
       dayMeta,
       bankTx,
     });
-
-    // Fence fields
     writeSeqRef.current += 1;
     const body = {
       ...bodyBase,
@@ -1747,10 +1655,7 @@ if (unpacked.workerSessions) setWorkerSessions(unpacked.workerSessions);
       writeSeq: writeSeqRef.current,
       clientTime: Date.now(),
     };
-
     await setDoc(stateDocRef, body, { merge: true });
-
-    // So our listener won’t re-apply this right away
     const now = Date.now();
     setLastLocalEditAt(now);
     setLastAppliedCloudAt(now);
@@ -1760,13 +1665,8 @@ if (unpacked.workerSessions) setWorkerSessions(unpacked.workerSessions);
     alert("Sync failed: " + e);
   }
 };
-
-
-
-  // Autosave (state doc) – never saves orders when realtime is ON
 useEffect(() => {
   if (!cloudEnabled || !stateDocRef || !fbUser || !hydrated) return;
-
   const t = setTimeout(async () => {
     try {
       const bodyBase = packStateForCloud({
@@ -1796,8 +1696,6 @@ useEffect(() => {
          realtimeOrders,
          reconHistory,   
       });
-
-      // Fence fields
       writeSeqRef.current += 1;
       const body = {
         ...bodyBase,
@@ -1812,7 +1710,6 @@ useEffect(() => {
       setCloudStatus((s) => ({ ...s, error: String(e) }));
     }
   }, 1600);
-
   return () => clearTimeout(t);
 }, [
   cloudEnabled,
@@ -1845,28 +1742,22 @@ useEffect(() => {
   realtimeOrders,
    reconHistory,
 ]);
-
-
   const startedAtMs = dayMeta?.startedAt
     ? new Date(dayMeta.startedAt).getTime()
     : null;
   const endedAtMs = dayMeta?.endedAt
     ? new Date(dayMeta.endedAt).getTime()
     : null;
-
-  // Live board: only show orders within the active shift window
   useEffect(() => {
     if (!realtimeOrders || !ordersColRef || !fbUser) return;
     if (!startedAtMs) {
       setOrders([]);
       return;
     }
-
     const startTs = Timestamp.fromMillis(startedAtMs);
     const constraints = [where("createdAt", ">=", startTs), orderBy("createdAt", "desc")];
     if (endedAtMs)
       constraints.unshift(where("createdAt", "<=", Timestamp.fromMillis(endedAtMs)));
-
     const qy = query(ordersColRef, ...constraints);
     const unsub = onSnapshot(qy, (snap) => {
       const arr = [];
@@ -1875,7 +1766,6 @@ useEffect(() => {
     });
     return () => unsub();
   }, [realtimeOrders, ordersColRef, fbUser, startedAtMs, endedAtMs]);
-
   /* --------------------------- APP LOGIC --------------------------- */
   const toggleExtra = (extra) => {
     setSelectedExtras((prev) =>
@@ -1890,7 +1780,6 @@ useEffect(() => {
     for (const item of inventory) map[item.id] = item;
     return map;
   }, [inventory]);
-  // Compute per-item COGS from its `uses` and inventory `costPerUnit`      // ⬅️ NEW
 function computeCOGSForItemDef(def, invMap) {
   const uses = def?.uses || {};
   let sum = 0;
@@ -1901,20 +1790,14 @@ function computeCOGSForItemDef(def, invMap) {
   }
   return Number(sum.toFixed(2));
 }
-
    function isWithin(d, start, end) {
   const t = +new Date(d);
   return t >= +start && t <= +end;
 }
-
 const sumPurchases = (rows = []) =>
   rows.reduce((s, p) => s + Number(p.qty || 0) * Number(p.unitPrice || 0), 0);
   
 function getPeriodRange(kind, dayMeta, dayStr, monthStr) {
-  // kind: 'day' | 'month' | 'year'
-  // dayStr: 'YYYY-MM-DD' when kind === 'day'
-  // monthStr: 'YYYY-MM' when kind === 'month'
-
   if (kind === "day" && dayStr) {
     const d = new Date(`${dayStr}T00:00:00`);
     const start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
@@ -1928,8 +1811,6 @@ function getPeriodRange(kind, dayMeta, dayStr, monthStr) {
     const end   = new Date(y, m, 0, 23, 59, 59, 999); // last day of month
     return [start, end];
   }
-
-  // Fallbacks (keep your previous behavior)
   if (kind === "day") {
     const now = new Date();
     const start = dayMeta?.startedAt ? new Date(dayMeta.startedAt) : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
@@ -1943,8 +1824,6 @@ function getPeriodRange(kind, dayMeta, dayStr, monthStr) {
     const end   = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
     return [start, end];
   }
-
-  // 'year'
   const now = new Date();
   const start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
   const end   = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
@@ -1958,7 +1837,6 @@ const findWorkerByPin = (pin) => {
   if (!p) return null;
   return (workerProfiles || []).find(w => normPin(w.pin) === p);
 };
-
 const startDayIfNeeded = (starterName) => {
   if (dayMeta.startedAt) return;
   // start the day on first sign-in
@@ -1973,26 +1851,21 @@ const startDayIfNeeded = (starterName) => {
     resetAt: null,
     shiftChanges: [],
   });
-  // Lock inventory prompt like your old Start Shift
   if (!inventoryLocked && inventory.length) {
     if (window.confirm("Lock current Inventory as Start-of-Day snapshot?")) {
       lockInventoryForDay();
     }
   }
 };
-
 const signInByPin = (pin) => {
   const prof = findWorkerByPin(pin);
   if (!prof) return alert("Invalid PIN.");
   startDayIfNeeded(prof.name);
-
-  // Already on duty?
   const open = (workerSessions || []).find(s => !s.signOutAt && s.name === prof.name);
   if (open) {
     alert(`${prof.name} is already on duty.`);
     return;
   }
-
   const sess = {
     id: `ws_${Date.now()}_${Math.random().toString(36).slice(2)}`,
     name: prof.name,
@@ -2001,8 +1874,6 @@ const signInByPin = (pin) => {
     signOutAt: null,
   };
   setWorkerSessions(arr => [sess, ...arr]);
-
-  // also mark "currentWorker" for display
   setDayMeta(d => ({ ...d, currentWorker: prof.name }));
 };
 
@@ -2012,24 +1883,19 @@ const signOutByPin = (pin) => {
 
   const open = (workerSessions || []).filter(s => !s.signOutAt);
   if (open.length <= 1) {
-    // last worker rule
     alert("Cannot sign out the only on-duty worker. Please End the Day.");
     return;
   }
-
   const idx = (workerSessions || []).findIndex(s => !s.signOutAt && s.name === prof.name);
   if (idx < 0) {
     alert(`${prof.name} is not currently on duty.`);
     return;
   }
-
   setWorkerSessions(list => {
     const copy = [...list];
     copy[idx] = { ...copy[idx], signOutAt: new Date() };
     return copy;
   });
-
-  // Update currentWorker to someone still on duty (if current signed out)
   const stillOpenNames = open.map(s => s.name).filter(n => n !== prof.name);
   if (stillOpenNames.length) {
     setDayMeta(d => ({ ...d, currentWorker: stillOpenNames[0] }));
@@ -2037,15 +1903,11 @@ const signOutByPin = (pin) => {
     setDayMeta(d => ({ ...d, currentWorker: "" }));
   }
 };
-
-// Close any open sessions at a given end time (used by End Day)
 const closeOpenSessionsAt = (endTime) => {
   setWorkerSessions(list =>
     list.map(s => !s.signOutAt ? { ...s, signOutAt: endTime } : s)
   );
 };
-
-// Compute hours in a period for a worker
 const sumHoursForWorker = (name, sessions, start, end) => {
   const rows = (sessions || []).filter(s => s.name === name);
   let hours = 0;
@@ -2060,20 +1922,14 @@ const sumHoursForWorker = (name, sessions, start, end) => {
   return Number(hours.toFixed(2));
 };
 useMemo(() => workerSessions.length, [workerSessions]);
-
-// Period for worker logs
 const [wStart, wEnd] = useMemo(() => {
   return getPeriodRange(workerLogFilter, dayMeta, workerLogDay, workerLogMonth);
 }, [workerLogFilter, workerLogDay, workerLogMonth, dayMeta]);
-
-// Stats for worker log
 const workerNamesKnown = useMemo(() => {
-  // from profiles + any name that ever signed
   const set = new Set((workerProfiles || []).map(p => p.name));
   for (const s of workerSessions || []) set.add(s.name);
   return Array.from(set);
 }, [workerProfiles, workerSessions]);
-
 const workerMonthlyStats = useMemo(() => {
   const rows = [];
   for (const nm of workerNamesKnown) {
@@ -2090,9 +1946,6 @@ const workerMonthlyTotalPay = useMemo(
   () => workerMonthlyStats.reduce((s, r) => s + Number(r.pay || 0), 0),
   [workerMonthlyStats]
 );
-
-
-
   const promptAdminAndPin = () => {
     const adminStr = window.prompt("Enter Admin number (1 to 6):", "1");
     if (!adminStr) return null;
@@ -2101,7 +1954,6 @@ const workerMonthlyTotalPay = useMemo(
       alert("Please enter a number from 1 to 6.");
       return null;
     }
-
     const entered = window.prompt(`Enter PIN for Admin ${n}:`, "");
     if (entered == null) return null;
 
@@ -2214,7 +2066,7 @@ const workerMonthlyTotalPay = useMemo(
         worker: endBy,
         note: "Auto Init from day margin",
         date: new Date(),
-        locked: true,                // ⬅️ make it unremovable
+        locked: true,               
    source: "auto_day_margin",
       });
     } else if (margin < 0) {
@@ -2247,22 +2099,14 @@ const workerMonthlyTotalPay = useMemo(
     });
     setReconCounts({});
 setReconSavedBy("");
-// reconHistory NOT cleared (per your requirement)
-
-
     alert(`Day ended by ${endBy}. Report downloaded and day reset ✅`);
   };
-
-  // --------- Cart / Checkout ----------
   const [isCheckingOut, setIsCheckingOut] = useState(false);
-  // scale a uses map by a factor
 const multiplyUses = (uses = {}, factor = 1) => {
   const out = {};
   for (const k of Object.keys(uses)) out[k] = Number(uses[k] || 0) * factor;
   return out;
 };
-
-
   const addToCart = () => {
     if (!selectedBurger) return alert("Select a burger/item first.");
     const qty = Math.max(1, Number(selectedQty || 1));
@@ -2287,10 +2131,8 @@ const multiplyUses = (uses = {}, factor = 1) => {
     setSelectedExtras([]);
     setSelectedQty(1);
   };
-
   const removeFromCart = (i) =>
     setCart((c) => c.filter((_, idx) => idx !== i));
-
  const changeQty = (i, delta) =>
   setCart((c) =>
     c.map((line, idx) => {
@@ -2301,7 +2143,6 @@ const multiplyUses = (uses = {}, factor = 1) => {
       return {
         ...line,
         qty: newQty,
-        // keep per-line consumption proportional to qty
         uses: multiplyUses(line.uses || {}, newQty / oldQty),
       };
     })
@@ -2321,36 +2162,24 @@ const multiplyUses = (uses = {}, factor = 1) => {
       };
     })
   );
-
-
  const checkout = async () => {
   if (isCheckingOut) return;
   setIsCheckingOut(true);
-
   try {
     if (!dayMeta.startedAt || dayMeta.endedAt)
       return alert("Start a shift first (Shift → Start Shift).");
     if (cart.length === 0) return alert("Cart is empty.");
     if (!worker) return alert("Select worker.");
     if (!orderType) return alert("Select order type.");
-
-    // When NOT split, a single payment is required
     if (!splitPay && !payment) return alert("Select payment.");
-    // Require delivery details when order type is Delivery
 if (orderType === "Delivery") {
   const n = String(deliveryName || "").trim();
   const p = String(deliveryPhone || "").trim();
   const a = String(deliveryAddress || "").trim();
- 
-
-
   if (!n || !/^\d{11}$/.test(p) || !a) {
     return alert("Please enter customer name, phone Number (11 digits), and address for Delivery.");
   }
 }
-
-
-    // Rebuild per-unit uses from current menu/extras, then multiply by qty
     const cartWithUses = cart.map((line) => {
       const baseItem = menu.find((m) => m.id === line.id);
       const unitUses = { ...(baseItem?.uses || {}) };
@@ -2366,8 +2195,6 @@ if (orderType === "Delivery") {
       const qty = Math.max(1, Number(line.qty || 1));
       return { ...line, uses: multiplyUses(unitUses, qty) };
     });
-
-    // Stock check using rebuilt uses
     const required = {};
     for (const line of cartWithUses) {
       for (const k of Object.keys(line.uses || {})) {
@@ -2383,7 +2210,6 @@ if (orderType === "Delivery") {
         );
       }
     }
-    // Deduct locally
     setInventory((inv) =>
       inv.map((it) => {
         const need = Number(required[it.id] || 0);
@@ -2391,7 +2217,6 @@ if (orderType === "Delivery") {
       })
     );
 
-    // Totals
     const itemsTotal = cartWithUses.reduce((s, b) => {
       const ex = (b.extras || []).reduce((t, e) => t + Number(e.price || 0), 0);
       return s + (Number(b.price || 0) + ex) * Number(b.qty || 1);
@@ -2399,11 +2224,8 @@ if (orderType === "Delivery") {
     const delFee =
       orderType === "Delivery" ? Math.max(0, Number(deliveryFee || 0)) : 0;
     const total = itemsTotal + delFee;
-
-    // Build payment label & parts
     let paymentLabel = payment;
     let paymentParts = [];
-
     if (splitPay) {
       if (!payA || !payB) return alert("Choose two payment methods.");
       if (payA === payB) return alert("Choose two different methods for split.");
@@ -2418,8 +2240,6 @@ if (orderType === "Delivery") {
     } else {
       paymentParts = [{ method: payment || "Unknown", amount: total }];
     }
-
-    // Cash handling (single or split)
     let cashVal = null;
     let changeDue = null;
     if (splitPay) {
@@ -2432,8 +2252,6 @@ if (orderType === "Delivery") {
       cashVal = Number(cashReceived || 0);
       changeDue = Math.max(0, cashVal - total);
     }
-
-    // Use current local nextOrderNo immediately (to keep print in the click gesture)
     let optimisticNo = nextOrderNo;
 
     const order = {
@@ -2447,9 +2265,7 @@ if (orderType === "Delivery") {
       deliveryName: (orderType === "Delivery" ? String(deliveryName || "").trim() : ""),
 deliveryPhone: (orderType === "Delivery" ? String(deliveryPhone || "").trim() : ""),
 deliveryAddress: (orderType === "Delivery" ? String(deliveryAddress || "").trim() : ""),
-      deliveryZoneId: deliveryZoneId || "",   // ⬅️ NEW
-
-
+      deliveryZoneId: deliveryZoneId || "",   
       total,
       itemsTotal,
       cashReceived: cashVal,
@@ -2463,8 +2279,6 @@ deliveryAddress: (orderType === "Delivery" ? String(deliveryAddress || "").trim(
         .toString(36)
         .slice(2)}`,
     };
-
-    // Save/update customer (Delivery only)                               // ⬅️ NEW
 if (orderType === "Delivery") {
   const rec = {
     phone: order.deliveryPhone,
@@ -2474,16 +2288,10 @@ if (orderType === "Delivery") {
   };
    setCustomers(prev => upsertCustomer(prev, rec));
 }
-
-    // PRINT now
     if (autoPrintOnCheckout) {
       printReceiptHTML(order, Number(preferredPaperWidthMm) || 80, "Customer");
     }
-
-    // Optimistic counter
     setNextOrderNo(optimisticNo + 1);
-
-    // Persist to cloud / allocate atomic order number
     let allocatedNo = optimisticNo;
     if (cloudEnabled && counterDocRef && fbUser && db) {
       try {
@@ -2496,9 +2304,7 @@ if (orderType === "Delivery") {
         console.warn("Atomic order number allocation failed, using optimistic number.", e);
       }
     }
-
     if (!realtimeOrders) setOrders((o) => [order, ...o]);
-
     if (cloudEnabled && ordersColRef && fbUser) {
       try {
         const ref = await addDoc(ordersColRef, normalizeOrderForCloud(order));
@@ -2513,8 +2319,6 @@ if (orderType === "Delivery") {
         console.warn("Cloud order write failed:", e);
       }
     }
-
-    // Reset order UI
     setCart([]);
     setWorker("");
     setPayment("");
@@ -2523,13 +2327,10 @@ if (orderType === "Delivery") {
     setOrderType(defaultType);
     setDeliveryFee(defaultType === "Delivery" ? defaultDeliveryFee : 0);
     setCashReceived(0);
-    // Clear delivery details
 setDeliveryName("");
 setDeliveryPhone("");
 setDeliveryAddress("");
 setDeliveryZoneId("");   
-
-    // reset split
     setSplitPay(false);
     setPayA(""); setPayB("");
     setAmtA(0); setAmtB(0);
@@ -2538,9 +2339,6 @@ setDeliveryZoneId("");
     setIsCheckingOut(false);
   }
 };
-
-  
-
  // --------- Order actions ----------
 const markOrderDone = async (orderNo) => {
   // If not live, update locally
@@ -2567,8 +2365,6 @@ const markOrderDone = async (orderNo) => {
     console.warn("Cloud update (done) failed:", e);
   }
 };
-
-
 const voidOrderAndRestock = async (orderNo) => {
   const ord = orders.find((o) => o.orderNo === orderNo);
   if (!ord) return;
@@ -2582,8 +2378,6 @@ const voidOrderAndRestock = async (orderNo) => {
   const reason = String(reasonRaw || "").trim();
   if (!reason) return alert("A reason is required.");
   if (!window.confirm(`Cancel order #${orderNo} and restock inventory?`)) return;
-
-  // Restock locally
   const giveBack = {};
   for (const line of ord.cart) {
     const uses = line.uses || {};
@@ -2599,8 +2393,6 @@ const voidOrderAndRestock = async (orderNo) => {
   );
 
   const when = new Date();
-
-  // If not live mode, flip locally; otherwise let snapshot update UI
   if (!realtimeOrders) {
     setOrders((o) =>
       o.map((x) =>
@@ -2630,8 +2422,6 @@ const voidOrderAndRestock = async (orderNo) => {
     console.warn("Cloud update (cancel/restock) failed:", e);
   }
 };
-
-
 const voidOrderToExpense = async (orderNo) => {
   const ord = orders.find((o) => o.orderNo === orderNo);
   if (!ord) return;
@@ -2640,7 +2430,6 @@ const voidOrderToExpense = async (orderNo) => {
   if (!isExpenseVoidEligible(ord.orderType)) {
     return alert("This action is only for non Dine-in / Take-Away orders.");
   }
-
   const reasonRaw = window.prompt(
     `Reason for RETURN (no restock) — order #${orderNo}:`,
     ""
@@ -2656,8 +2445,6 @@ const voidOrderToExpense = async (orderNo) => {
     `Void order #${orderNo} WITHOUT restock and add expense for wasted items (E£${itemsOnly.toFixed(2)})?`
   );
   if (!ok) return;
-
-  // 🔒 Locked expense row (cannot be removed)
   const expRow = {
     id: `exp_ret_${orderNo}_${Date.now()}`,
     name: `Returned order #${orderNo} — ${ord.orderType || "-"}`,
@@ -2666,15 +2453,11 @@ const voidOrderToExpense = async (orderNo) => {
     unitPrice: itemsOnly,
     note: reason,
     date: new Date(),
-
-    // lock flags
     locked: true,
     source: "order_return",
     orderNo,
   };
   setExpenses((arr) => [expRow, ...arr]);
-
-  // If not live mode, flip locally; otherwise let snapshot update UI
   if (!realtimeOrders) {
     setOrders((o) =>
       o.map((x) =>
@@ -7120,6 +6903,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
