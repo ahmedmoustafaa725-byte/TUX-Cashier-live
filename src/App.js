@@ -551,17 +551,7 @@ function hoursFromMinutes(mins) {
   return Number((Number(mins || 0) / 60).toFixed(2));
 }
 
-// convenience by worker
-function sessionsByWorker(sessions = []) {
-  const m = new Map();
-  for (const s of sessions || []) {
-    const k = String(s.name || "-");
-    const arr = m.get(k) || [];
-    arr.push(s);
-    m.set(k, arr);
-  }
-  return m;
-}
+
 
 const DEFAULT_INV_UNIT_BY_CATNAME = {
   buns: "piece",
@@ -2401,58 +2391,6 @@ function signOutWorker(name) {
     alert("Inventory unlocked for editing.");
   };
 
-  const startShift = () => {
-    if (dayMeta.startedAt && !dayMeta.endedAt)
-      return alert("Shift already started.");
-    const nameInput =
-      worker ||
-      window.prompt(
-        "Enter worker name to START shift (or select in Orders tab then return):",
-        ""
-      );
-    const name = norm(nameInput);
-    if (!name) return alert("Worker name required.");
-    setDayMeta({
-      startedBy: name,
-      currentWorker: name,
-      startedAt: new Date(),
-      endedAt: null,
-      endedBy: "",
-      lastReportAt: null,
-      resetBy: "",
-      resetAt: null,
-      shiftChanges: [],
-    });
-    if (!inventoryLocked && inventory.length) {
-      if (
-        window.confirm(
-          "Lock current Inventory as Start-of-Day snapshot?"
-        )
-      )
-        lockInventoryForDay();
-    }
-  };
-
-  // NEW: Change shift updates only current worker
-  const changeShift = () => {
-    if (!dayMeta.startedAt || dayMeta.endedAt)
-      return alert("Start a shift first.");
-    const next = window.prompt(`Enter the NEW on-duty worker name:`, "");
-    const newName = norm(next);
-    if (!newName) return alert("New worker name required.");
-    if (norm(newName) === norm(dayMeta.currentWorker))
-      return alert("New worker must be different from current on-duty.");
-    const prev = dayMeta.currentWorker || dayMeta.startedBy;
-    setDayMeta((d) => ({
-      ...d,
-      currentWorker: newName,
-      shiftChanges: [
-        ...(d.shiftChanges || []),
-        { at: new Date(), from: prev || "?", to: newName },
-      ],
-    }));
-    alert(`On-duty changed: ${prev || "?"} → ${newName}`);
-  };
 
   const endDay = async () => {
     if (!dayMeta.startedAt) return alert("Start a shift first.");
@@ -7526,3 +7464,4 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
