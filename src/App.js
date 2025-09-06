@@ -1031,9 +1031,13 @@ const [targetMarginPct, setTargetMarginPct] = useState(() => {
 });
 
 
-
-
-
+// Worker Log filters (must live at component top level)
+const [WLFilter, setWLFilter] = useState("month"); // 'day' | 'month'
+const [WLDay, setWLDay] = useState(new Date().toISOString().slice(0, 10));
+const [WLMonth, setWLMonth] = useState(() => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+});
 
 const [newItemName, setNewItemName] = useState("");
 const [newItemPrice, setNewItemPrice] = useState(0);
@@ -1076,6 +1080,96 @@ const lowStockItems = useMemo(() => {
   });
 }, [inventory]);
 
+  // ===== Worker PIN Sign-in/out =====
+const [pinInput, setPinInput] = useState("");
+
+const onDutyNames = useMemo(
+  () => Array.isArray(dayMeta.currentWorkers) ? dayMeta.currentWorkers : [],
+  [dayMeta.currentWorkers]
+);
+
+const findWorkerByPin = (pin) => {
+  const p = String(pin || "").trim();
+  if (!p) return null;
+  return (workers || []).find(w => String(w.pin) === p && w.isActive);
+};
+
+const isOnDuty = (name) => onDutyNames.includes(String(name || ""));
+
+const startWorkerSession = (name, isFirst = false) => {
+  // avoid multiple open sessions
+  const openExists = workerSessions.some(r => r.name === name && !r.outAt);
+  if (openExists) return;
+
+  setWorkerSessions(arr => [
+    {
+      id: `ws_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      name,
+      inAt: new Date(),
+      outAt: null,
+      startedShift: !!isFirst,
+    },
+    ...arr
+  ]);
+};
+
+
+const closeOpenSession = (name, when = new Date()) => {
+  setWorkerSessions(arr => {
+    const idx = arr.findIndex(r => r.name === name && !r.outAt);
+    if (idx === -1) return arr;
+    const copy = [...arr];
+    copy[idx] = { ...copy[idx], outAt: when };
+    return copy;
+  });
+};
+
+const handleSignInPin = () => {
+  const w = findWorkerByPin(pinInput);
+  if (!w) return alert("Invalid or inactive PIN.");
+  if (isOnDuty(w.name)) return alert(`${w.name} is already on duty.`);
+
+  // First on-duty starts the shift
+  const isFirst = onDutyNames.length === 0;
+
+  setDayMeta(d => ({
+    ...d,
+    startedAt: d.startedAt || new Date(),
+    startedBy: d.startedBy || w.name,
+    currentWorker: w.name, // keep for legacy UI
+    currentWorkers: [...(d.currentWorkers || []), w.name],
+  }));
+  startWorkerSession(w.name, isFirst);
+
+  // Offer to lock inventory if starting shift
+  if (isFirst && !inventoryLocked && inventory.length) {
+    if (window.confirm("Lock current Inventory as Start-of-Day snapshot?")) {
+      lockInventoryForDay();
+    }
+  }
+  setPinInput("");
+};
+
+const handleSignOutPin = () => {
+  const w = findWorkerByPin(pinInput);
+  if (!w) return alert("Invalid PIN.");
+
+  if (!isOnDuty(w.name)) return alert(`${w.name} is not on duty.`);
+
+  if ((onDutyNames || []).length <= 1) {
+    alert("You are the last on-duty. Please End the Day first.");
+    return;
+  }
+
+  // remove from on-duty, close session
+  setDayMeta(d => ({
+    ...d,
+    currentWorkers: (d.currentWorkers || []).filter(nm => nm !== w.name),
+    currentWorker: (d.currentWorkers || []).find(nm => nm !== w.name) || d.startedBy || "", // legacy field
+  }));
+  closeOpenSession(w.name, new Date());
+  setPinInput("");
+};
 const lowStockCount = lowStockItems.length;
   // put these BEFORE "// Shift window"
 const [dayMeta, setDayMeta] = useState({
@@ -2446,10 +2540,10 @@ const endDay = async () => {
         .filter(Boolean)
     : [];
 
-  const fromSessionsOpen =
-    typeof sessionsOpen !== "undefined" && Array.isArray(sessionsOpen)
-      ? sessionsOpen.map((s) => s.workerName).filter(Boolean)
-      : [];
+ const fromSessionsOpen = Array.isArray(workerSessions)
+  ? workerSessions.filter(s => !s.outAt).map(s => s.name).filter(Boolean)
+  : [];
+
 
   const onDutyNames = Array.from(new Set([...fromCurrentWorkers, ...fromSessionsOpen]));
 
@@ -3581,96 +3675,7 @@ const generatePurchasesPDF = () => {
   }
 };
 
-// ===== Worker PIN Sign-in/out =====
-const [pinInput, setPinInput] = useState("");
 
-const onDutyNames = useMemo(
-  () => Array.isArray(dayMeta.currentWorkers) ? dayMeta.currentWorkers : [],
-  [dayMeta.currentWorkers]
-);
-
-const findWorkerByPin = (pin) => {
-  const p = String(pin || "").trim();
-  if (!p) return null;
-  return (workers || []).find(w => String(w.pin) === p && w.isActive);
-};
-
-const isOnDuty = (name) => onDutyNames.includes(String(name || ""));
-
-const startWorkerSession = (name, isFirst = false) => {
-  // avoid multiple open sessions
-  const openExists = workerSessions.some(r => r.name === name && !r.outAt);
-  if (openExists) return;
-
-  setWorkerSessions(arr => [
-    {
-      id: `ws_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-      name,
-      inAt: new Date(),
-      outAt: null,
-      startedShift: !!isFirst,
-    },
-    ...arr
-  ]);
-};
-
-
-const closeOpenSession = (name, when = new Date()) => {
-  setWorkerSessions(arr => {
-    const idx = arr.findIndex(r => r.name === name && !r.outAt);
-    if (idx === -1) return arr;
-    const copy = [...arr];
-    copy[idx] = { ...copy[idx], outAt: when };
-    return copy;
-  });
-};
-
-const handleSignInPin = () => {
-  const w = findWorkerByPin(pinInput);
-  if (!w) return alert("Invalid or inactive PIN.");
-  if (isOnDuty(w.name)) return alert(`${w.name} is already on duty.`);
-
-  // First on-duty starts the shift
-  const isFirst = onDutyNames.length === 0;
-
-  setDayMeta(d => ({
-    ...d,
-    startedAt: d.startedAt || new Date(),
-    startedBy: d.startedBy || w.name,
-    currentWorker: w.name, // keep for legacy UI
-    currentWorkers: [...(d.currentWorkers || []), w.name],
-  }));
-  startWorkerSession(w.name, isFirst);
-
-  // Offer to lock inventory if starting shift
-  if (isFirst && !inventoryLocked && inventory.length) {
-    if (window.confirm("Lock current Inventory as Start-of-Day snapshot?")) {
-      lockInventoryForDay();
-    }
-  }
-  setPinInput("");
-};
-
-const handleSignOutPin = () => {
-  const w = findWorkerByPin(pinInput);
-  if (!w) return alert("Invalid PIN.");
-
-  if (!isOnDuty(w.name)) return alert(`${w.name} is not on duty.`);
-
-  if ((onDutyNames || []).length <= 1) {
-    alert("You are the last on-duty. Please End the Day first.");
-    return;
-  }
-
-  // remove from on-duty, close session
-  setDayMeta(d => ({
-    ...d,
-    currentWorkers: (d.currentWorkers || []).filter(nm => nm !== w.name),
-    currentWorker: (d.currentWorkers || []).find(nm => nm !== w.name) || d.startedBy || "", // legacy field
-  }));
-  closeOpenSession(w.name, new Date());
-  setPinInput("");
-};
   /* --------------------------- UI --------------------------- */
 
   return (
@@ -6255,15 +6260,6 @@ const handleSignOutPin = () => {
   <div style={{ display: "grid", gap: 14 }}>
     <h2>Worker Log</h2>
 
-    {/* Filters (Day / Month) */}
-    {(() => {
-      // local UI state for worker log period
-      const [WLFilter, setWLFilter] = React.useState("month"); // 'day' | 'month'
-      const [WLDay, setWLDay] = React.useState(new Date().toISOString().slice(0,10));
-      const [WLMonth, setWLMonth] = React.useState(() => {
-        const d = new Date();
-        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
-      });
 
       // compute range using your existing helper
       const [wStart, wEnd] = getPeriodRange(WLFilter, dayMeta, WLDay, WLMonth);
@@ -7466,6 +7462,7 @@ const handleSignOutPin = () => {
     </div>
   );
 }
+
 
 
 
