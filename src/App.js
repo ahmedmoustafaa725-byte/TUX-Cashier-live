@@ -2184,7 +2184,6 @@ const multiplyUses = (uses = {}, factor = 1) => {
       };
     })
   );
-
   const setQty = (i, v) =>
   setCart((c) =>
     c.map((line, idx) => {
@@ -2228,7 +2227,6 @@ if (orderType === "Delivery") {
           unitUses[k] = (unitUses[k] || 0) + Number(exUses[k] || 0);
         }
       }
-
       const qty = Math.max(1, Number(line.qty || 1));
       return { ...line, uses: multiplyUses(unitUses, qty) };
     });
@@ -2253,7 +2251,6 @@ if (orderType === "Delivery") {
         return need ? { ...it, qty: it.qty - need } : it;
       })
     );
-
     const itemsTotal = cartWithUses.reduce((s, b) => {
       const ex = (b.extras || []).reduce((t, e) => t + Number(e.price || 0), 0);
       return s + (Number(b.price || 0) + ex) * Number(b.qty || 1);
@@ -2290,7 +2287,6 @@ if (orderType === "Delivery") {
       changeDue = Math.max(0, cashVal - total);
     }
     let optimisticNo = nextOrderNo;
-
     const order = {
       orderNo: optimisticNo,
       date: new Date(),
@@ -2384,7 +2380,6 @@ const markOrderDone = async (orderNo) => {
       o.map((ord) => (ord.orderNo !== orderNo || ord.done ? ord : { ...ord, done: true }))
     );
   }
-
   try {
     if (!cloudEnabled || !ordersColRef || !fbUser) return;
     let targetId = orders.find((o) => o.orderNo === orderNo)?.cloudId;
@@ -2525,10 +2520,6 @@ const voidOrderToExpense = async (orderNo) => {
   }
 };
 
-
-
-
-
   // --------------------------- REPORT TOTALS ---------------------------
   const getSortedOrders = () => {
     const arr = [...orders];
@@ -2538,7 +2529,6 @@ const voidOrderToExpense = async (orderNo) => {
     if (sortBy === "payment") arr.sort((a, b) => a.payment.localeCompare(b.payment));
     return arr;
   };
-
   const totals = useMemo(() => {
     const validOrders = orders.filter((o) => !o.voided);
     const revenueTotal = validOrders.reduce(
@@ -2550,14 +2540,11 @@ const voidOrderToExpense = async (orderNo) => {
       0
     );
    const byPay = {};
-// seed known methods (optional)
 for (const p of paymentMethods) byPay[p] = 0;
-
 for (const o of validOrders) {
   const itemsOnly = Number(
     o.itemsTotal != null ? o.itemsTotal : o.total - (o.deliveryFee || 0)
   );
-
   if (Array.isArray(o.paymentParts) && o.paymentParts.length) {
     const sumParts = o.paymentParts.reduce((s, p) => s + Number(p.amount || 0), 0) || o.total || itemsOnly;
     for (const part of o.paymentParts) {
@@ -2620,7 +2607,6 @@ for (const o of validOrders) {
     );
     return { items, extras };
   }, [orders]);
-
   const inventoryReportRows = useMemo(() => {
     if (!inventorySnapshot || inventorySnapshot.length === 0) return [];
     const snapMap = {};
@@ -2680,7 +2666,6 @@ function inferInvUnitFromPurchaseUnit(u) {
   const m = UNIT_MAP[String(u || "").toLowerCase()];
   return m ? m.base : "piece";
 }
-
 const handleAddPurchase = () => {
   const { categoryId, itemName, unit, qty, unitPrice, date, ingredientId } = newPurchase;
   const nameStr = String(itemName || "").trim();
@@ -2695,7 +2680,6 @@ const handleAddPurchase = () => {
       inventory,
       purchaseCategories
     );
-
   let nextInventory = [...inventory];
   if (!targetInvId) {
     const catName =
@@ -2785,8 +2769,6 @@ const removePurchaseCategory = (catId) => {
   setPurchaseCatFilterId(prev => (prev === catId ? "" : prev));
   setNewPurchase(p => (p.categoryId === catId ? { ...p, categoryId: "" } : p));
 };
-
-  // --- Expenses: protected delete (prevents removal of returned-order expenses)
 const removeExpense = (id) => {
   setExpenses((arr) => {
     const row = arr.find((e) => e.id === id);
@@ -2798,11 +2780,6 @@ const removeExpense = (id) => {
     return arr.filter((e) => e.id !== id);
   });
 };
-
- 
-
-
-
   // --------------------------- PDF: REPORT ---------------------------
   const generatePDF = (silent = false, metaOverride = null) => {
     try {
@@ -2812,17 +2789,12 @@ const removeExpense = (id) => {
 
       const startedStr = m.startedAt ? fmtDateTime(m.startedAt) : "—";
 const endedStr   = m.endedAt   ? fmtDateTime(m.endedAt)   : "—";
-
-      
-
       autoTable(doc, {
         head: [["Start By", "Start At", "Current Worker", "End At"]],
         body: [[m.startedBy || "—", startedStr, m.currentWorker || "—", endedStr]],
         startY: 18,
         theme: "grid",
       });
-
-
       let y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : 28;
       doc.text("Shift Timeline", 14, y);
       const timelineRows = [];
@@ -2839,7 +2811,6 @@ const endedStr   = m.endedAt   ? fmtDateTime(m.endedAt)   : "—";
         theme: "grid",
         styles: { fontSize: 10 },
       });
-
       y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : 28;
       doc.text("Orders", 14, y);
       autoTable(doc, {
@@ -2858,10 +2829,8 @@ const endedStr   = m.endedAt   ? fmtDateTime(m.endedAt)   : "—";
    startY: y + 4,
    styles: { fontSize: 9 },
  });
-
       y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : y + 40;
       doc.text("Totals (excluding canceled/returned)", 14, y);
-
       const totalsBody = [
         ["Revenue (Shift, excl. delivery)", totals.revenueTotal.toFixed(2)],
         ["Delivery Fees (not in revenue)", totals.deliveryFeesTotal.toFixed(2)],
@@ -2878,7 +2847,6 @@ const endedStr   = m.endedAt   ? fmtDateTime(m.endedAt)   : "—";
           `By Order Type — ${t} (items only)`,
           (totals.byType[t] || 0).toFixed(2),
         ]);
-
       autoTable(doc, {
         head: [["Metric", "Amount (E£)"]],
         body: totalsBody,
@@ -2886,7 +2854,6 @@ const endedStr   = m.endedAt   ? fmtDateTime(m.endedAt)   : "—";
         theme: "grid",
         styles: { fontSize: 10 },
       });
-
       y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : y + 40;
       doc.text("Items — Times Ordered", 14, y);
       autoTable(doc, {
@@ -2895,7 +2862,6 @@ const endedStr   = m.endedAt   ? fmtDateTime(m.endedAt)   : "—";
         startY: y + 4,
         theme: "grid",
       });
-
       y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : y + 40;
       doc.text("Extras — Times Ordered", 14, y);
       autoTable(doc, {
@@ -2904,10 +2870,8 @@ const endedStr   = m.endedAt   ? fmtDateTime(m.endedAt)   : "—";
         startY: y + 4,
         theme: "grid",
       });
-
       y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : y + 40;
       doc.text("Inventory — Start vs Now", 14, y);
-
       if (!inventoryReportRows.length) {
         autoTable(doc, {
           head: [["Info"]],
@@ -2929,7 +2893,6 @@ const endedStr   = m.endedAt   ? fmtDateTime(m.endedAt)   : "—";
           theme: "grid",
         });
       }
-
       y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : y + 40;
       doc.text("Expenses (Shift)", 14, y);
       autoTable(doc, {
@@ -2956,8 +2919,7 @@ const endedStr   = m.endedAt   ? fmtDateTime(m.endedAt)   : "—";
       alert("Could not generate PDF. Try again (ensure pop-ups are allowed).");
     }
   };
-
-  // ---------- helpers for Edit (reorder + consumption toggles) ----------
+  // ---------- helpers for Edit 
   const [openMenuConsId, setOpenMenuConsId] = useState(null);
   const [openExtraConsId, setOpenExtraConsId] = useState(null);
   const moveByIndex = (arr, idx, dir) => {
@@ -2992,8 +2954,6 @@ const endedStr   = m.endedAt   ? fmtDateTime(m.endedAt)   : "—";
       if (idx < 0) return arr;
       return moveByIndex(arr, idx, +1);
     });
-  
-
   const cardBorder = dark ? "#555" : "#ddd";
   const softBg = dark ? "#1e1e1e" : "#f5f5f5";
   const btnBorder = "#ccc";
@@ -3006,7 +2966,6 @@ const endedStr   = m.endedAt   ? fmtDateTime(m.endedAt)   : "—";
     minHeight: "100vh",
     transition: "background 0.2s ease, color 0.2s ease",
   };
-
 const handleTabClick = (key) => {
   if (key === "admin") {
     if (!adminUnlocked) {
@@ -3017,13 +2976,9 @@ const handleTabClick = (key) => {
   }
   setActiveTab(key);
 };
-
 const handleAdminSubTabClick = (sub) => {
   setAdminSubTab(sub); // no PIN checks here anymore
 };
-
-
-
   const bankBalance = useMemo(() => {
     return bankTx.reduce((sum, t) => {
       const a = Number(t.amount || 0);
@@ -3032,26 +2987,16 @@ const handleAdminSubTabClick = (sub) => {
       return sum;
     }, 0);
   }, [bankTx]);
-  // Money formatter for Purchases KPI & tables
 const currency = (v) => `E£${Number(v || 0).toFixed(2)}`;
-
-// Date -> YYYY-MM-DD for Purchases tables
-// Date -> dd/mm/yy for Purchases tables
 const prettyDate = (d) => fmtDate(d);
-
-
-     // === ADD BELOW: Purchases PDF report =================================
 const generatePurchasesPDF = () => {
   try {
     const doc = new jsPDF();
     const [start, end] = getPeriodRange(purchaseFilter, dayMeta, purchaseDay, purchaseMonth);
     const title = `TUX — Purchases Report (${purchaseFilter.toUpperCase()})`;
     doc.text(title, 14, 12);
-
     const periodStr =
       `${start.toLocaleDateString()} → ${end.toLocaleDateString()}`;
-
-    // Build filtered rows just like the UI
     const within = (purchases || []).filter((p) => {
       const d = p?.date instanceof Date ? p.date : new Date(p?.date);
       return isWithin(d, start, end);
@@ -3064,8 +3009,6 @@ const generatePurchasesPDF = () => {
       (s, p) => s + Number(p.qty || 0) * Number(p.unitPrice || 0),
       0
     );
-
-    // Header table
     autoTable(doc, {
       head: [["Period", "Filter", "Total (E£)"]],
       body: [[periodStr,
@@ -3077,8 +3020,6 @@ const generatePurchasesPDF = () => {
       theme: "grid",
       styles: { fontSize: 10 },
     });
-
-    // Category totals
     const catMap = new Map();
     for (const p of rows) {
       const amt = Number(p.qty || 0) * Number(p.unitPrice || 0);
@@ -3094,7 +3035,6 @@ const generatePurchasesPDF = () => {
         amt.toFixed(2),
       ])
       .sort((a,b) => Number(b[1]) - Number(a[1])); // desc by E£
-
     autoTable(doc, {
       head: [["Category", "Amount (E£)"]],
       body: catBody.length ? catBody : [["(no data)", "0.00"]],
@@ -3102,11 +3042,8 @@ const generatePurchasesPDF = () => {
       theme: "grid",
       styles: { fontSize: 10 },
     });
-
-    // Full line items
     y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : y + 36;
     doc.text("Line Items", 14, y);
-
     const lineBody = rows
       .slice()
       .sort((a, b) => +new Date(a.date) - +new Date(b.date))
@@ -3124,7 +3061,6 @@ const generatePurchasesPDF = () => {
           total.toFixed(2),
         ];
       });
-
     autoTable(doc, {
       head: [["Date", "Category", "Item", "Unit", "Qty", "Unit Price", "Total (E£)"]],
       body: lineBody.length ? lineBody : [["—","—","—","—","0","0.00","0.00"]],
@@ -3140,10 +3076,7 @@ const generatePurchasesPDF = () => {
     alert("Could not generate Purchases PDF. Ensure pop-ups are allowed.");
   }
 };
-
-
   /* --------------------------- UI --------------------------- */
-
   return (
     <div style={containerStyle}>
    {/* Header */}
@@ -3158,12 +3091,9 @@ const generatePurchasesPDF = () => {
   }}
 >
   <h1 style={{ margin: 0 }}>🍔 TUX — Burger Truck POS</h1>
-
-  {/* Right side: date/time + theme toggle */}
   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
     <div style={{ fontSize: 12 }}>{localDateTime}
 </div>
-      {/* Low-stock alert button */}
     <button
       onClick={() => setShowLowStock(s => !s)}
       title={lowStockCount ? `${lowStockCount} item(s) low in stock` : "No low-stock items"}
@@ -3203,9 +3133,7 @@ const generatePurchasesPDF = () => {
     {lowStockCount > 99 ? "99+" : lowStockCount}
   </span>
 )}
-
     </button>
-
     <button
       onClick={() => setDark((d) => !d)}
       title={dark ? "Switch to Light" : "Switch to Dark"}
@@ -3222,10 +3150,6 @@ const generatePurchasesPDF = () => {
     </button>
   </div>
 </div>
-
-
-
-
       {/* Shift Control Bar */}
 <div
   style={{
@@ -3269,8 +3193,6 @@ const generatePurchasesPDF = () => {
         <b>On duty:</b>{" "}
         {activeWorkers.length ? activeWorkers.join(", ") : "—"}
       </div>
-
-      {/* Sign-in */}
       <div style={{ display:"flex", alignItems:"center", gap:8 }}>
         <input
           type="password"
@@ -3286,8 +3208,6 @@ const generatePurchasesPDF = () => {
           Sign in
         </button>
       </div>
-
-      {/* Sign-out */}
       <div style={{ display:"flex", alignItems:"center", gap:8 }}>
         <input
           type="password"
@@ -3303,7 +3223,6 @@ const generatePurchasesPDF = () => {
           Sign out
         </button>
       </div>
-
       <button
         onClick={endDay}
         style={{ background:"#e53935", color:"white", border:"none", borderRadius:6, padding:"6px 10px", cursor:"pointer" }}
@@ -3313,8 +3232,6 @@ const generatePurchasesPDF = () => {
     </>
   )}
 </div>
-
-{/* Low-stock slide-down panel */}
 {showLowStock && (
   <div
     style={{
@@ -3338,9 +3255,7 @@ const generatePurchasesPDF = () => {
     Close
   </button>
   </div>
-
     </div>
-
     {lowStockCount > 0 && (
       <div style={{ overflowX: "auto", marginTop: 8 }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -3371,8 +3286,6 @@ const generatePurchasesPDF = () => {
     )}
   </div>
 )}
-
-
       {/* Tabs */}
 <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
   {[
@@ -3425,9 +3338,8 @@ const generatePurchasesPDF = () => {
         {label}
       </button>
     ))}
+    <div style={{ marginLeft: "auto" }}></div>
 
-    {/* push to the right */}
-    <div style={{ marginLeft: "auto" }}>
       <button
         onClick={() => { setAdminUnlocked(false); setActiveTab("orders"); }} // optional: kick out of Admin
         style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${btnBorder}` }}
@@ -3458,7 +3370,6 @@ const generatePurchasesPDF = () => {
           alignItems: "start",
         }}
       >
-        {/* Left: one select for both Menu and Extras + current stats */}
         <div>
           <div style={{ marginBottom: 6, fontWeight: 600 }}>Menu item</div>
           <select
@@ -3495,7 +3406,6 @@ const generatePurchasesPDF = () => {
             </optgroup>
           </select>
 
-          {/* Current stats for selection */}
           {(() => {
             if (!cogsKey) return null;
             const [kind, idStr] = cogsKey.split("-");
@@ -3526,8 +3436,6 @@ const generatePurchasesPDF = () => {
             );
           })()}
         </div>
-
-        {/* Right: margin slider + suggested price + apply */}
         <div>
           <div style={{ marginBottom: 6, fontWeight: 600 }}>Target margin %</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 24px", gap: 12, alignItems: "center" }}>
@@ -3564,8 +3472,6 @@ const generatePurchasesPDF = () => {
             />
             <div style={{ opacity: 0.7, textAlign: "left" }}>%</div>
           </div>
-
-          {/* Suggested + Apply */}
           {(() => {
             if (!cogsKey) return null;
             const [kind, idStr] = cogsKey.split("-");
@@ -3574,12 +3480,10 @@ const generatePurchasesPDF = () => {
               ? extraList.find(e => e.id === id)
               : menu.find(m => m.id === id);
             if (!row) return null;
-
             const cogs = computeCOGSForItemDef(row, invById);
             const safeM = Math.min(targetMarginPct, 0.95);
             const suggested = Math.max(0, Math.round(cogs / (1 - safeM)));
             const money = (v) => `E£${Number(v || 0).toFixed(2)}`;
-
             const applyToItem = () => {
               if (!window.confirm(`Set "${row.name}" price to ${money(suggested)}?`)) return;
               if (kind === "e") {
@@ -3588,7 +3492,6 @@ const generatePurchasesPDF = () => {
                 setMenu((arr) => arr.map((it) => (it.id === row.id ? { ...it, price: suggested } : it)));
               }
             };
-
             return (
               <>
                 <div
@@ -3622,8 +3525,6 @@ const generatePurchasesPDF = () => {
           })()}
         </div>
       </div>
-
-      {/* Single items list (Menu + Extras) under helper */}
       <div style={{ marginTop: 18, overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
@@ -3654,8 +3555,6 @@ const generatePurchasesPDF = () => {
         </table>
       </div>
     </div>
-
-    {/* ── Inventory Costs (edit Cost/Unit, with auto-sync toggle) ───────── */}
     <div
       style={{
         border: `1px solid ${cardBorder}`,
@@ -3668,7 +3567,6 @@ const generatePurchasesPDF = () => {
       <p style={{ margin: "4px 0 12px", opacity: 0.8 }}>
         Set the cost per inventory unit and the Min Level.
       </p>
-
       <label style={{ display: "inline-flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
         <input
           type="checkbox"
@@ -3693,7 +3591,6 @@ const generatePurchasesPDF = () => {
               <tr key={it.id}>
                 <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{it.name}</td>
                 <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{it.unit}</td>
-
                 <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
                   <input
                     type="number"
@@ -3707,7 +3604,6 @@ const generatePurchasesPDF = () => {
                     style={{ width: 120, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, textAlign: "right" }}
                   />
                 </td>
-
                 <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
                   <input
                     type="number"
@@ -3734,13 +3630,8 @@ const generatePurchasesPDF = () => {
         </table>
       </div>
     </div>
-
   </div>
 )}
-
-
-
-
       {/* ORDERS */}
       {activeTab === "orders" && (
         <div>
@@ -3749,7 +3640,6 @@ const generatePurchasesPDF = () => {
           <div style={{ display: "flex", gap: 24, alignItems: "flex-start", flexWrap: "wrap" }}>
             <div style={{ flex: 1, minWidth: 300 }}>
               <h3>Burgers & Items</h3>
-              {/* TILE GRID (small icon-like cards) */}
               <div
                 style={{
                   display: "grid",
@@ -3781,7 +3671,6 @@ const generatePurchasesPDF = () => {
                 })}
               </div>
             </div>
-
             <div style={{ flex: 1, minWidth: 300 }}>
               <h3>Extras</h3>
               {/* TILE GRID (multi-select) */}
@@ -5909,11 +5798,19 @@ const generatePurchasesPDF = () => {
         Total payout: E£{workerMonthlyTotalPay.toFixed(2)}
       </div>
     </div>
- {/* PIN editor */}
-<div style={{ border:`1px solid ${cardBorder}`, borderRadius:12, padding:12, background: dark ? "#151515" : "#fafafa" }}>
-  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
-    <h3 style={{ margin:0 }}>PINs</h3>
-    <div style={{ marginLeft:"auto" }}>
+{/* PIN editor */}
+<div
+  style={{
+    border: `1px solid ${cardBorder}`,
+    borderRadius: 12,
+    padding: 12,
+    background: dark ? "#151515" : "#fafafa",
+  }}
+>
+  {/* Header row with Add Worker button */}
+  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+    <h3 style={{ margin: 0 }}>PINs</h3>
+    <div style={{ marginLeft: "auto" }}>
       <button
         onClick={quickAddWorker}
         title="Add a new worker (name, PIN, rate)"
@@ -5931,27 +5828,42 @@ const generatePurchasesPDF = () => {
     </div>
   </div>
 
-  <div style={{ display:"grid", gap:8 }}>
-    {(workerProfiles || []).map(p => (
-      <div key={p.id} style={{ display:"grid", gridTemplateColumns:"1fr 200px 120px", gap:8, alignItems:"center" }}>
-        <div><b>{p.name}</b></div>
+  <div style={{ display: "grid", gap: 8 }}>
+    {(workerProfiles || []).map((p) => (
+      <div
+        key={p.id}
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 200px 120px",
+          gap: 8,
+          alignItems: "center",
+        }}
+      >
+        <div>
+          <b>{p.name}</b>
+        </div>
+
         <input
           type="password"
           value={p.pin || ""}
           onChange={(e) => {
             const v = String(e.target.value || "").trim();
-            setWorkerProfiles(list => list.map(x => x.id === p.id ? { ...x, pin: v } : x));
+            setWorkerProfiles((list) =>
+              list.map((x) => (x.id === p.id ? { ...x, pin: v } : x))
+            );
           }}
-          style={{ padding:6, border:`1px solid ${btnBorder}`, borderRadius:6 }}
+          style={{ padding: 6, border: `1px solid ${btnBorder}`, borderRadius: 6 }}
           placeholder="PIN"
         />
-        <div style={{ textAlign:"right", opacity:.7 }}>
+
+        <div style={{ textAlign: "right", opacity: 0.7 }}>
           Rate: E£{Number(p.rate || 0).toFixed(2)}/h
         </div>
       </div>
     ))}
   </div>
 </div>
+
 
 )}
       {/* REPORTS */}
@@ -6931,6 +6843,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
