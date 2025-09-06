@@ -31,7 +31,8 @@ const toIso = (v) => {
 };
 
 
-/* --------------------------- FIREBASE CONFIG --------------------------- */
+
+
 const firebaseConfig = {
   apiKey: "AIzaSyAp1F6t8zgRiJI9xOzFkKJVsCQIT9BWXno",
   authDomain: "tux-cashier-system.firebaseapp.com",
@@ -48,7 +49,6 @@ function ensureFirebase() {
   return { auth, db };
 }
 
-/* --------------------------- APP SETTINGS --------------------------- */
 const SHOP_ID = "tux";
 
 const LS_KEY = "tux_pos_local_state_v1";
@@ -320,7 +320,7 @@ deliveryZoneId: d.deliveryZoneId || "",       // ⬅️ NEW
   };
 }
 
-/* ---------- De-duplicate safety (keep latest per orderNo) ---------- */
+
 function dedupeOrders(list) {
   const byNo = new Map();
   for (const o of list || []) {
@@ -332,7 +332,7 @@ function dedupeOrders(list) {
   );
 }
 
-/* --------------------------- BASE DATA --------------------------- */
+
 const BASE_MENU = [
   { id: 1, name: "Single Smashed Patty", price: 95, uses: {} },
   { id: 2, name: "Double Smashed Patty", price: 140, uses: {} },
@@ -520,8 +520,7 @@ function sumPaymentsByMethod(orders = []) {
 
 
 
-/* ⬇️ ADD THIS BLOCK RIGHT HERE (still top-level, before the App component) */
-// ========== Worker Log helpers ==========
+
 function minutesBetween(a, b) {
   const t1 = +new Date(a);
   const t2 = +new Date(b);
@@ -536,8 +535,8 @@ function sumMinutesForWorker(name, sessions = [], start, end) {
     if (!s || String(s.name || "").toLowerCase() !== n) continue;
     const st = s.start ? new Date(s.start) : null;
     if (!st) continue;
-    const en = s.end ? new Date(s.end) : new Date(); // open session counts up to now
-    // intersect with [start, end]
+    const en = s.end ? new Date(s.end) : new Date(); 
+   
     const S = start ? new Date(start) : st;
     const E = end   ? new Date(end)   : en;
     const segStart = new Date(Math.max(+S, +st));
@@ -583,18 +582,17 @@ const ensureInvIdUnique = (id, list) => {
 
 const inferUnitFromCategoryName = (name) =>
   DEFAULT_INV_UNIT_BY_CATNAME[String(name || "").toLowerCase()] || "piece";
-/* ⬆️ END OF NEW BLOCK */
+
 
 function findInventoryIdForPurchase(row, inventory, purchaseCategories) {
-  // 1) explicit link on the purchase row
+ 
   if (row.ingredientId) return row.ingredientId;
 
-  // 2) try matching category name to inventory name (case-insensitive)
+
   const catName = (purchaseCategories.find(c => c.id === row.categoryId)?.name || "").toLowerCase();
   const byCat = inventory.find(it => it.name.toLowerCase() === catName);
   if (byCat) return byCat.id;
 
-  // 3) fallback: try matching the purchase itemName to an inventory name
   const itemName = String(row.itemName || "").toLowerCase();
   const byItem = inventory.find(it => it.name.toLowerCase() === itemName);
   return byItem ? byItem.id : null;
@@ -613,14 +611,14 @@ const DEFAULT_ADMIN_PINS = {
   6: "6666",
 };
 const norm = (v) => String(v ?? "").trim();
-// Orders eligible for "Void → Expense" are any type other than dine-in or take-away
+
 const isExpenseVoidEligible = (t) => {
   const k = norm(t).toLowerCase();
   return !!k && k !== "take-away" && k !== "take away" && k !== "dine-in" && k !== "dine in";
 };
 
 
-// Bulk delete helper (used at endDay)
+
 async function purgeOrdersInCloud(db, ordersColRef, startDate, endDate) {
   try {
     const startTs = Timestamp.fromDate(startDate);
@@ -649,7 +647,7 @@ async function purgeOrdersInCloud(db, ordersColRef, startDate, endDate) {
   }
 }
 
-/* --------------------------- COUNTER: Atomic orderNo --------------------------- */
+
 async function allocateOrderNoAtomic(db, counterDocRef) {
   const next = await runTransaction(db, async (tx) => {
     const snap = await tx.get(counterDocRef);
@@ -665,8 +663,7 @@ async function allocateOrderNoAtomic(db, counterDocRef) {
   return next;
 }
 
-// ========= HTML thermal printing helpers (outside the component) =========
-function escHtml(s) {
+
   return String(s ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -674,7 +671,7 @@ function escHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
-// Date formatting: dd/mm/yy
+
 function fmtDate(d) {
   const dt = d instanceof Date ? d : new Date(d);
   const dd = String(dt.getDate()).padStart(2, "0");
@@ -686,7 +683,7 @@ function fmtDate(d) {
 
 
 
-// If you ever need date + time later, you can use this:
+
 function fmtDateTime(d) {
   const dt = d instanceof Date ? d : new Date(d);
   const time = dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -768,7 +765,7 @@ function buildReceiptHTML(order, widthMm = 80) {
     </div>
   `
       : "";
-  // NEW: Delivery customer info block (prints only for Delivery)
+
 const deliveryInfoBlock =
   order.orderType === "Delivery"
     ? `
@@ -927,7 +924,7 @@ function printReceiptHTML(order, widthMm = 80, copy = "Customer", images) {
 
   let htmlWritten = false;
   ifr.addEventListener("load", () => {
-    // about:blank load fires first; only print after we've written our HTML
+  
     if (!htmlWritten) return;
     try {
       const w = ifr.contentWindow;
@@ -949,17 +946,17 @@ function printReceiptHTML(order, widthMm = 80, copy = "Customer", images) {
   doc.close();
   htmlWritten = true;
 
-  // safety cleanup
+
   setTimeout(() => { try { if (document.body.contains(ifr)) ifr.remove(); } catch {} }, 12000);
 }
 
-// ---- Customers helpers (module scope) ----
+
 const normalizePhone = (s) => String(s || "").replace(/\D/g, "").slice(0, 11);
 
 const upsertCustomer = (list, rec) => {
   const phone = normalizePhone(rec.phone);
   const without = (list || []).filter(c => normalizePhone(c.phone) !== phone);
-  // New record first; any previous records for that phone are dropped
+
   return [{ ...rec, phone }, ...without];
 };
 
@@ -975,10 +972,10 @@ function dedupeCustomers(list = []) {
   return out;
 }
 
-// Expenses from returned orders are "locked"
+
 const isExpenseLocked = (e) =>
   !!(e?.locked || e?.source === "order_return" || e?.orderNo != null);
-// Bank tx that must never be deleted (auto margin init)
+
 const isBankLocked = (t) =>
   !!(
     t?.locked ||
@@ -991,17 +988,17 @@ const isBankLocked = (t) =>
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("orders");
-  // Which page inside the Admin tab is open
+ 
 const [adminSubTab, setAdminSubTab] = useState("inventory"); 
-  // Worker log state
+ 
 const [workerPins, setWorkerPins] = useState({ ...DEFAULT_WORKER_PINS });
 const [workerRates, setWorkerRates] = useState({ ...DEFAULT_WORKER_RATES });
-// Sessions: {id, name, start:Date, end:Date|null}
+
 const [workerSessions, setWorkerSessions] = useState([]);
 
-// Worker log filters
-const [wlFilter, setWlFilter] = useState("month"); // 'day' | 'month'
-const [wlDay, setWlDay] = useState(new Date().toISOString().slice(0, 10)); // YYYY-MM-DD
+
+const [wlFilter, setWlFilter] = useState("month"); 
+const [wlDay, setWlDay] = useState(new Date().toISOString().slice(0, 10)); 
 const [wlMonth, setWlMonth] = useState(() => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
@@ -1014,11 +1011,11 @@ const [newWorker, setNewWorker] = useState("");
 const [paymentMethods, setPaymentMethods] = useState(DEFAULT_PAYMENT_METHODS);
 const [newPayment, setNewPayment] = useState("");
 
-  // Target margin (0.60 = 60%). Persisted below.
+
 const [targetMarginPct, setTargetMarginPct] = useState(() => {
   const l = loadLocal();
   const v = Number(l?.targetMarginPct);
-  return isFinite(v) ? v : 0.5; // default 50% like your screenshot
+  return isFinite(v) ? v : 0.5; 
 });
 
 
@@ -1056,19 +1053,19 @@ const [inventory, setInventory] = useState(DEFAULT_INVENTORY);
 const [inventoryLocked, setInventoryLocked] = useState(false);
 const [inventorySnapshot, setInventorySnapshot] = useState([]);
 const [inventoryLockedAt, setInventoryLockedAt] = useState(null);
-  // Low-stock UI state + derived list
+
 const [showLowStock, setShowLowStock] = useState(false);
 
 const lowStockItems = useMemo(() => {
   return (inventory || []).filter(it => {
     const min = Number(it.minQty || 0);
-    if (min <= 0) return false; // threshold not set
-    return Number(it.qty || 0) <= min; // at or below threshold
+    if (min <= 0) return false; 
+    return Number(it.qty || 0) <= min; 
   });
 }, [inventory]);
 
 const lowStockCount = lowStockItems.length;
-  // put these BEFORE "// Shift window"
+ 
 const [dayMeta, setDayMeta] = useState({
   startedBy: "",
   currentWorker: "",
@@ -1084,19 +1081,17 @@ const [dayMeta, setDayMeta] = useState({
 const [orders, setOrders] = useState([]);
 const [bankTx, setBankTx] = useState([]);
 const [reconCounts, setReconCounts] = useState({});
-// (If your file had paymentMethods below, move it up here too)
-  // ==== Reconciliation state ====
+
 const [reconSavedBy, setReconSavedBy] = useState("");
-const [reconHistory, setReconHistory] = useState([]); // [{id,savedBy,at,breakdown..., totalVariance}]
+const [reconHistory, setReconHistory] = useState([]);
 
 
 
-// Raw inflow by method (orders in current UI already reflect active shift when realtimeOrders=true)
 const rawInflowByMethod = useMemo(() => sumPaymentsByMethod(orders), [orders]);
 
 
 
-// Expected per method (Reconcile): raw inflow only; no withdrawals/init adjustments
+
 const expectedByMethod = useMemo(() => {
   const out = {};
   for (const m of paymentMethods || []) {
@@ -1108,7 +1103,7 @@ const expectedByMethod = useMemo(() => {
 
 
 
-// Variance (Actual - Expected)
+
 const varianceByMethod = useMemo(() => {
   const out = {};
   for (const m of paymentMethods || []) {
@@ -1119,7 +1114,6 @@ const varianceByMethod = useMemo(() => {
   return out;
 }, [paymentMethods, reconCounts, expectedByMethod]);
 
-  // All-time variance across all saved reconciliations (by payment method)
 const allTimeVarianceByMethod = useMemo(() => {
   const out = {};
   for (const m of paymentMethods || []) out[m] = 0;
@@ -1139,7 +1133,6 @@ const allTimeVarianceTotal = useMemo(
   [allTimeVarianceByMethod]
 );
 
-// Admin-protected: wipe all saved reconciliations (and thus the all-time totals)
 const resetAllReconciliations = () => {
   const okAdmin = !!promptAdminAndPin();
   if (!okAdmin) return;
@@ -1197,7 +1190,6 @@ const saveReconciliation = () => {
   const [newCategoryUnit, setNewCategoryUnit] = useState("piece");
   const [worker, setWorker] = useState("");
   const [payment, setPayment] = useState("");
-  // Split payment support
 const [splitPay, setSplitPay] = useState(false);
 const [payA, setPayA] = useState("");
 const [payB, setPayB] = useState("");
@@ -1208,11 +1200,9 @@ const [newOrderType, setNewOrderType] = useState("");
 const [orderNote, setOrderNote] = useState("");
 const [orderType, setOrderType] = useState(orderTypes[0] || "Take-Away");
 const [deliveryFee, setDeliveryFee] = useState(0);
-  // Delivery customer details (per-order, not persisted globally)
 const [deliveryName, setDeliveryName] = useState("");
 const [deliveryPhone, setDeliveryPhone] = useState("");
 const [deliveryAddress, setDeliveryAddress] = useState("");
-  // ───── Purchases & Zones state ─────                                   
  const [purchaseCategories, setPurchaseCategories] = useState(() =>
    normalizePurchaseCategories(loadLocal().purchaseCategories || [])
  );
@@ -7464,4 +7454,5 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
