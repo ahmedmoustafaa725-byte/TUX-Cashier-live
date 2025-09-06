@@ -29,8 +29,6 @@ const toIso = (v) => {
   const d = new Date(v);
   return isNaN(d) ? null : d.toISOString();
 };
-
-
 /* --------------------------- FIREBASE CONFIG --------------------------- */
 const firebaseConfig = {
   apiKey: "AIzaSyAp1F6t8zgRiJI9xOzFkKJVsCQIT9BWXno",
@@ -40,17 +38,14 @@ const firebaseConfig = {
   messagingSenderId: "978379497015",
   appId: "1:978379497015:web:ea165dcb6873e0c65929b2",
 };
-
 function ensureFirebase() {
   const theApp = getApps().length ? getApp() : initializeApp(firebaseConfig);
   const auth = getAuth(theApp);
   const db = getFirestore(theApp);
   return { auth, db };
 }
-
 /* --------------------------- APP SETTINGS --------------------------- */
 const SHOP_ID = "tux";
-
 const LS_KEY = "tux_pos_local_state_v1";
 function loadLocal() {
   try { return JSON.parse(localStorage.getItem(LS_KEY) || "{}"); }
@@ -93,9 +88,7 @@ const purchases = Array.isArray(state.purchases)
       date: toIso(p.date),
     }))
   : [];
-
-
-  const purchaseCategories = Array.isArray(state.purchaseCategories)
+ const purchaseCategories = Array.isArray(state.purchaseCategories)
     ? state.purchaseCategories
     : [];
 
@@ -104,8 +97,7 @@ const purchases = Array.isArray(state.purchases)
   const deliveryZones = Array.isArray(state.deliveryZones)
     ? state.deliveryZones
     : [];
-
-  return {
+ return {
         workerProfiles,
     workerSessions: (state.workerSessions || []).map(s => ({
       ...s,
@@ -227,7 +219,6 @@ function unpackStateFromCloud(data, fallbackDayMeta = {}) {
     ...r, at: r.at ? new Date(r.at) : new Date()
   }));
 }
-
   if (data.menu) out.menu = data.menu;
   if (data.extras) out.extraList = data.extras;
   if (data.inventory) out.inventory = data.inventory;
@@ -242,19 +233,15 @@ function unpackStateFromCloud(data, fallbackDayMeta = {}) {
   if (typeof data.defaultDeliveryFee === "number")
     out.defaultDeliveryFee = data.defaultDeliveryFee;
     if (Array.isArray(data.workerProfiles)) out.workerProfiles = data.workerProfiles;
-
-  if (Array.isArray(data.workerSessions)) {
+if (Array.isArray(data.workerSessions)) {
     out.workerSessions = data.workerSessions.map(s => ({
       ...s,
       signInAt: s.signInAt ? new Date(s.signInAt) : null,
       signOutAt: s.signOutAt ? new Date(s.signOutAt) : null,
     }));
   }
-
-
   return out;
 }
-
 function normalizeOrderForCloud(order) {
 return {
   orderNo: order.orderNo,
@@ -286,7 +273,6 @@ restockedAt: toIso(order.restockedAt),
   updatedAt: serverTimestamp(),
 };
 }
-
 function orderFromCloudDoc(id, d) {
   const asDate = (v) =>
     v instanceof Timestamp ? v.toDate() : v ? new Date(v) : new Date();
@@ -305,8 +291,7 @@ function orderFromCloudDoc(id, d) {
 deliveryPhone: d.deliveryPhone || "",
 deliveryAddress: d.deliveryAddress || "",
 deliveryZoneId: d.deliveryZoneId || "",       // ⬅️ NEW
-
-    total: Number(d.total || 0),
+total: Number(d.total || 0),
     itemsTotal: Number(d.itemsTotal || 0),
     cashReceived: d.cashReceived != null ? Number(d.cashReceived) : null,
     changeDue: d.changeDue != null ? Number(d.changeDue) : null,
@@ -320,8 +305,6 @@ deliveryZoneId: d.deliveryZoneId || "",       // ⬅️ NEW
     idemKey: d.idemKey || "",
   };
 }
-
-/* ---------- De-duplicate safety (keep latest per orderNo) ---------- */
 function dedupeOrders(list) {
   const byNo = new Map();
   for (const o of list || []) {
@@ -332,8 +315,6 @@ function dedupeOrders(list) {
     (a, b) => +new Date(b.date) - +new Date(a.date)
   );
 }
-
-/* --------------------------- BASE DATA --------------------------- */
 const BASE_MENU = [
   { id: 1, name: "Single Smashed Patty", price: 95, uses: {} },
   { id: 2, name: "Double Smashed Patty", price: 140, uses: {} },
@@ -372,29 +353,20 @@ const DEFAULT_INVENTORY = [
   { id: "meat",   name: "Meat",   unit: "g",     qty: 0, costPerUnit: 0, minQty: 0 },
   { id: "cheese", name: "Cheese", unit: "slices",qty: 0, costPerUnit: 0, minQty: 0 },
 ];
-
-
 const BASE_WORKERS = ["Hassan","Andiel", "Warda", "Ahmed", "Hazem",];
 const DEFAULT_PAYMENT_METHODS = ["Cash", "Card", "Instapay"];
 const DEFAULT_ORDER_TYPES = ["Take-Away", "Dine-in", "Delivery"];
 const DEFAULT_DELIVERY_FEE = 20;
-
-// === WORKERS: default profiles (PIN + hourly rate) ===
 const BASE_WORKER_PROFILES = [
   { id: "w_hassan", name: "Hassan", pin: "1234", rate: 41.67, isActive: false },
   { id: "w_andiel", name: "Andiel", pin: "2345", rate: 31.67, isActive: false },
   { id: "w_warda",  name: "Warda",  pin: "3456", rate: 18.33, isActive: false },
 ];
-// (We keep your old `workers` names too for compatibility in a few dropdowns)
-
 const DEFAULT_ZONES = [
   { id: "zone-a", name: "Zone A (Nearby)", fee: 20 },
   { id: "zone-b", name: "Zone B (Medium)", fee: 30 },
   { id: "zone-c", name: "Zone C (Far)", fee: 40 },
 ];
-
-
-// Normalizes categories that might be strings or objects
 function normalizePurchaseCategories(arr = []) {
   return (arr || []).map((c, i) => {
     if (typeof c === "string") {
@@ -402,7 +374,7 @@ function normalizePurchaseCategories(arr = []) {
       return {
         id: `cat_${i + 1}`,
         name: nm,
-        unit: inferUnitFromCategoryName(nm), // fallback if old format
+        unit: inferUnitFromCategoryName(nm), 
       };
     }
     const nm = c.name || String(c.id || `Cat ${i + 1}`);
@@ -413,19 +385,12 @@ function normalizePurchaseCategories(arr = []) {
     };
   });
 }
-
-
-// Allowed units for Purchases
 const PURCHASE_UNITS = ["kg", "g", "L", "ml", "piece", "pack", "dozen", "bottle", "can", "bag", "box", "carton", "slice", "block","paper"];
-// --- Purchase → Inventory linking & unit conversion (ADD) ---
 const UNIT_MAP = {
-  // mass
   kg: { base: "g",  factor: 1000 },
   g:  { base: "g",  factor: 1 },
-  // volume
   l:  { base: "ml", factor: 1000 },
   ml: { base: "ml", factor: 1 },
-  // counts
   piece:  { base: "piece",  factor: 1 },
   pieces: { base: "piece",  factor: 1 },
   slice:  { base: "slice",  factor: 1 },
@@ -440,18 +405,12 @@ const UNIT_MAP = {
   pcs:   { base: "piece",  factor: 1 },
   pc:    { base: "piece",  factor: 1 },
   unit:  { base: "piece",  factor: 1 },
-
 };
-
-
 function unitPriceToInventoryCost(purchaseUnitPrice, purchaseUnit, invUnit) {
-  // how many inventory units are in 1 purchase unit?
   const qtyInInvUnits = convertToInventoryUnit(1, purchaseUnit, invUnit);
   if (!qtyInInvUnits || !isFinite(qtyInInvUnits) || qtyInInvUnits <= 0) return null;
   return purchaseUnitPrice / qtyInInvUnits; // E£ per inventory unit
 }
-
-
 function convertToInventoryUnit(qty, purchaseUnit, invUnit) {
   const p = UNIT_MAP[String(purchaseUnit || "").toLowerCase()];
   const i = UNIT_MAP[String(invUnit || "").toLowerCase()];
@@ -460,22 +419,16 @@ function convertToInventoryUnit(qty, purchaseUnit, invUnit) {
   const inBase = Number(qty || 0) * p.factor;
   return inBase / i.factor;           // in inventory units
 }
-
-
 function getLatestPurchaseForInv(inventoryItem, purchases, purchaseCategories) {
   let best = null;
   const invName = String(inventoryItem?.name || "").toLowerCase();
 
   for (const p of purchases || []) {
     const when = p?.date instanceof Date ? p.date : new Date(p?.date);
-
-    // 1) Prefer rows explicitly linked by ingredientId
     if (p.ingredientId && p.ingredientId === inventoryItem.id) {
       if (!best || when > best._when) best = { ...p, _when: when };
       continue;
     }
-
-    // 2) Fallback: match purchase category name to inventory name
     if (!p.ingredientId) {
       const catName = (purchaseCategories.find(c => c.id === p.categoryId)?.name || "").toLowerCase();
       if (catName && catName === invName) {
@@ -485,17 +438,8 @@ function getLatestPurchaseForInv(inventoryItem, purchases, purchaseCategories) {
   }
   return best;
 }
-
-
-// Place near other top-level helpers (before the App component)
 const getNextMenuId = (menu=[]) =>
   (menu.reduce((m, it) => Math.max(m, Number(it?.id ?? 0)), 0) || 0) + 1;
-
-
-
-// ==== Cash Drawer / Reconciliation helpers ====
-
-// Sum order inflows by payment method (uses paymentParts if present)
 function sumPaymentsByMethod(orders = []) {
   const m = {};
   for (const o of orders || []) {
@@ -512,12 +456,6 @@ function sumPaymentsByMethod(orders = []) {
   }
   return m;
 }
-
-
-
-
-
-/* ⬇️ ADD THIS BLOCK RIGHT HERE (still top-level, before the App component) */
 const DEFAULT_INV_UNIT_BY_CATNAME = {
   buns: "piece",
   meat: "g",
@@ -528,14 +466,12 @@ const DEFAULT_INV_UNIT_BY_CATNAME = {
   drinks: "bottle",
   packaging: "piece",
 };
-
 const slug = (s) =>
   String(s || "")
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "") || `inv_${Date.now()}`;
-
 const ensureInvIdUnique = (id, list) => {
   const ids = new Set((list || []).map(it => it.id));
   let candidate = id, n = 1;
@@ -544,31 +480,17 @@ const ensureInvIdUnique = (id, list) => {
   }
   return candidate;
 };
-
-
 const inferUnitFromCategoryName = (name) =>
   DEFAULT_INV_UNIT_BY_CATNAME[String(name || "").toLowerCase()] || "piece";
-/* ⬆️ END OF NEW BLOCK */
-
 function findInventoryIdForPurchase(row, inventory, purchaseCategories) {
-  // 1) explicit link on the purchase row
   if (row.ingredientId) return row.ingredientId;
-
-  // 2) try matching category name to inventory name (case-insensitive)
   const catName = (purchaseCategories.find(c => c.id === row.categoryId)?.name || "").toLowerCase();
   const byCat = inventory.find(it => it.name.toLowerCase() === catName);
   if (byCat) return byCat.id;
-
-  // 3) fallback: try matching the purchase itemName to an inventory name
   const itemName = String(row.itemName || "").toLowerCase();
   const byItem = inventory.find(it => it.name.toLowerCase() === itemName);
   return byItem ? byItem.id : null;
 }
-
-
-
-
-
 const DEFAULT_ADMIN_PINS = {
   1: "1111",
   2: "2222",
@@ -578,14 +500,10 @@ const DEFAULT_ADMIN_PINS = {
   6: "6666",
 };
 const norm = (v) => String(v ?? "").trim();
-// Orders eligible for "Void → Expense" are any type other than dine-in or take-away
 const isExpenseVoidEligible = (t) => {
   const k = norm(t).toLowerCase();
   return !!k && k !== "take-away" && k !== "take away" && k !== "dine-in" && k !== "dine in";
 };
-
-
-// Bulk delete helper (used at endDay)
 async function purgeOrdersInCloud(db, ordersColRef, startDate, endDate) {
   try {
     const startTs = Timestamp.fromDate(startDate);
@@ -613,8 +531,6 @@ async function purgeOrdersInCloud(db, ordersColRef, startDate, endDate) {
     return 0;
   }
 }
-
-/* --------------------------- COUNTER: Atomic orderNo --------------------------- */
 async function allocateOrderNoAtomic(db, counterDocRef) {
   const next = await runTransaction(db, async (tx) => {
     const snap = await tx.get(counterDocRef);
@@ -629,8 +545,6 @@ async function allocateOrderNoAtomic(db, counterDocRef) {
   });
   return next;
 }
-
-// ========= HTML thermal printing helpers (outside the component) =========
 function escHtml(s) {
   return String(s ?? "")
     .replace(/&/g, "&amp;")
@@ -638,8 +552,6 @@ function escHtml(s) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
-
-// Date formatting: dd/mm/yy
 function fmtDate(d) {
   const dt = d instanceof Date ? d : new Date(d);
   const dd = String(dt.getDate()).padStart(2, "0");
@@ -647,17 +559,11 @@ function fmtDate(d) {
   const yy = String(dt.getFullYear()).slice(-2);
   return `${dd}/${mm}/${yy}`;
 }
-
-
-
-
-// If you ever need date + time later, you can use this:
 function fmtDateTime(d) {
   const dt = d instanceof Date ? d : new Date(d);
   const time = dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   return `${fmtDate(dt)} ${time}`;
 }
-
 function buildReceiptHTML(order, widthMm = 80) {
   const m = Math.max(0, Math.min(4, 4)); // padding mm
   const currency = (v) => `E£${Number(v || 0).toFixed(2)}`;
@@ -695,9 +601,7 @@ function buildReceiptHTML(order, widthMm = 80) {
         )
         .join("")
     : "";
-
-
-  const rowsHtml = (order.cart || [])
+ const rowsHtml = (order.cart || [])
     .map((ci) => {
       const q = Number(ci.qty || 1);
       const base = `
@@ -733,7 +637,6 @@ function buildReceiptHTML(order, widthMm = 80) {
     </div>
   `
       : "";
-  // NEW: Delivery customer info block (prints only for Delivery)
 const deliveryInfoBlock =
   order.orderType === "Delivery"
     ? `
@@ -744,17 +647,13 @@ const deliveryInfoBlock =
   </div>
 `
     : "";
-
-
- const cashBlock = (() => {
+const cashBlock = (() => {
   if (order.cashReceived == null) return "";
   return `
     <div class="row"><div>Cash Received</div><div>${currency(order.cashReceived)}</div></div>
     <div class="row"><div>Change</div><div>${currency(order.changeDue || 0)}</div></div>
   `;
 })();
-
-
   return `
 <!doctype html>
 <html>
@@ -832,20 +731,15 @@ const deliveryInfoBlock =
 <body>
   <div class="receipt">
     <div class="brand"><img src="/tuxlogo.jpg" alt="TUX logo"></div>
-
-    <div class="title">TUX — Burger Truck</div>
+   <div class="title">TUX — Burger Truck</div>
     <div class="meta address">El-Saada St – Zahraa El-Maadi</div>
-
     <!-- Order meta -->
     <div class="meta">Order No: <strong>#${escHtml(order.orderNo)}</strong></div>
     <div class="meta">Order Date: <strong>${escHtml(orderDateStr)}</strong> • Time: <strong>${escHtml(orderTimeStr)}</strong></div>
     <div class="meta">Worker: ${escHtml(order.worker)} • Payment: ${escHtml(order.payment)} • Type: ${escHtml(order.orderType || "")}</div>
-
     ${noteBlock}
     ${deliveryInfoBlock}
-
     <div class="sep"></div>
-
     <div class="table">
       <div class="thead">
         <div class="th c-item">Item</div>
@@ -855,9 +749,7 @@ const deliveryInfoBlock =
       </div>
       ${rowsHtml}
     </div>
-
     <div class="sep"></div>
-
     <div class="totals">
   <div class="row"><div>Items Subtotal</div><div>${currency(itemsSubtotal)}</div></div>
   ${deliveryFee > 0 ? `<div class="row"><div>Delivery Fee</div><div>${currency(deliveryFee)}</div></div>` : ``}
@@ -866,8 +758,6 @@ const deliveryInfoBlock =
   ${paymentBreakdownHtml}
   ${cashBlock}
 </div>
-
-
     <div class="footer">
       <div class="thanks">Thank you for choosing TUX
 See you soon</div>
@@ -877,22 +767,16 @@ See you soon</div>
       </div>
     </div>
   </div>
-
- 
 </body>
 </html>
 `;
 }
-
 function printReceiptHTML(order, widthMm = 80, copy = "Customer", images) {
   const html = buildReceiptHTML(order, widthMm, copy, images);
-
   const ifr = document.createElement("iframe");
   Object.assign(ifr.style, { position:"fixed", right:0, bottom:0, width:0, height:0, border:0 });
-
   let htmlWritten = false;
   ifr.addEventListener("load", () => {
-    // about:blank load fires first; only print after we've written our HTML
     if (!htmlWritten) return;
     try {
       const w = ifr.contentWindow;
@@ -906,25 +790,18 @@ function printReceiptHTML(order, widthMm = 80, copy = "Customer", images) {
       });
     } catch {}
   });
-
   document.body.appendChild(ifr);
   const doc = ifr.contentDocument || ifr.contentWindow.document;
   doc.open();
   doc.write(html);
   doc.close();
   htmlWritten = true;
-
-  // safety cleanup
   setTimeout(() => { try { if (document.body.contains(ifr)) ifr.remove(); } catch {} }, 12000);
 }
-
-// ---- Customers helpers (module scope) ----
 const normalizePhone = (s) => String(s || "").replace(/\D/g, "").slice(0, 11);
-
 const upsertCustomer = (list, rec) => {
   const phone = normalizePhone(rec.phone);
   const without = (list || []).filter(c => normalizePhone(c.phone) !== phone);
-  // New record first; any previous records for that phone are dropped
   return [{ ...rec, phone }, ...without];
 };
 
@@ -933,55 +810,39 @@ function dedupeCustomers(list = []) {
   const out = [];
   for (const c of list || []) {
     const p = normalizePhone(c.phone);
-    if (seen.has(p)) continue;   // skip older duplicates
+    if (seen.has(p)) continue;  
     seen.add(p);
     out.push({ ...c, phone: p });
   }
   return out;
 }
-
-// Expenses from returned orders are "locked"
 const isExpenseLocked = (e) =>
   !!(e?.locked || e?.source === "order_return" || e?.orderNo != null);
-// Bank tx that must never be deleted (auto margin init)
 const isBankLocked = (t) =>
   !!(
     t?.locked ||
     t?.source === "auto_day_margin" ||
     (t?.type === "init" && /Auto Init from day margin/i.test(t?.note || ""))
   );
-
- 
-
-
 export default function App() {
   const [activeTab, setActiveTab] = useState("orders");
-  // Which page inside the Admin tab is open
 const [adminSubTab, setAdminSubTab] = useState("inventory"); 
-
   const [dark, setDark] = useState(false);
   const [workers, setWorkers] = useState(BASE_WORKERS);
 const [newWorker, setNewWorker] = useState("");
 const [paymentMethods, setPaymentMethods] = useState(DEFAULT_PAYMENT_METHODS);
 const [newPayment, setNewPayment] = useState("");
-
-  // Target margin (0.60 = 60%). Persisted below.
 const [targetMarginPct, setTargetMarginPct] = useState(() => {
   const l = loadLocal();
   const v = Number(l?.targetMarginPct);
   return isFinite(v) ? v : 0.5; // default 50% like your screenshot
 });
-
-
-
 const [newItemName, setNewItemName] = useState("");
 const [newItemPrice, setNewItemPrice] = useState(0);
 const [newItemColor, setNewItemColor] = useState("#ffffff");
-
   const addMenuFromForm = () => {
   const name = String(newItemName || "").trim();
   if (!name) return alert("Name required.");
-
   const id = getNextMenuId(menu);
   setMenu((arr) => [
     ...arr,
@@ -993,20 +854,15 @@ const [newItemColor, setNewItemColor] = useState("#ffffff");
       color: newItemColor || "#ffffff",
     },
   ]);
-
-  // clear inputs
   setNewItemName("");
   setNewItemPrice(0);
   setNewItemColor("#ffffff");
 };
-
 const [inventory, setInventory] = useState(DEFAULT_INVENTORY);
 const [inventoryLocked, setInventoryLocked] = useState(false);
 const [inventorySnapshot, setInventorySnapshot] = useState([]);
 const [inventoryLockedAt, setInventoryLockedAt] = useState(null);
-  // Low-stock UI state + derived list
 const [showLowStock, setShowLowStock] = useState(false);
-
 const lowStockItems = useMemo(() => {
   return (inventory || []).filter(it => {
     const min = Number(it.minQty || 0);
@@ -1014,9 +870,7 @@ const lowStockItems = useMemo(() => {
     return Number(it.qty || 0) <= min; // at or below threshold
   });
 }, [inventory]);
-
 const lowStockCount = lowStockItems.length;
-  // put these BEFORE "// Shift window"
 const [dayMeta, setDayMeta] = useState({
   startedBy: "",
   currentWorker: "",
@@ -1028,25 +882,16 @@ const [dayMeta, setDayMeta] = useState({
   resetAt: null,
   shiftChanges: [],
 });
-// === Worker Profiles & Sessions ===
 const [workerProfiles, setWorkerProfiles] = useState(BASE_WORKER_PROFILES);
-// Every sign-in/out interval is one session
-// { id, name, pin, signInAt: Date, signOutAt: Date|null }
 const [workerSessions, setWorkerSessions] = useState([]);
-
-// Worker Log filter
 const [workerLogFilter, setWorkerLogFilter] = useState("month"); // 'day' | 'month'
 const [workerLogDay, setWorkerLogDay] = useState(() => new Date().toISOString().slice(0,10));
 const [workerLogMonth, setWorkerLogMonth] = useState(() => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
 });
-
-// PIN inputs (Shift bar)
 const [signInPin, setSignInPin] = useState("");
 const [signOutPin, setSignOutPin] = useState("");
-
-// On-duty names
 const activeWorkers = useMemo(() => {
   const open = (workerSessions || []).filter(s => !s.signOutAt);
   const names = [...new Set(open.map(s => s.name))];
@@ -1055,13 +900,9 @@ const activeWorkers = useMemo(() => {
 const [orders, setOrders] = useState([]);
 const [bankTx, setBankTx] = useState([]);
 const [reconCounts, setReconCounts] = useState({});
-// (If your file had paymentMethods below, move it up here too)
-  // ==== Reconciliation state ====
 const [reconSavedBy, setReconSavedBy] = useState("");
 const [reconHistory, setReconHistory] = useState([]); // [{id,savedBy,at,breakdown..., totalVariance}]
-// Raw inflow by method (orders in current UI already reflect active shift when realtimeOrders=true)
 const rawInflowByMethod = useMemo(() => sumPaymentsByMethod(orders), [orders]);
-// Expected per method (Reconcile): raw inflow only; no withdrawals/init adjustments
 const expectedByMethod = useMemo(() => {
   const out = {};
   for (const m of paymentMethods || []) {
@@ -1070,7 +911,6 @@ const expectedByMethod = useMemo(() => {
   }
   return out;
 }, [paymentMethods, rawInflowByMethod]);
-// Variance (Actual - Expected)
 const varianceByMethod = useMemo(() => {
   const out = {};
   for (const m of paymentMethods || []) {
@@ -1080,11 +920,9 @@ const varianceByMethod = useMemo(() => {
   }
   return out;
 }, [paymentMethods, reconCounts, expectedByMethod]);
-
 const allTimeVarianceByMethod = useMemo(() => {
   const out = {};
   for (const m of paymentMethods || []) out[m] = 0;
-
   for (const r of reconHistory || []) {
     const bd = r?.breakdown || {};
     for (const k of Object.keys(bd)) {
@@ -1094,7 +932,6 @@ const allTimeVarianceByMethod = useMemo(() => {
   }
   return out;
 }, [reconHistory, paymentMethods]);
-
 const allTimeVarianceTotal = useMemo(
   () => Object.values(allTimeVarianceByMethod).reduce((s, v) => s + Number(v || 0), 0),
   [allTimeVarianceByMethod]
@@ -1106,7 +943,6 @@ const resetAllReconciliations = () => {
   setReconHistory([]);
   alert("All reconciliations cleared.");
 };
-
 const totalVariance = useMemo(
   () => Object.values(varianceByMethod).reduce((s, v) => s + Number(v || 0), 0),
   [varianceByMethod]
@@ -1115,7 +951,6 @@ const saveReconciliation = () => {
   if (!dayMeta.startedAt) return alert("Start a shift first.");
   const who = String(reconSavedBy || dayMeta.currentWorker || "").trim();
   if (!who) return alert("Select or type who saved it (Saved by).");
-
   const breakdown = {};
   for (const m of paymentMethods || []) {
     const expected = Number(expectedByMethod[m] || 0);
@@ -1149,7 +984,6 @@ const saveReconciliation = () => {
   const [newCategoryUnit, setNewCategoryUnit] = useState("piece");
   const [worker, setWorker] = useState("");
   const [payment, setPayment] = useState("");
-  // Split payment support
 const [splitPay, setSplitPay] = useState(false);
 const [payA, setPayA] = useState("");
 const [payB, setPayB] = useState("");
@@ -1160,23 +994,21 @@ const [newOrderType, setNewOrderType] = useState("");
 const [orderNote, setOrderNote] = useState("");
 const [orderType, setOrderType] = useState(orderTypes[0] || "Take-Away");
 const [deliveryFee, setDeliveryFee] = useState(0);
-  // Delivery customer details (per-order, not persisted globally)
 const [deliveryName, setDeliveryName] = useState("");
 const [deliveryPhone, setDeliveryPhone] = useState("");
 const [deliveryAddress, setDeliveryAddress] = useState("");
-  // ───── Purchases & Zones state ─────                                   
  const [purchaseCategories, setPurchaseCategories] = useState(() =>
    normalizePurchaseCategories(loadLocal().purchaseCategories || [])
  );
-const [purchases, setPurchases] = useState([]); // {id, categoryId, ingredientId?, itemName, unit, qty, unitPrice, date: Date}
-const [purchaseFilter, setPurchaseFilter] = useState("day"); // 'day' | 'month' | 'year'
+const [purchases, setPurchases] = useState([]);
+const [purchaseFilter, setPurchaseFilter] = useState("day");
 const [purchaseCatFilterId, setPurchaseCatFilterId] = useState("");
 const [purchaseDay, setPurchaseDay] = useState(
-  new Date().toISOString().slice(0, 10) // YYYY-MM-DD
+  new Date().toISOString().slice(0, 10) 
 );
 const [purchaseMonth, setPurchaseMonth] = useState(() => {
   const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; // YYYY-MM
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 });
 const [showAllCats, setShowAllCats] = useState(true);
 const [newPurchase, setNewPurchase] = useState({
@@ -1186,27 +1018,24 @@ const [newPurchase, setNewPurchase] = useState({
   qty: 1,
   unitPrice: "",
   date: new Date().toISOString().slice(0, 10),
-  ingredientId: "", // <-- NEW: link this purchase to an inventory item (optional)
+  ingredientId: "", 
 });
 
   
-const [deliveryZoneId, setDeliveryZoneId] = useState("");               // ⬅️ NEW
-const [customers, setCustomers] = useState([]);                         // {phone,name,address,zoneId}
-const [deliveryZones, setDeliveryZones] = useState(DEFAULT_ZONES);      // ⬅️ NEW
-  // --- Delivery Zones editor (Settings) ---
+const [deliveryZoneId, setDeliveryZoneId] = useState("");               
+const [customers, setCustomers] = useState([]);                         
+const [deliveryZones, setDeliveryZones] = useState(DEFAULT_ZONES);    
 const [newZoneName, setNewZoneName] = useState("");
 const [newZoneFee, setNewZoneFee] = useState(0);
-
 const addZone = () => {
   const nm = String(newZoneName || "").trim();
   if (!nm) return alert("Enter a zone name.");
   const fee = Math.max(0, Number(newZoneFee || 0));
-  const id = ensureInvIdUnique(slug(nm), deliveryZones); // you already have slug() & ensureInvIdUnique()
+  const id = ensureInvIdUnique(slug(nm), deliveryZones);
   setDeliveryZones((z) => [...z, { id, name: nm, fee }]);
   setNewZoneName("");
   setNewZoneFee(0);
 };
-
 const removeZone = (id) => {
   const z = deliveryZones.find((d) => d.id === id);
   if (!z) return;
@@ -1217,17 +1046,11 @@ const removeZone = (id) => {
 };
 
 const [newCategoryName, setNewCategoryName] = useState("");
-
-
-
 const [cashReceived, setCashReceived] = useState(0);
 const [newInvName, setNewInvName] = useState("");
 const [newInvUnit, setNewInvUnit] = useState("");
 const [newInvQty, setNewInvQty] = useState(0);
-
-
   const [adminPins, setAdminPins] = useState({ ...DEFAULT_ADMIN_PINS });
-  // Simple PIN check for a specific Admin number (1..6)
 const verifyAdminPin = (n) => {
   const expected = norm(adminPins[n] || "");
   if (!expected) {
@@ -1238,8 +1061,6 @@ const verifyAdminPin = (n) => {
   if (entered == null) return false;
   return norm(entered) === expected;
 };
-
-// Lock/unlock a specific Admin "slot" (if your UI uses per-admin locks)
 const lockAdminPin = (n) => {
   setUnlockedPins((u) => ({ ...u, [n]: false }));
 };
@@ -1248,11 +1069,9 @@ const unlockAdminPin = (n) => {
   if (!verifyAdminPin(n)) return;
   setUnlockedPins((u) => ({ ...u, [n]: true }));
 };
-
   const [unlockedPins, setUnlockedPins] = useState({}); 
   const [nextOrderNo, setNextOrderNo] = useState(1);
   const [expenses, setExpenses] = useState([]);
-  // 🔒 Safety-net: never allow locked expenses (from returned orders) to disappear
 const lastLockedRef = useRef([]);
 useEffect(() => {
   const lockedNow = (expenses || []).filter(isExpenseLocked);
@@ -1260,7 +1079,6 @@ useEffect(() => {
     prev => !lockedNow.some(cur => cur.id === prev.id)
   );
   if (missing.length) {
-    // Put them back in front — unremoveable by design
     setExpenses(arr => [...missing, ...arr]);
   }
   lastLockedRef.current = lockedNow;
@@ -7302,6 +7120,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
