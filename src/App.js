@@ -77,6 +77,7 @@ function packStateForCloud(state) {
     inventorySnapshot,
     inventoryLockedAt,
     adminPins,
+    workerProfiles, workerSessions,
     orderTypes,
     defaultDeliveryFee,
     expenses,
@@ -104,16 +105,15 @@ const purchases = Array.isArray(state.purchases)
     : [];
 
   return {
-    version: 1,
-    updatedAt: serverTimestamp(),
-        workerPins: state.workerPins || {},
-    workerRates: state.workerRates || {},
+        workerProfiles,
     workerSessions: (state.workerSessions || []).map(s => ({
       ...s,
-      start: toIso(s.start),
-      end: toIso(s.end),
+      signInAt: toIso(s.signInAt),
+      signOutAt: toIso(s.signOutAt),
     })),
 
+    version: 1,
+    updatedAt: serverTimestamp(),
     menu,
     extras: extraList,
     orders: (orders || []).map((o) => ({
@@ -240,13 +240,13 @@ function unpackStateFromCloud(data, fallbackDayMeta = {}) {
   if (Array.isArray(data.orderTypes)) out.orderTypes = data.orderTypes;
   if (typeof data.defaultDeliveryFee === "number")
     out.defaultDeliveryFee = data.defaultDeliveryFee;
-    if (data.workerPins) out.workerPins = data.workerPins;
-  if (data.workerRates) out.workerRates = data.workerRates;
+    if (Array.isArray(data.workerProfiles)) out.workerProfiles = data.workerProfiles;
+
   if (Array.isArray(data.workerSessions)) {
     out.workerSessions = data.workerSessions.map(s => ({
       ...s,
-      start: s.start ? new Date(s.start) : null,
-      end: s.end ? new Date(s.end) : null,
+      signInAt: s.signInAt ? new Date(s.signInAt) : null,
+      signOutAt: s.signOutAt ? new Date(s.signOutAt) : null,
     }));
   }
 
@@ -377,24 +377,20 @@ const BASE_WORKERS = ["Hassan","Andiel", "Warda", "Ahmed", "Hazem",];
 const DEFAULT_PAYMENT_METHODS = ["Cash", "Card", "Instapay"];
 const DEFAULT_ORDER_TYPES = ["Take-Away", "Dine-in", "Delivery"];
 const DEFAULT_DELIVERY_FEE = 20;
-// ---- Delivery zones (editable in Settings) ----                         // ⬅️ NEW
+
+// === WORKERS: default profiles (PIN + hourly rate) ===
+const BASE_WORKER_PROFILES = [
+  { id: "w_hassan", name: "Hassan", pin: "1234", rate: 41.67, isActive: false },
+  { id: "w_andiel", name: "Andiel", pin: "2345", rate: 31.67, isActive: false },
+  { id: "w_warda",  name: "Warda",  pin: "3456", rate: 18.33, isActive: false },
+];
+// (We keep your old `workers` names too for compatibility in a few dropdowns)
+
 const DEFAULT_ZONES = [
   { id: "zone-a", name: "Zone A (Nearby)", fee: 20 },
   { id: "zone-b", name: "Zone B (Medium)", fee: 30 },
   { id: "zone-c", name: "Zone C (Far)", fee: 40 },
 ];
-
-// Default Worker PINs and Hourly Rates
-const DEFAULT_WORKER_PINS = {
-  Hassan: "1111",
-  Andiel: "2222",
-  Warda:  "3333",
-};
-const DEFAULT_WORKER_RATES = {
-  Hassan: Number((500 / 12).toFixed(4)),  // 12h full shift
-  Andiel: Number((380 / 12).toFixed(4)),
-  Warda:  Number((220 / 12).toFixed(4)),
-};
 
 
 // Normalizes categories that might be strings or objects
@@ -521,38 +517,6 @@ function sumPaymentsByMethod(orders = []) {
 
 
 /* ⬇️ ADD THIS BLOCK RIGHT HERE (still top-level, before the App component) */
-// ========== Worker Log helpers ==========
-function minutesBetween(a, b) {
-  const t1 = +new Date(a);
-  const t2 = +new Date(b);
-  if (!isFinite(t1) || !isFinite(t2)) return 0;
-  return Math.max(0, Math.round((t2 - t1) / 60000));
-}
-
-function sumMinutesForWorker(name, sessions = [], start, end) {
-  const n = String(name || "").trim().toLowerCase();
-  let mins = 0;
-  for (const s of sessions || []) {
-    if (!s || String(s.name || "").toLowerCase() !== n) continue;
-    const st = s.start ? new Date(s.start) : null;
-    if (!st) continue;
-    const en = s.end ? new Date(s.end) : new Date(); // open session counts up to now
-    // intersect with [start, end]
-    const S = start ? new Date(start) : st;
-    const E = end   ? new Date(end)   : en;
-    const segStart = new Date(Math.max(+S, +st));
-    const segEnd   = new Date(Math.min(+E, +en));
-    if (segEnd > segStart) mins += minutesBetween(segStart, segEnd);
-  }
-  return mins;
-}
-
-function hoursFromMinutes(mins) {
-  return Number((Number(mins || 0) / 60).toFixed(2));
-}
-
-
-
 const DEFAULT_INV_UNIT_BY_CATNAME = {
   buns: "piece",
   meat: "g",
@@ -993,20 +957,6 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("orders");
   // Which page inside the Admin tab is open
 const [adminSubTab, setAdminSubTab] = useState("inventory"); 
-  // Worker log state
-const [workerPins, setWorkerPins] = useState({ ...DEFAULT_WORKER_PINS });
-const [workerRates, setWorkerRates] = useState({ ...DEFAULT_WORKER_RATES });
-// Sessions: {id, name, start:Date, end:Date|null}
-const [workerSessions, setWorkerSessions] = useState([]);
-
-// Worker log filters
-const [wlFilter, setWlFilter] = useState("month"); // 'day' | 'month'
-const [wlDay, setWlDay] = useState(new Date().toISOString().slice(0, 10)); // YYYY-MM-DD
-const [wlMonth, setWlMonth] = useState(() => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
-});
-
 
   const [dark, setDark] = useState(false);
   const [workers, setWorkers] = useState(BASE_WORKERS);
@@ -1021,10 +971,8 @@ const [targetMarginPct, setTargetMarginPct] = useState(() => {
   return isFinite(v) ? v : 0.5; // default 50% like your screenshot
 });
 
-
-
-
-
+const [workerProfiles, setWorkerProfiles] = useState([]);  
+const [workerSessions, setWorkerSessions] = useState([]);   
 
 const [newItemName, setNewItemName] = useState("");
 const [newItemPrice, setNewItemPrice] = useState(0);
@@ -1080,6 +1028,31 @@ const [dayMeta, setDayMeta] = useState({
   resetAt: null,
   shiftChanges: [],
 });
+// === Worker Profiles & Sessions ===
+const [workerProfiles, setWorkerProfiles] = useState(BASE_WORKER_PROFILES);
+// Every sign-in/out interval is one session
+// { id, name, pin, signInAt: Date, signOutAt: Date|null }
+const [workerSessions, setWorkerSessions] = useState([]);
+
+// Worker Log filter
+const [workerLogFilter, setWorkerLogFilter] = useState("month"); // 'day' | 'month'
+const [workerLogDay, setWorkerLogDay] = useState(() => new Date().toISOString().slice(0,10));
+const [workerLogMonth, setWorkerLogMonth] = useState(() => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+});
+
+// PIN inputs (Shift bar)
+const [signInPin, setSignInPin] = useState("");
+const [signOutPin, setSignOutPin] = useState("");
+
+// On-duty names
+const activeWorkers = useMemo(() => {
+  const open = (workerSessions || []).filter(s => !s.signOutAt);
+  const names = [...new Set(open.map(s => s.name))];
+  return names;
+}, [workerSessions]);
+
 
 const [orders, setOrders] = useState([]);
 const [bankTx, setBankTx] = useState([]);
@@ -1563,18 +1536,7 @@ useEffect(() => {
   if (localHydrated) return;
   const l = loadLocal();
   if (l.menu) setMenu(l.menu);
-    if (l.workerPins) setWorkerPins({ ...DEFAULT_WORKER_PINS, ...l.workerPins });
-  if (l.workerRates) setWorkerRates({ ...DEFAULT_WORKER_RATES, ...l.workerRates });
-  if (Array.isArray(l.workerSessions)) {
-    setWorkerSessions(
-      l.workerSessions.map(s => ({
-        ...s,
-        start: s.start ? new Date(s.start) : null,
-        end: s.end ? new Date(s.end) : null,
-      }))
-    );
-  }
-
+  
   if (l.extraList) setExtraList(l.extraList);
   if (l.workers) setWorkers(l.workers);
   if (l.paymentMethods) setPaymentMethods(l.paymentMethods);
@@ -1583,6 +1545,14 @@ useEffect(() => {
   if (l.inventory) setInventory(l.inventory);
   if (l.adminPins) setAdminPins((prev) => ({ ...prev, ...l.adminPins }));
   if (typeof l.dark === "boolean") setDark(l.dark);
+  if (Array.isArray(l.workerProfiles)) setWorkerProfiles(l.workerProfiles);
+  if (Array.isArray(l.workerSessions)) {
+    setWorkerSessions(l.workerSessions.map(s => ({
+      ...s,
+      signInAt: s.signInAt ? new Date(s.signInAt) : null,
+      signOutAt: s.signOutAt ? new Date(s.signOutAt) : null,
+    })));
+  }
 
   if (Array.isArray(l.reconHistory)) {
   setReconHistory(l.reconHistory.map(r => ({ ...r, at: r.at ? new Date(r.at) : new Date() })));
@@ -1642,18 +1612,6 @@ if (Array.isArray(l.deliveryZones)) setDeliveryZones(l.deliveryZones); // ⬅️
 }, [localHydrated]);
 /* === END ADD === */
 /* === MIRROR TO LOCAL (all tabs & settings) === */
-  useEffect(() => { saveLocalPartial({ workerPins }); }, [workerPins]);
-useEffect(() => { saveLocalPartial({ workerRates }); }, [workerRates]);
-useEffect(() => {
-  saveLocalPartial({
-    workerSessions: workerSessions.map(s => ({
-      ...s,
-      start: toIso(s.start),
-      end: toIso(s.end),
-    }))
-  });
-}, [workerSessions]);
-
 useEffect(() => { saveLocalPartial({ menu }); }, [menu]);
   useEffect(() => {
 saveLocalPartial({
@@ -1661,7 +1619,17 @@ saveLocalPartial({
 });
 
 }, [purchases]); // ⬅️ NEW
-  
+  useEffect(() => { saveLocalPartial({ workerProfiles }); }, [workerProfiles]);
+useEffect(() => {
+  saveLocalPartial({
+    workerSessions: (workerSessions || []).map(s => ({
+      ...s,
+      signInAt: toIso(s.signInAt),
+      signOutAt: toIso(s.signOutAt),
+    }))
+  });
+}, [workerSessions]);
+
 
   useEffect(() => { saveLocalPartial({ adminSubTab }); }, [adminSubTab]);
 useEffect(() => {
@@ -1852,9 +1820,6 @@ useEffect(() => {
           if (unpacked.workers) setWorkers(unpacked.workers);
           if (unpacked.paymentMethods) setPaymentMethods(unpacked.paymentMethods);
           if (unpacked.customers) setCustomers(dedupeCustomers(unpacked.customers));
-          if (unpacked.workerPins) setWorkerPins({ ...DEFAULT_WORKER_PINS, ...unpacked.workerPins });
-          if (unpacked.workerRates) setWorkerRates({ ...DEFAULT_WORKER_RATES, ...unpacked.workerRates });
-          if (unpacked.workerSessions) setWorkerSessions(unpacked.workerSessions);
 
           if (unpacked.inventoryLocked != null)
             setInventoryLocked(unpacked.inventoryLocked);
@@ -1870,6 +1835,9 @@ useEffect(() => {
           if (unpacked.expenses) setExpenses(unpacked.expenses);
           if (unpacked.dayMeta) setDayMeta(unpacked.dayMeta);
           if (unpacked.bankTx) setBankTx(unpacked.bankTx);
+                  if (unpacked.workerProfiles) setWorkerProfiles(unpacked.workerProfiles);
+        if (unpacked.workerSessions) setWorkerSessions(unpacked.workerSessions);
+
            if (unpacked.purchases) setPurchases(unpacked.purchases);
        if (unpacked.purchaseCategories) {
    setPurchaseCategories(normalizePurchaseCategories(unpacked.purchaseCategories));
@@ -1963,6 +1931,8 @@ if (ts && lastLocalEditAt && ts < lastLocalEditAt) return;
       const unpacked = unpackStateFromCloud(data, dayMeta);
       if (!realtimeOrders && unpacked.orders) setOrders(unpacked.orders);
       if (unpacked.menu) setMenu(unpacked.menu);
+if (unpacked.workerProfiles) setWorkerProfiles(unpacked.workerProfiles);
+if (unpacked.workerSessions) setWorkerSessions(unpacked.workerSessions);
 
       if (unpacked.extraList) setExtraList(unpacked.extraList);
       if (unpacked.inventory) setInventory(unpacked.inventory);
@@ -2010,10 +1980,8 @@ if (ts && lastLocalEditAt && ts < lastLocalEditAt) return;
       inventory,
       nextOrderNo,
        reconHistory,
-          workerPins,
-    workerRates,
-    workerSessions,
-
+       workerProfiles,
+  workerSessions,
       dark,
       workers,
       paymentMethods,
@@ -2082,6 +2050,9 @@ useEffect(() => {
         purchaseCategories,
         customers,
         deliveryZones,
+        workerProfiles,
+workerSessions,
+
         dayMeta,
         bankTx,
          realtimeOrders,
@@ -2239,6 +2210,145 @@ function getPeriodRange(kind, dayMeta, dayStr, monthStr) {
   const end   = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
   return [start, end];
 }
+// === Worker helpers ===
+const normPin = (p) => String(p || "").trim();
+
+const findWorkerByPin = (pin) => {
+  const p = normPin(pin);
+  if (!p) return null;
+  return (workerProfiles || []).find(w => normPin(w.pin) === p);
+};
+
+const startDayIfNeeded = (starterName) => {
+  if (dayMeta.startedAt) return;
+  // start the day on first sign-in
+  setDayMeta({
+    startedBy: starterName || "",
+    currentWorker: starterName || "",
+    startedAt: new Date(),
+    endedAt: null,
+    endedBy: "",
+    lastReportAt: null,
+    resetBy: "",
+    resetAt: null,
+    shiftChanges: [],
+  });
+  // Lock inventory prompt like your old Start Shift
+  if (!inventoryLocked && inventory.length) {
+    if (window.confirm("Lock current Inventory as Start-of-Day snapshot?")) {
+      lockInventoryForDay();
+    }
+  }
+};
+
+const signInByPin = (pin) => {
+  const prof = findWorkerByPin(pin);
+  if (!prof) return alert("Invalid PIN.");
+  startDayIfNeeded(prof.name);
+
+  // Already on duty?
+  const open = (workerSessions || []).find(s => !s.signOutAt && s.name === prof.name);
+  if (open) {
+    alert(`${prof.name} is already on duty.`);
+    return;
+  }
+
+  const sess = {
+    id: `ws_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+    name: prof.name,
+    pin: prof.pin,
+    signInAt: new Date(),
+    signOutAt: null,
+  };
+  setWorkerSessions(arr => [sess, ...arr]);
+
+  // also mark "currentWorker" for display
+  setDayMeta(d => ({ ...d, currentWorker: prof.name }));
+};
+
+const signOutByPin = (pin) => {
+  const prof = findWorkerByPin(pin);
+  if (!prof) return alert("Invalid PIN.");
+
+  const open = (workerSessions || []).filter(s => !s.signOutAt);
+  if (open.length <= 1) {
+    // last worker rule
+    alert("Cannot sign out the only on-duty worker. Please End the Day.");
+    return;
+  }
+
+  const idx = (workerSessions || []).findIndex(s => !s.signOutAt && s.name === prof.name);
+  if (idx < 0) {
+    alert(`${prof.name} is not currently on duty.`);
+    return;
+  }
+
+  setWorkerSessions(list => {
+    const copy = [...list];
+    copy[idx] = { ...copy[idx], signOutAt: new Date() };
+    return copy;
+  });
+
+  // Update currentWorker to someone still on duty (if current signed out)
+  const stillOpenNames = open.map(s => s.name).filter(n => n !== prof.name);
+  if (stillOpenNames.length) {
+    setDayMeta(d => ({ ...d, currentWorker: stillOpenNames[0] }));
+  } else {
+    setDayMeta(d => ({ ...d, currentWorker: "" }));
+  }
+};
+
+// Close any open sessions at a given end time (used by End Day)
+const closeOpenSessionsAt = (endTime) => {
+  setWorkerSessions(list =>
+    list.map(s => !s.signOutAt ? { ...s, signOutAt: endTime } : s)
+  );
+};
+
+// Compute hours in a period for a worker
+const sumHoursForWorker = (name, sessions, start, end) => {
+  const rows = (sessions || []).filter(s => s.name === name);
+  let hours = 0;
+  for (const s of rows) {
+    const a = s.signInAt instanceof Date ? s.signInAt : new Date(s.signInAt);
+    const b = s.signOutAt ? (s.signOutAt instanceof Date ? s.signOutAt : new Date(s.signOutAt)) : (end || new Date());
+    // keep only overlapping part with [start,end]
+    const from = new Date(Math.max(+a, +start));
+    const to   = new Date(Math.min(+b, +end));
+    if (to > from) hours += (to - from) / (1000 * 60 * 60);
+  }
+  return Number(hours.toFixed(2));
+};
+
+// Period for worker logs
+const [wStart, wEnd] = useMemo(() => {
+  return getPeriodRange(workerLogFilter, dayMeta, workerLogDay, workerLogMonth);
+}, [workerLogFilter, workerLogDay, workerLogMonth, dayMeta]);
+
+// Stats for worker log
+const workerNamesKnown = useMemo(() => {
+  // from profiles + any name that ever signed
+  const set = new Set((workerProfiles || []).map(p => p.name));
+  for (const s of workerSessions || []) set.add(s.name);
+  return Array.from(set);
+}, [workerProfiles, workerSessions]);
+
+const workerMonthlyStats = useMemo(() => {
+  const rows = [];
+  for (const nm of workerNamesKnown) {
+    const hrs = sumHoursForWorker(nm, workerSessions, wStart, wEnd);
+    const prof = (workerProfiles || []).find(p => p.name === nm);
+    const rate = prof ? Number(prof.rate || 0) : 0;
+    const pay  = Number((hrs * rate).toFixed(2));
+    rows.push({ name: nm, hours: hrs, rate, pay });
+  }
+  return rows.sort((a,b) => a.name.localeCompare(b.name));
+}, [workerNamesKnown, workerSessions, workerProfiles, wStart, wEnd]);
+
+const workerMonthlyTotalPay = useMemo(
+  () => workerMonthlyStats.reduce((s, r) => s + Number(r.pay || 0), 0),
+  [workerMonthlyStats]
+);
 
 
 
@@ -2268,97 +2378,6 @@ function getPeriodRange(kind, dayMeta, dayStr, monthStr) {
     }
     return n;
   };
-  // ===== Worker Sign-In / Sign-Out =====
-function validatePin(name, pin) {
-  const exp = String(workerPins?.[name] || "").trim();
-  return exp && String(pin || "").trim() === exp;
-}
-
-function signInWithPin() {
-  // Ask for worker name
-  let name = window.prompt("Enter worker name (e.g., Hassan, Andiel, Warda):", "");
-  name = String(name || "").trim();
-  if (!name) return;
-
-  // If worker not in list, optionally add
-  if (!workers.includes(name)) {
-    const ok = window.confirm(`"${name}" is not in Workers. Add now?`);
-    if (!ok) return;
-    setWorkers(arr => [...arr, name]);
-    // Seed defaults
-    setWorkerPins(p => ({ ...p, [name]: "0000" }));
-    setWorkerRates(r => ({ ...r, [name]: 0 }));
-  }
-
-  // Ask PIN
-  const pin = window.prompt(`Enter PIN for ${name}:`, "");
-  if (pin == null) return;
-
-  // If no PIN set yet, allow initializing it
-  if (!workerPins?.[name]) {
-    const ok = window.confirm(`No PIN for ${name}. Set PIN to "${pin}" now?`);
-    if (!ok) return;
-    setWorkerPins(p => ({ ...p, [name]: String(pin).trim() }));
-  } else if (!validatePin(name, pin)) {
-    alert("Invalid PIN.");
-    return;
-  }
-
-  // Start shift if not started
-  const now = new Date();
-  if (!dayMeta.startedAt) {
-    setDayMeta({
-      startedBy: name,
-      currentWorker: name, // legacy single field
-      startedAt: now,
-      endedAt: null,
-      endedBy: "",
-      lastReportAt: null,
-      resetBy: "",
-      resetAt: null,
-      shiftChanges: [],
-    });
-    // Optional: lock inventory snapshot like your old startShift
-    if (!inventoryLocked && inventory.length) {
-      if (window.confirm("Lock current Inventory as Start-of-Day snapshot?")) {
-        lockInventoryForDay();
-      }
-    }
-  } else {
-    // keep legacy currentWorker = last signer (doesn't affect on-duty list)
-    setDayMeta(d => ({ ...d, currentWorker: name }));
-  }
-
-  // Prevent duplicate open session
-  const open = (workerSessions || []).find(s => s.name === name && !s.end);
-  if (open) {
-    alert(`${name} is already signed in.`);
-    return;
-  }
-
-  const rec = { id: `ws_${Date.now()}`, name, start: now, end: null };
-  setWorkerSessions(arr => [rec, ...arr]);
-  alert(`${name} signed in.`);
-}
-
-function signOutWorker(name) {
-  const active = (workerSessions || []).filter(s => !s.end);
-  if (active.length <= 1) {
-    alert("Cannot sign out the last on-duty worker. End the Day first.");
-    return;
-  }
-  const idx = (workerSessions || []).findIndex(s => s.name === name && !s.end);
-  if (idx < 0) {
-    alert(`${name} has no active session.`);
-    return;
-  }
-  const now = new Date();
-  setWorkerSessions(arr =>
-    arr.map((s, i) => (i === idx ? { ...s, end: now } : s))
-  );
-  alert(`${name} signed out.`);
-}
-
 
   const lockInventoryForDay = () => {
     if (inventoryLocked) return;
@@ -2405,8 +2424,6 @@ function signOutWorker(name) {
     const metaForReport = { ...dayMeta, endedAt: endTime, endedBy: endBy };
 
     generatePDF(false, metaForReport);
-    // Auto-close any open worker sessions at end time
-    setWorkerSessions(arr => arr.map(s => s.end ? s : { ...s, end: endTime }));
 
     if (cloudEnabled && ordersColRef && fbUser && db) {
       try {
@@ -2470,7 +2487,8 @@ function signOutWorker(name) {
       });
     }
     if (txs.length) setBankTx((arr) => [...txs, ...arr]);
-
+    // Close any open worker sessions at end time
+    closeOpenSessionsAt(endTime);
     setOrders([]);
     setNextOrderNo(1);
     setInventoryLocked(false);
@@ -3684,7 +3702,7 @@ const generatePurchasesPDF = () => {
 
 
 
-{/* Shift Control Bar */}
+      {/* Shift Control Bar */}
 <div
   style={{
     padding: 10,
@@ -3700,105 +3718,71 @@ const generatePurchasesPDF = () => {
   {!dayMeta.startedAt ? (
     <>
       <span><b>Shift not started.</b></span>
-      <button
-        onClick={signInWithPin}
-        style={{
-          background: "#2e7d32",
-          color: "#fff",
-          border: "none",
-          borderRadius: 6,
-          padding: "6px 10px",
-          cursor: "pointer",
-        }}
-      >
-        Sign In (PIN)
-      </button>
-      <small style={{ opacity: 0.8 }}>
-        First sign-in starts the day and marks “Started by”.
-      </small>
+      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+        <input
+          type="password"
+          placeholder="PIN"
+          value={signInPin}
+          onChange={(e) => setSignInPin(e.target.value)}
+          style={{ padding:6, border:`1px solid ${btnBorder}`, borderRadius:6, width:140 }}
+        />
+        <button
+          onClick={() => { signInByPin(signInPin); setSignInPin(""); }}
+          style={{ background:"#2e7d32", color:"#fff", border:"none", borderRadius:6, padding:"6px 10px", cursor:"pointer" }}
+        >
+          Sign in
+        </button>
+      </div>
+      <small style={{ opacity:.8 }}>First sign-in starts the shift automatically.</small>
     </>
   ) : (
     <>
       <span>
-        Started by <b>{dayMeta.startedBy}</b> at <b>{fmtDate(dayMeta.startedAt)}</b>
+        Started by <b>{dayMeta.startedBy || "-"}</b> at <b>{fmtDate(dayMeta.startedAt)}</b>
       </span>
 
-      {/* Show on-duty list with sign-out buttons */}
-      <div style={{
-        display:"inline-flex",
-        gap:6,
-        alignItems:"center",
-        padding:"4px 8px",
-        borderRadius:6,
-        border:`1px solid ${btnBorder}`,
-        background: dark ? "#1b1b1b" : "#fff",
-      }}>
-        <span style={{ fontWeight:700 }}>On duty:</span>
-        {(() => {
-          const onDuty = (workerSessions || []).filter(s => !s.end);
-          if (!onDuty.length) return <span style={{opacity:.7}}>—</span>;
-          return onDuty.map(s => (
-            <span key={s.id} style={{ display:"inline-flex", alignItems:"center", gap:6 }}>
-              {s.name}
-              <button
-                onClick={() => signOutWorker(s.name)}
-                style={{
-                  padding:"2px 6px",
-                  borderRadius:6,
-                  border:`1px solid ${btnBorder}`,
-                  background:"#ef5350",
-                  color:"#fff",
-                  cursor:"pointer"
-                }}
-                title={`Sign out ${s.name}`}
-              >
-                Out
-              </button>
-            </span>
-          ));
-        })()}
+      <div style={{ marginLeft: 8 }}>
+        <b>On duty:</b>{" "}
+        {activeWorkers.length ? activeWorkers.join(", ") : "—"}
+      </div>
+
+      {/* Sign-in */}
+      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+        <input
+          type="password"
+          placeholder="PIN to sign in"
+          value={signInPin}
+          onChange={(e) => setSignInPin(e.target.value)}
+          style={{ padding:6, border:`1px solid ${btnBorder}`, borderRadius:6, width:140 }}
+        />
+        <button
+          onClick={() => { signInByPin(signInPin); setSignInPin(""); }}
+          style={{ background:"#1976d2", color:"#fff", border:"none", borderRadius:6, padding:"6px 10px", cursor:"pointer" }}
+        >
+          Sign in
+        </button>
+      </div>
+
+      {/* Sign-out */}
+      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+        <input
+          type="password"
+          placeholder="PIN to sign out"
+          value={signOutPin}
+          onChange={(e) => setSignOutPin(e.target.value)}
+          style={{ padding:6, border:`1px solid ${btnBorder}`, borderRadius:6, width:140 }}
+        />
+        <button
+          onClick={() => { signOutByPin(signOutPin); setSignOutPin(""); }}
+          style={{ background:"#455a64", color:"#fff", border:"none", borderRadius:6, padding:"6px 10px", cursor:"pointer" }}
+        >
+          Sign out
+        </button>
       </div>
 
       <button
-        onClick={signInWithPin}
-        style={{
-          background: "#1565c0",
-          color: "white",
-          border: "none",
-          borderRadius: 6,
-          padding: "6px 10px",
-          cursor: "pointer",
-        }}
-      >
-        Sign In (PIN)
-      </button>
-
-      <button
-        onClick={() => generatePDF()}
-        style={{
-          background: "#7e57c2",
-          color: "white",
-          border: "none",
-          borderRadius: 6,
-          padding: "6px 10px",
-          cursor: "pointer",
-        }}
-      >
-        Download PDF Report
-      </button>
-
-      {/* Removed Change Shift button */}
-
-      <button
         onClick={endDay}
-        style={{
-          background: "#e53935",
-          color: "white",
-          border: "none",
-          borderRadius: 6,
-          padding: "6px 10px",
-          cursor: "pointer",
-        }}
+        style={{ background:"#e53935", color:"white", border:"none", borderRadius:6, padding:"6px 10px", cursor:"pointer" }}
       >
         End the Day (requires PDF)
       </button>
@@ -3897,7 +3881,7 @@ const generatePurchasesPDF = () => {
       ["purchases", "Purchases"],
       ["cogs", "COGS"],
       ["bank", "Bank"],
-        ["workerlog", "Worker Log"],
+      ["workerlog", "Worker Log"],
       ["reports", "Reports"],
       ["edit", "Edit"],
       ["settings", "Settings"],
@@ -4476,34 +4460,39 @@ const generatePurchasesPDF = () => {
                 gap: 8,
               }}
             >
-              {/* Worker group */}
-              <div
-                style={{
-                  border: `1px solid ${btnBorder}`,
-                  borderRadius: 8,
-                  padding: 8,
-                  background: dark ? "#191919" : "#fafafa",
-                }}
-              >
-                <div style={{ fontWeight: 700, marginBottom: 6 }}>Worker</div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {workers.map((w) => (
-                    <button
-                      key={w}
-                      onClick={() => setWorker(w)}
-                      style={{
-                        padding: "8px 10px",
-                        borderRadius: 8,
-                        border: `1px solid ${btnBorder}`,
-                        background: worker === w ? "#c8e6c9" : "#fff",
-                        cursor: "pointer",
-                      }}
-                    >
-                      {w}
-                    </button>
-                  ))}
-                </div>
-              </div>
+           {/* Worker group (only on-duty) */}
+<div
+  style={{
+    border: `1px solid ${btnBorder}`,
+    borderRadius: 8,
+    padding: 8,
+    background: dark ? "#191919" : "#fafafa",
+  }}
+>
+  <div style={{ fontWeight: 700, marginBottom: 6 }}>Worker (on-duty only)</div>
+  {!activeWorkers.length ? (
+    <div style={{ opacity:.8 }}>No one is on duty. Ask a worker to sign in (Shift bar).</div>
+  ) : (
+    <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+      {activeWorkers.map((w) => (
+        <button
+          key={w}
+          onClick={() => setWorker(w)}
+          style={{
+            padding: "8px 10px",
+            borderRadius: 8,
+            border: `1px solid ${btnBorder}`,
+            background: worker === w ? "#c8e6c9" : "#fff",
+            cursor: "pointer",
+          }}
+        >
+          {w}
+        </button>
+      ))}
+    </div>
+  )}
+</div>
+
 
               {/* Payment group */}
               <div
@@ -6064,247 +6053,6 @@ const generatePurchasesPDF = () => {
   </div>
 )}
 
-{/* ───────────────────────── Worker Log TAB ───────────────────────── */}
-{activeTab === "admin" && adminSubTab === "workerlog" && (
-  <div style={{ display:"grid", gap:14 }}>
-    
-    {/* Filters row */}
-    <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
-      <strong>Filter:</strong>
-      {["day","month"].map(k => (
-        <button
-          key={k}
-          onClick={() => setWlFilter(k)}
-          style={{
-            padding:"6px 10px",
-            borderRadius:6,
-            border:`1px solid ${btnBorder}`,
-            background: wlFilter === k ? "#ffd54f" : (dark ? "#2b2b2b" : "#f2f2f2"),
-            fontWeight: 700,
-            cursor: "pointer"
-          }}
-        >
-          {k.toUpperCase()}
-        </button>
-      ))}
-      {wlFilter === "day" && (
-        <>
-          <span><b>Pick day:</b></span>
-          <input
-            type="date"
-            value={wlDay}
-            onChange={e => setWlDay(e.target.value)}
-            style={{ padding:6, borderRadius:6, border:`1px solid ${btnBorder}` }}
-          />
-        </>
-      )}
-      {wlFilter === "month" && (
-        <>
-          <span><b>Pick month:</b></span>
-          <input
-            type="month"
-            value={wlMonth}
-            onChange={e => setWlMonth(e.target.value)}
-            style={{ padding:6, borderRadius:6, border:`1px solid ${btnBorder}` }}
-          />
-        </>
-      )}
-    </div>
-
-    {/* Sessions & Summary */}
-    {(() => {
-      const [start, end] = getPeriodRange(
-        wlFilter === "day" ? "day" : "month",
-        dayMeta, wlDay, wlMonth
-      );
-
-      const within = (workerSessions || []).filter(s => {
-        const st = s?.start ? new Date(s.start) : null;
-        if (!st) return false;
-        const en = s?.end ? new Date(s.end) : new Date();
-        // overlap with [start,end]
-        return !(en < start || st > end);
-      });
-
-      // Per-worker totals
-      const byW = new Map();
-      for (const name of workers || []) {
-        const mins = sumMinutesForWorker(name, within, start, end);
-        const hrs  = hoursFromMinutes(mins);
-        const rate = Number(workerRates?.[name] || 0);
-        const pay  = Number((hrs * rate).toFixed(2));
-        byW.set(name, { hrs, rate, pay });
-      }
-
-      const grandPay = Array.from(byW.values()).reduce((s, r) => s + Number(r.pay || 0), 0);
-
-      return (
-        <>
-          {/* KPI Row */}
-          <div style={{
-            display:"grid",
-            gridTemplateColumns:"repeat(auto-fit, minmax(240px, 1fr))",
-            gap:12
-          }}>
-            <div style={{ padding:16, borderRadius:12, background:dark?"#1e1e1e":"#fff", border:`1px solid ${btnBorder}` }}>
-              <div style={{ fontWeight:600, opacity:.9 }}>Total Payout ({wlFilter})</div>
-              <div style={{ marginTop:6, fontSize:24, fontWeight:800 }}>
-                E£{grandPay.toFixed(2)}
-              </div>
-            </div>
-          </div>
-
-          {/* Per worker summary table */}
-          <div style={{ overflowX:"auto" }}>
-            <table style={{ width:"100%", borderCollapse:"collapse", marginTop:10 }}>
-              <thead>
-                <tr>
-                  <th style={{ textAlign:"left",  padding:8, borderBottom:`1px solid ${btnBorder}` }}>Worker</th>
-                  <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${btnBorder}` }}>Hours</th>
-                  <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${btnBorder}` }}>Rate (E£/h)</th>
-                  <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${btnBorder}` }}>Pay (E£)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {workers.map(nm => {
-                  const row = byW.get(nm) || { hrs:0, rate:0, pay:0 };
-                  return (
-                    <tr key={nm}>
-                      <td style={{ padding:8, borderBottom:`1px solid ${btnBorder}` }}>{nm}</td>
-                      <td style={{ padding:8, borderBottom:`1px solid ${btnBorder}`, textAlign:"right" }}>{row.hrs.toFixed(2)}</td>
-                      <td style={{ padding:8, borderBottom:`1px solid ${btnBorder}`, textAlign:"right" }}>{Number(row.rate || 0).toFixed(2)}</td>
-                      <td style={{ padding:8, borderBottom:`1px solid ${btnBorder}`, textAlign:"right" }}>E£{row.pay.toFixed(2)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Raw sessions table */}
-          <div style={{ border:`1px solid ${btnBorder}`, borderRadius:10, padding:12, background:dark?"#151515":"#fafafa", marginTop:12 }}>
-            <h3 style={{ marginTop:0 }}>Sessions ({wlFilter})</h3>
-            <div style={{ overflowX:"auto" }}>
-              <table style={{ width:"100%", borderCollapse:"collapse" }}>
-                <thead>
-                  <tr>
-                    <th style={{ textAlign:"left",  padding:8, borderBottom:`1px solid ${btnBorder}` }}>Worker</th>
-                    <th style={{ textAlign:"left",  padding:8, borderBottom:`1px solid ${btnBorder}` }}>Start</th>
-                    <th style={{ textAlign:"left",  padding:8, borderBottom:`1px solid ${btnBorder}` }}>End</th>
-                    <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${btnBorder}` }}>Hours</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {within.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} style={{ padding:8, opacity:.7 }}>No sessions in this period.</td>
-                    </tr>
-                  ) : within
-                    .slice()
-                    .sort((a,b) => +new Date(b.start) - +new Date(a.start))
-                    .map(s => {
-                      const mins = minutesBetween(s.start, s.end || new Date());
-                      const hrs  = hoursFromMinutes(mins);
-                      return (
-                        <tr key={s.id}>
-                          <td style={{ padding:8, borderBottom:`1px solid ${btnBorder}` }}>{s.name}</td>
-                          <td style={{ padding:8, borderBottom:`1px solid ${btnBorder}` }}>{fmtDateTime(s.start)}</td>
-                          <td style={{ padding:8, borderBottom:`1px solid ${btnBorder}` }}>{s.end ? fmtDateTime(s.end) : "— (open)"}</td>
-                          <td style={{ padding:8, borderBottom:`1px solid ${btnBorder}`, textAlign:"right" }}>{hrs.toFixed(2)}</td>
-                        </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </>
-      );
-    })()}
-
-    {/* Manage rates and pins */}
-    <div style={{ border:`1px solid ${btnBorder}`, borderRadius:10, padding:12, background:dark?"#1b1b1b":"#fff" }}>
-      <h3 style={{ marginTop:0 }}>Workers — Rates & PINs</h3>
-      <div style={{ overflowX:"auto" }}>
-        <table style={{ width:"100%", borderCollapse:"collapse" }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign:"left",  padding:8, borderBottom:`1px solid ${btnBorder}` }}>Worker</th>
-              <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${btnBorder}` }}>Rate (E£/h)</th>
-              <th style={{ textAlign:"left",  padding:8, borderBottom:`1px solid ${btnBorder}` }}>PIN</th>
-              <th style={{ padding:8, borderBottom:`1px solid ${btnBorder}` }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {workers.map(nm => (
-              <tr key={nm}>
-                <td style={{ padding:8, borderBottom:`1px solid ${btnBorder}` }}>{nm}</td>
-                <td style={{ padding:8, borderBottom:`1px solid ${btnBorder}`, textAlign:"right" }}>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={Number(workerRates?.[nm] || 0)}
-                    onChange={(e) => {
-                      const v = Math.max(0, Number(e.target.value || 0));
-                      setWorkerRates(r => ({ ...r, [nm]: v }));
-                    }}
-                    style={{ width:120, padding:6, borderRadius:6, border:`1px solid ${btnBorder}`, textAlign:"right" }}
-                  />
-                </td>
-                <td style={{ padding:8, borderBottom:`1px solid ${btnBorder}` }}>
-                  <input
-                    type="text"
-                    value={String(workerPins?.[nm] || "")}
-                    onChange={(e) => {
-                      const v = String(e.target.value || "").trim();
-                      setWorkerPins(p => ({ ...p, [nm]: v }));
-                    }}
-                    style={{ width:120, padding:6, borderRadius:6, border:`1px solid ${btnBorder}` }}
-                  />
-                </td>
-                <td style={{ padding:8, borderBottom:`1px solid ${btnBorder}` }}>
-                  <button
-                    onClick={() => {
-                      if (!window.confirm(`Remove worker "${nm}"?`)) return;
-                      setWorkers(list => list.filter(x => x !== nm));
-                      setWorkerPins(p => { const cp={...p}; delete cp[nm]; return cp; });
-                      setWorkerRates(r => { const cr={...r}; delete cr[nm]; return cr; });
-                    }}
-                    style={{ padding:"6px 10px", borderRadius:6, border:"none", background:"#c62828", color:"#fff", cursor:"pointer" }}
-                  >
-                    Remove
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {/* Add worker row */}
-            <tr>
-              <td colSpan={4} style={{ padding:8 }}>
-                <button
-                  onClick={() => {
-                    const nm = String(window.prompt("New worker name:", "") || "").trim();
-                    if (!nm) return;
-                    if (workers.includes(nm)) return alert("Exists already.");
-                    setWorkers(arr => [...arr, nm]);
-                    setWorkerPins(p => ({ ...p, [nm]: "0000" }));
-                    setWorkerRates(r => ({ ...r, [nm]: 0 }));
-                  }}
-                  style={{ padding:"8px 12px", borderRadius:6, border:"none", background:"#1976d2", color:"#fff", cursor:"pointer" }}
-                >
-                  + Add worker
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <small style={{ opacity:.8 }}>
-        Tip: Change rates/PINs here. PIN "0000" means you still need to set it on first sign-in.
-      </small>
-    </div>
-  </div>
-)}
-
 
 
       {/* BANK */}
@@ -6451,6 +6199,182 @@ const generatePurchasesPDF = () => {
           </table>
         </div>
       )}
+{/* ───────────────────────── WORKER LOG TAB ───────────────────────── */}
+{activeTab === "admin" && adminSubTab === "workerlog" && (
+  <div style={{ display:"grid", gap:14 }}>
+    <h2>Worker Log</h2>
+
+    {/* Filter row */}
+    <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+      <button
+        onClick={() => setWorkerLogFilter("day")}
+        style={{
+          padding: "6px 10px", borderRadius: 6, border: `1px solid ${btnBorder}`,
+          background: workerLogFilter === "day" ? "#ffd54f" : (dark ? "#2c2c2c" : "#f1f1f1"),
+          cursor:"pointer"
+        }}
+      >DAY</button>
+      <button
+        onClick={() => setWorkerLogFilter("month")}
+        style={{
+          padding: "6px 10px", borderRadius: 6, border: `1px solid ${btnBorder}`,
+          background: workerLogFilter === "month" ? "#ffd54f" : (dark ? "#2c2c2c" : "#f1f1f1"),
+          cursor:"pointer"
+        }}
+      >MONTH</button>
+
+      {workerLogFilter === "day" && (
+        <>
+          <label><b>Pick day:</b></label>
+          <input
+            type="date"
+            value={workerLogDay}
+            onChange={(e) => setWorkerLogDay(e.target.value)}
+            style={{ padding:6, borderRadius:6, border:`1px solid ${btnBorder}` }}
+          />
+        </>
+      )}
+      {workerLogFilter === "month" && (
+        <>
+          <label><b>Pick month:</b></label>
+          <input
+            type="month"
+            value={workerLogMonth}
+            onChange={(e) => setWorkerLogMonth(e.target.value)}
+            style={{ padding:6, borderRadius:6, border:`1px solid ${btnBorder}` }}
+          />
+        </>
+      )}
+      <div style={{ marginLeft:"auto", opacity:.8 }}>
+        Period: {wStart.toLocaleDateString()} → {wEnd.toLocaleDateString()}
+      </div>
+    </div>
+
+    {/* Sessions table */}
+    <div style={{ border:`1px solid ${cardBorder}`, borderRadius:12, padding:12, background: dark ? "#151515" : "#fafafa" }}>
+      <h3 style={{ marginTop:0 }}>Sessions</h3>
+      <div style={{ overflowX:"auto" }}>
+        <table style={{ width:"100%", borderCollapse:"collapse" }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign:"left",  padding:8, borderBottom:`1px solid ${cardBorder}` }}>Date</th>
+              <th style={{ textAlign:"left",  padding:8, borderBottom:`1px solid ${cardBorder}` }}>Worker</th>
+              <th style={{ textAlign:"left",  padding:8, borderBottom:`1px solid ${cardBorder}` }}>Sign in</th>
+              <th style={{ textAlign:"left",  padding:8, borderBottom:`1px solid ${cardBorder}` }}>Sign out</th>
+              <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>Hours</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(workerSessions || [])
+              .filter(s => {
+                const a = s.signInAt ? new Date(s.signInAt) : null;
+                if (!a) return false;
+                const outAt = s.signOutAt ? new Date(s.signOutAt) : null;
+                // show if overlaps with [wStart,wEnd]
+                const from = a, to = outAt || wEnd;
+                return to >= wStart && from <= wEnd;
+              })
+              .sort((a,b) => +new Date(b.signInAt) - +new Date(a.signInAt))
+              .map(s => {
+                const a = s.signInAt ? new Date(s.signInAt) : null;
+                const b = s.signOutAt ? new Date(s.signOutAt) : null;
+                const hrs = s.signInAt
+                  ? sumHoursForWorker(s.name, [s], wStart, wEnd)
+                  : 0;
+                return (
+                  <tr key={s.id}>
+                    <td style={{ padding:8 }}>{a ? a.toLocaleDateString() : "—"}</td>
+                    <td style={{ padding:8 }}>{s.name}</td>
+                    <td style={{ padding:8 }}>{a ? a.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) : "—"}</td>
+                    <td style={{ padding:8 }}>{b ? b.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) : (s.signOutAt ? "—" : "OPEN")}</td>
+                    <td style={{ padding:8, textAlign:"right" }}>{hrs.toFixed(2)}</td>
+                  </tr>
+                );
+              })}
+            {!(workerSessions || []).length && (
+              <tr><td colSpan={5} style={{ padding:8, opacity:.7 }}>No sessions yet.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {/* Totals per worker + rate editor */}
+    <div style={{ border:`1px solid ${cardBorder}`, borderRadius:12, padding:12, background: dark ? "#151515" : "#fafafa" }}>
+      <h3 style={{ marginTop:0 }}>Totals (by worker)</h3>
+      <div style={{ overflowX:"auto" }}>
+        <table style={{ width:"100%", borderCollapse:"collapse" }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign:"left",  padding:8, borderBottom:`1px solid ${cardBorder}` }}>Worker</th>
+              <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>Hours</th>
+              <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>Rate (E£/h)</th>
+              <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>Pay (E£)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {workerMonthlyStats.map(r => {
+              const prof = (workerProfiles || []).find(p => p.name === r.name);
+              const rate = prof ? Number(prof.rate || 0) : 0;
+              return (
+                <tr key={r.name}>
+                  <td style={{ padding:8 }}>{r.name}</td>
+                  <td style={{ padding:8, textAlign:"right" }}>{r.hours.toFixed(2)}</td>
+                  <td style={{ padding:8, textAlign:"right" }}>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={rate}
+                      onChange={(e) => {
+                        const v = Math.max(0, Number(e.target.value || 0));
+                        setWorkerProfiles(list => list.map(p => p.name === r.name ? { ...p, rate: v } : p));
+                      }}
+                      style={{ width:120, padding:6, borderRadius:6, border:`1px solid ${btnBorder}`, textAlign:"right" }}
+                    />
+                  </td>
+                  <td style={{ padding:8, textAlign:"right", fontWeight:700 }}>
+                    E£{r.pay.toFixed(2)}
+                  </td>
+                </tr>
+              );
+            })}
+            {!workerMonthlyStats.length && (
+              <tr><td colSpan={4} style={{ padding:8, opacity:.7 }}>No data.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{ marginTop:8, textAlign:"right", fontWeight:900 }}>
+        Total payout: E£{workerMonthlyTotalPay.toFixed(2)}
+      </div>
+    </div>
+
+    {/* PIN editor */}
+    <div style={{ border:`1px solid ${cardBorder}`, borderRadius:12, padding:12, background: dark ? "#151515" : "#fafafa" }}>
+      <h3 style={{ marginTop:0 }}>PINs</h3>
+      <div style={{ display:"grid", gap:8 }}>
+        {(workerProfiles || []).map(p => (
+          <div key={p.id} style={{ display:"grid", gridTemplateColumns:"1fr 200px 120px", gap:8, alignItems:"center" }}>
+            <div><b>{p.name}</b></div>
+            <input
+              type="password"
+              value={p.pin || ""}
+              onChange={(e) => {
+                const v = String(e.target.value || "").trim();
+                setWorkerProfiles(list => list.map(x => x.id === p.id ? { ...x, pin: v } : x));
+              }}
+              style={{ padding:6, border:`1px solid ${btnBorder}`, borderRadius:6 }}
+              placeholder="PIN"
+            />
+            <div style={{ textAlign:"right", opacity:.7 }}>Rate: E£{Number(p.rate || 0).toFixed(2)}/h</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+)}
+
 
       {/* REPORTS */}
       {activeTab === "admin" && adminSubTab === "reports" && (
