@@ -2238,6 +2238,7 @@ const sumHoursForWorker = (name, sessions, start, end) => {
   }
   return Number(hours.toFixed(2));
 };
+useMemo(() => workerSessions.length, [workerSessions]);
 
 // Period for worker logs
 const [wStart, wEnd] = useMemo(() => {
@@ -7298,6 +7299,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
