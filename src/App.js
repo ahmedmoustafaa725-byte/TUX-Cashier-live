@@ -1031,7 +1031,7 @@ const [dayMeta, setDayMeta] = useState({
 const [workerProfiles, setWorkerProfiles] = useState(BASE_WORKER_PROFILES);
 // Every sign-in/out interval is one session
 // { id, name, pin, signInAt: Date, signOutAt: Date|null }
-const [, setWorkerSessions] = useState([]);
+const [workerSessions, setWorkerSessions] = useState([]);
 
 // Worker Log filter
 const [workerLogFilter, setWorkerLogFilter] = useState("month"); // 'day' | 'month'
@@ -1051,8 +1051,6 @@ const activeWorkers = useMemo(() => {
   const names = [...new Set(open.map(s => s.name))];
   return names;
 }, [workerSessions]);
-
-
 const [orders, setOrders] = useState([]);
 const [bankTx, setBankTx] = useState([]);
 const [reconCounts, setReconCounts] = useState({});
@@ -1060,14 +1058,8 @@ const [reconCounts, setReconCounts] = useState({});
   // ==== Reconciliation state ====
 const [reconSavedBy, setReconSavedBy] = useState("");
 const [reconHistory, setReconHistory] = useState([]); // [{id,savedBy,at,breakdown..., totalVariance}]
-
-
-
 // Raw inflow by method (orders in current UI already reflect active shift when realtimeOrders=true)
 const rawInflowByMethod = useMemo(() => sumPaymentsByMethod(orders), [orders]);
-
-
-
 // Expected per method (Reconcile): raw inflow only; no withdrawals/init adjustments
 const expectedByMethod = useMemo(() => {
   const out = {};
@@ -1077,9 +1069,6 @@ const expectedByMethod = useMemo(() => {
   }
   return out;
 }, [paymentMethods, rawInflowByMethod]);
-
-
-
 // Variance (Actual - Expected)
 const varianceByMethod = useMemo(() => {
   const out = {};
@@ -1091,7 +1080,6 @@ const varianceByMethod = useMemo(() => {
   return out;
 }, [paymentMethods, reconCounts, expectedByMethod]);
 
-  // All-time variance across all saved reconciliations (by payment method)
 const allTimeVarianceByMethod = useMemo(() => {
   const out = {};
   for (const m of paymentMethods || []) out[m] = 0;
@@ -1110,8 +1098,6 @@ const allTimeVarianceTotal = useMemo(
   () => Object.values(allTimeVarianceByMethod).reduce((s, v) => s + Number(v || 0), 0),
   [allTimeVarianceByMethod]
 );
-
-// Admin-protected: wipe all saved reconciliations (and thus the all-time totals)
 const resetAllReconciliations = () => {
   const okAdmin = !!promptAdminAndPin();
   if (!okAdmin) return;
@@ -1119,7 +1105,6 @@ const resetAllReconciliations = () => {
   setReconHistory([]);
   alert("All reconciliations cleared.");
 };
-
 
 const totalVariance = useMemo(
   () => Object.values(varianceByMethod).reduce((s, v) => s + Number(v || 0), 0),
@@ -1152,16 +1137,10 @@ const saveReconciliation = () => {
   setDayMeta(d => ({ ...d, reconciledAt: new Date() }));
   alert("Reconciliation saved ✅");
 };
-
-
-
   const [menu, setMenu] = useState(BASE_MENU);
   const [extraList, setExtraList] = useState(BASE_EXTRAS);
- 
-
   const [orderTypes, setOrderTypes] = useState(DEFAULT_ORDER_TYPES);
   const [defaultDeliveryFee, setDefaultDeliveryFee] = useState(DEFAULT_DELIVERY_FEE);
-
   const [selectedBurger, setSelectedBurger] = useState(null);
   const [selectedExtras, setSelectedExtras] = useState([]);
   const [selectedQty, setSelectedQty] = useState(1);
@@ -1270,14 +1249,10 @@ const unlockAdminPin = (n) => {
 };
 
   const [unlockedPins, setUnlockedPins] = useState({}); 
-  
-
   const [nextOrderNo, setNextOrderNo] = useState(1);
-
   const [expenses, setExpenses] = useState([]);
   // 🔒 Safety-net: never allow locked expenses (from returned orders) to disappear
 const lastLockedRef = useRef([]);
-
 useEffect(() => {
   const lockedNow = (expenses || []).filter(isExpenseLocked);
   const missing = lastLockedRef.current.filter(
@@ -1289,21 +1264,13 @@ useEffect(() => {
   }
   lastLockedRef.current = lockedNow;
 }, [expenses]);
-
-
-
   const [bankForm, setBankForm] = useState({
     type: "deposit",
     amount: 0,
     worker: "",
     note: "",
   });
-
-  
-
-  // 🔒 Safety-net for bank: never allow locked "Auto Init from day margin" to disappear
 const lastLockedBankRef = useRef([]);
-
 useEffect(() => {
   const lockedNow = (bankTx || []).filter(isBankLocked);
   const missing = lastLockedBankRef.current.filter(
@@ -1315,23 +1282,12 @@ useEffect(() => {
   }
   lastLockedBankRef.current = lockedNow;
 }, [bankTx]);
-
-  
-
-
   const [newExpName, setNewExpName] = useState("");
   const [newExpUnit, setNewExpUnit] = useState("pcs");
   const [newExpQty, setNewExpQty] = useState(1);
   const [newExpUnitPrice, setNewExpUnitPrice] = useState(0);
   const [newExpNote, setNewExpNote] = useState("");
-
-
-
-  // User has unlocked the Admin area for this session
 const [adminUnlocked, setAdminUnlocked] = useState(false);
-
-
-
   const removeBankTx = (id) => {
   setBankTx(arr => {
     const row = arr.find(t => t.id === id);
@@ -1343,16 +1299,7 @@ const [adminUnlocked, setAdminUnlocked] = useState(false);
     return arr.filter(t => t.id !== id);
   });
 };
-
- 
-
   const sortBy = "date-desc";
-
-  
-
-  
-
- 
   const [newExtraName, setNewExtraName] = useState("");
   const [newExtraPrice, setNewExtraPrice] = useState(0);
 
@@ -1374,13 +1321,9 @@ const [lastLocalEditAt, setLastLocalEditAt] = useState(0);
   // Prevent our own cloud writes from boomeranging back
 const clientIdRef = useRef(`cli_${Math.random().toString(36).slice(2)}`);
 const writeSeqRef = useRef(0);
-
-
-
   // Printing preferences (kept)
   const [autoPrintOnCheckout, setAutoPrintOnCheckout] = useState(true);
   const [preferredPaperWidthMm, setPreferredPaperWidthMm] = useState(80);
-
   useEffect(() => {
   if (!dayMeta.startedAt) {
     setReconCounts({}); setReconSavedBy("");
@@ -1391,8 +1334,6 @@ const writeSeqRef = useRef(0);
   for (const m of paymentMethods || []) init[m] = 0;
   setReconCounts((prev) => ({ ...init, ...prev })); // preserve any already typed values
 }, [dayMeta.startedAt, paymentMethods]);
-
-
   useEffect(() => {
     try {
       const { auth } = ensureFirebase();
@@ -1419,9 +1360,6 @@ const writeSeqRef = useRef(0);
   }
 }, [purchaseFilter, purchaseDay]);
 
-
-
-  // Keep category.unit consistent with inventory unit if names match (run after hydration)
 useEffect(() => {
   if (!localHydrated && !hydrated) return;
   setPurchaseCategories(list =>
@@ -1434,8 +1372,6 @@ useEffect(() => {
   );
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [inventory, localHydrated, hydrated]);
-
-
 
   useEffect(() => {
  if (!Array.isArray(purchaseCategories)) return;
@@ -1527,8 +1463,6 @@ useEffect(() => {
   }, 1000);
   return () => clearInterval(id);
 }, []);
-
-
 
   /* === ADD BELOW THIS LINE (hydrate from local) === */
 useEffect(() => {
@@ -1651,11 +1585,8 @@ useEffect(() => { saveLocalPartial({ orderTypes }); }, [orderTypes]);
 useEffect(() => { saveLocalPartial({ defaultDeliveryFee }); }, [defaultDeliveryFee]);
 useEffect(() => { saveLocalPartial({ inventory }); }, [inventory]);
 useEffect(() => { saveLocalPartial({ adminPins }); }, [adminPins]);
-useEffect(() => { saveLocalPartial({ dark }); }, [dark]);
-  
+useEffect(() => { saveLocalPartial({ dark }); }, [dark]);  
 useEffect(() => { saveLocalPartial({ targetMarginPct }); }, [targetMarginPct]);
-
-
 useEffect(() => {
   if (orderType !== "Delivery") return;
   const p = String(deliveryPhone || "").trim();
@@ -1664,7 +1595,6 @@ useEffect(() => {
   const found = customers.find((c) => c.phone === p);
   if (!found) return;
 
-  // only fill if the current field is empty
   setDeliveryName((v) => v || found.name || "");
   setDeliveryAddress((v) => v || found.address || "");
   if (found.zoneId) {
@@ -1683,9 +1613,6 @@ useEffect(() => {
   }
 }, [newPurchase.categoryId, purchaseCategories]);
 
-
-
-/* === ADD BELOW THIS LINE (mirror other tabs & settings) === */
 useEffect(() => { saveLocalPartial({ expenses }); }, [expenses]);
 useEffect(() => { saveLocalPartial({ bankTx }); }, [bankTx]);
 useEffect(() => { saveLocalPartial({ dayMeta }); }, [dayMeta]);
@@ -1702,12 +1629,7 @@ useEffect(() => { saveLocalPartial({ nextOrderNo }); }, [nextOrderNo]);
 useEffect(() => {
   if (!realtimeOrders) saveLocalPartial({ orders });
 }, [orders, realtimeOrders]);
-/* === END MIRROR === */
 
-  /* === ADD BELOW THIS LINE (timestamp local edits) === */
-
-  
-/* === TIMESTAMP LOCAL EDITS (expanded deps) === */
 useEffect(() => {
   setLastLocalEditAt(Date.now());
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1772,8 +1694,6 @@ useEffect(() => {
     return changed ? next : current;
   });
 }, [purchases, purchaseCategories, syncCostsFromPurchases]);
-
-
 
   const db = useMemo(() => (fbReady ? ensureFirebase().db : null), [fbReady]);
   const stateDocRef = useMemo(
@@ -6374,7 +6294,6 @@ const generatePurchasesPDF = () => {
   </div>
 )}
 
-
       {/* REPORTS */}
       {activeTab === "admin" && adminSubTab === "reports" && (
         <div>
@@ -6839,8 +6758,6 @@ const generatePurchasesPDF = () => {
     </td>
   </tr>
 )}
-
-
                 </React.Fragment>
               ))}
               {extraList.length === 0 && (
@@ -7071,7 +6988,6 @@ const generatePurchasesPDF = () => {
     </div>
   </div>
 
-  {/* Order Types (third column) */}
   <div
     style={{
       border: `1px solid ${btnBorder}`,
@@ -7165,7 +7081,6 @@ const generatePurchasesPDF = () => {
 >
   <h3 style={{ marginTop: 0 }}>Delivery Zones & Fees</h3>
  
-
   {/* Add new zone */}
   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
     <input
@@ -7269,8 +7184,6 @@ const generatePurchasesPDF = () => {
     </table>
   </div>
 </div>
-
-
         
 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8 }}>
   {[1,2,3,4,5,6].map((n) => {
@@ -7345,8 +7258,6 @@ const generatePurchasesPDF = () => {
               </div>
             </div>
 
-            
-
             <div style={{ padding: 10, borderRadius: 6, border: `1px solid ${cardBorder}` }}>
               <h4 style={{ marginTop: 0 }}>Cloud</h4>
               <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -7387,5 +7298,6 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
