@@ -1641,7 +1641,7 @@ useEffect(() => {
   expenses, bankTx, dayMeta, inventoryLocked, inventorySnapshot, inventoryLockedAt,
   autoPrintOnCheckout, preferredPaperWidthMm, cloudEnabled, realtimeOrders, nextOrderNo,
    purchases, purchaseCategories, customers, deliveryZones, purchaseFilter, purchaseDay, purchaseMonth,workerProfiles,
-+ workerSessions,
+ workerSessions,
   // (intentionally NOT including `orders`; realtime listener drives those)
 ]);
 
@@ -7302,6 +7302,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
