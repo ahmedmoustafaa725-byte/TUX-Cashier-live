@@ -79,7 +79,7 @@ workerSessions,
     inventorySnapshot,
     inventoryLockedAt,
     adminPins,
-    workerProfiles, workerSessions,
+ 
     orderTypes,
     defaultDeliveryFee,
     expenses,
@@ -7305,6 +7305,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
