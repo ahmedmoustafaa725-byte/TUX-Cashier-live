@@ -70,6 +70,8 @@ function packStateForCloud(state) {
     orders,
     inventory,
     nextOrderNo,
+    workerProfiles,
+workerSessions,
     dark,
     workers,
     paymentMethods,
@@ -125,6 +127,8 @@ restockedAt: toIso(o.restockedAt),
     nextOrderNo,
     dark,
     workers,
+    workerProfiles,
+ workerSessions,
     paymentMethods,
     inventoryLocked,
     inventorySnapshot,
@@ -1639,7 +1643,8 @@ useEffect(() => {
   // added:
   expenses, bankTx, dayMeta, inventoryLocked, inventorySnapshot, inventoryLockedAt,
   autoPrintOnCheckout, preferredPaperWidthMm, cloudEnabled, realtimeOrders, nextOrderNo,
-   purchases, purchaseCategories, customers, deliveryZones, purchaseFilter, purchaseDay, purchaseMonth
+   purchases, purchaseCategories, customers, deliveryZones, purchaseFilter, purchaseDay, purchaseMonth,workerProfiles,
++ workerSessions,
   // (intentionally NOT including `orders`; realtime listener drives those)
 ]);
 
@@ -1899,8 +1904,8 @@ if (unpacked.workerSessions) setWorkerSessions(unpacked.workerSessions);
       inventory,
       nextOrderNo,
        reconHistory,
-       workerProfiles,
-  workerSessions,
+        workerProfiles,
+ workerSessions, 
       dark,
       workers,
       paymentMethods,
@@ -1969,9 +1974,8 @@ useEffect(() => {
         purchaseCategories,
         customers,
         deliveryZones,
-        workerProfiles,
-workerSessions,
-
+          workerProfiles,
+         workerSessions,
         dayMeta,
         bankTx,
          realtimeOrders,
@@ -2001,6 +2005,8 @@ workerSessions,
   fbUser,
   hydrated,
   menu,
+  workerProfiles,
+ workerSessions,
   extraList,
   orders,
   inventory,
@@ -7299,6 +7305,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
