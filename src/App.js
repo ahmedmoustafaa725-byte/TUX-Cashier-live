@@ -971,8 +971,7 @@ const [targetMarginPct, setTargetMarginPct] = useState(() => {
   return isFinite(v) ? v : 0.5; // default 50% like your screenshot
 });
 
-const [workerProfiles, setWorkerProfiles] = useState([]);  
-const [workerSessions, setWorkerSessions] = useState([]);   
+
 
 const [newItemName, setNewItemName] = useState("");
 const [newItemPrice, setNewItemPrice] = useState(0);
@@ -7388,3 +7387,4 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
