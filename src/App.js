@@ -71,7 +71,6 @@ function packStateForCloud(state) {
     inventory,
     nextOrderNo,
     workerProfiles,
-workerSessions,
     dark,
     workers,
     paymentMethods,
@@ -7303,6 +7302,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
