@@ -163,6 +163,7 @@ restockedAt: toIso(o.restockedAt),
 
 function unpackStateFromCloud(data, fallbackDayMeta = {}) {
   const out = {};
+
   if (Array.isArray(data.orders)) {
     out.orders = data.orders.map((o) => ({
       ...o,
@@ -170,65 +171,68 @@ function unpackStateFromCloud(data, fallbackDayMeta = {}) {
       restockedAt: o.restockedAt ? new Date(o.restockedAt) : undefined,
     }));
   }
- if (Array.isArray(data.expenses)) {
+
+  if (Array.isArray(data.expenses)) {
     out.expenses = data.expenses.map((e) => ({
       ...e,
       date: e.date ? new Date(e.date) : new Date(),
     }));
   }
+
   if (Array.isArray(data.purchases)) {
     out.purchases = data.purchases.map((p) => ({
       ...p,
       date: p.date ? new Date(p.date) : new Date(),
     }));
   }
+
   if (Array.isArray(data.purchaseCategories)) out.purchaseCategories = data.purchaseCategories;
   if (Array.isArray(data.customers)) out.customers = data.customers;
   if (Array.isArray(data.deliveryZones)) out.deliveryZones = data.deliveryZones;
+
   if (Array.isArray(data.bankTx)) {
     out.bankTx = data.bankTx.map((t) => ({
       ...t,
       date: t.date ? new Date(t.date) : new Date(),
     }));
   }
+
   if (data.inventoryLockedAt) out.inventoryLockedAt = new Date(data.inventoryLockedAt);
-   if (Array.isArray(data.workerSessions)) {
-    out.workerSessions = data.workerSessions.map(r => ({
+
+  if (Array.isArray(data.workerSessions)) {
+    out.workerSessions = data.workerSessions.map((r) => ({
       ...r,
       inAt: r.inAt ? new Date(r.inAt) : null,
       outAt: r.outAt ? new Date(r.outAt) : null,
     }));
   }
 
-  return out;
-}
-
+  // ⬇️ These blocks must be INSIDE the function (before the final return)
   if (data.dayMeta) {
     out.dayMeta = {
       startedBy: data.dayMeta.startedBy || "",
       currentWorker: data.dayMeta.currentWorker || "",
       startedAt: data.dayMeta.startedAt ? new Date(data.dayMeta.startedAt) : null,
       endedAt: data.dayMeta.endedAt ? new Date(data.dayMeta.endedAt) : null,
-        reconciledAt: data.dayMeta.reconciledAt ? new Date(data.dayMeta.reconciledAt) : null,
+      reconciledAt: data.dayMeta.reconciledAt ? new Date(data.dayMeta.reconciledAt) : null,
       endedBy: data.dayMeta.endedBy || "",
       lastReportAt: data.dayMeta.lastReportAt ? new Date(data.dayMeta.lastReportAt) : null,
       resetBy: data.dayMeta.resetBy || "",
       resetAt: data.dayMeta.resetAt ? new Date(data.dayMeta.resetAt) : null,
       shiftChanges: Array.isArray(data.dayMeta.shiftChanges)
-        ? data.dayMeta.shiftChanges.map((c) => ({
-            ...c,
-            at: c.at ? new Date(c.at) : null,
-          }))
+        ? data.dayMeta.shiftChanges.map((c) => ({ ...c, at: c.at ? new Date(c.at) : null }))
         : [],
     };
   } else {
     out.dayMeta = fallbackDayMeta;
   }
-   if (Array.isArray(data.reconHistory)) {
-  out.reconHistory = data.reconHistory.map(r => ({
-    ...r, at: r.at ? new Date(r.at) : new Date()
-  }));
-}
+
+  if (Array.isArray(data.reconHistory)) {
+    out.reconHistory = data.reconHistory.map((r) => ({
+      ...r,
+      at: r.at ? new Date(r.at) : new Date(),
+    }));
+  }
 
   if (data.menu) out.menu = data.menu;
   if (data.extras) out.extraList = data.extras;
@@ -241,11 +245,11 @@ function unpackStateFromCloud(data, fallbackDayMeta = {}) {
   if (Array.isArray(data.inventorySnapshot)) out.inventorySnapshot = data.inventorySnapshot;
   if (data.adminPins) out.adminPins = data.adminPins;
   if (Array.isArray(data.orderTypes)) out.orderTypes = data.orderTypes;
-  if (typeof data.defaultDeliveryFee === "number")
-    out.defaultDeliveryFee = data.defaultDeliveryFee;
+  if (typeof data.defaultDeliveryFee === "number") out.defaultDeliveryFee = data.defaultDeliveryFee;
 
-  return out;
+  return out; // ⬅️ single return at the very end
 }
+
 
 function normalizeOrderForCloud(order) {
 return {
@@ -7440,6 +7444,7 @@ const handleSignOutPin = () => {
     </div>
   );
 }
+
 
 
 
