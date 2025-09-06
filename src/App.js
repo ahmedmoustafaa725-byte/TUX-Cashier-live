@@ -1814,14 +1814,13 @@ function getPeriodRange(kind, dayMeta, dayStr, monthStr) {
   if (kind === "day") {
     const now = new Date();
     const start = dayMeta?.startedAt ? new Date(dayMeta.startedAt) : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-    const end   = dayMeta?.endedAt   ? new Date(dayMeta.endedAt)   : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+   const end = dayMeta?.endedAt ? new Date(dayMeta.endedAt) : now;
     return [start, end];
   }
-
   if (kind === "month") {
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-    const end   = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    const end = now;
     return [start, end];
   }
   const now = new Date();
@@ -1831,7 +1830,6 @@ function getPeriodRange(kind, dayMeta, dayStr, monthStr) {
 }
 // === Worker helpers ===
 const normPin = (p) => String(p || "").trim();
-
 const findWorkerByPin = (pin) => {
   const p = normPin(pin);
   if (!p) return null;
@@ -1839,7 +1837,6 @@ const findWorkerByPin = (pin) => {
 };
 const startDayIfNeeded = (starterName) => {
   if (dayMeta.startedAt) return;
-  // start the day on first sign-in
   setDayMeta({
     startedBy: starterName || "",
     currentWorker: starterName || "",
@@ -1876,7 +1873,6 @@ const signInByPin = (pin) => {
   setWorkerSessions(arr => [sess, ...arr]);
   setDayMeta(d => ({ ...d, currentWorker: prof.name }));
 };
-
 const signOutByPin = (pin) => {
   const prof = findWorkerByPin(pin);
   if (!prof) return alert("Invalid PIN.");
@@ -1911,13 +1907,17 @@ const closeOpenSessionsAt = (endTime) => {
 const sumHoursForWorker = (name, sessions, start, end) => {
   const rows = (sessions || []).filter(s => s.name === name);
   let hours = 0;
+  const now = new Date();
+  const periodStart = start instanceof Date ? start : new Date(start || now);
+  const periodEnd   = end   instanceof Date ? end   : new Date(end   || now);
   for (const s of rows) {
     const a = s.signInAt instanceof Date ? s.signInAt : new Date(s.signInAt);
-    const b = s.signOutAt ? (s.signOutAt instanceof Date ? s.signOutAt : new Date(s.signOutAt)) : (end || new Date());
-    // keep only overlapping part with [start,end]
-    const from = new Date(Math.max(+a, +start));
-    const to   = new Date(Math.min(+b, +end));
-    if (to > from) hours += (to - from) / (1000 * 60 * 60);
+    const b = s.signOutAt
+      ? (s.signOutAt instanceof Date ? s.signOutAt : new Date(s.signOutAt))
+      : now;
+    const toCap = new Date(Math.min(+b, +periodEnd, +now));
+    const from  = new Date(Math.max(+a, +periodStart));
+    if (toCap > from) hours += (toCap - from) / (1000 * 60 * 60);
   }
   return Number(hours.toFixed(2));
 };
@@ -2596,23 +2596,19 @@ for (const o of validOrders) {
       return { name: it.name, unit: it.unit, start, now, used };
     });
   }, [inventory, inventorySnapshot]);
-  // --- Purchases: compute current period & filtered rows
 const [pStart, pEnd] = useMemo(
   () => getPeriodRange(purchaseFilter, dayMeta, purchaseDay, purchaseMonth),
   [purchaseFilter, dayMeta, purchaseDay, purchaseMonth]
 );
-
 const filteredPurchases = useMemo(() => {
  const withinPeriod = (purchases || []).filter((p) => {
     const d = p?.date instanceof Date ? p.date : new Date(p?.date);
     return isWithin(d, pStart, pEnd);
   });
-  
   return purchaseCatFilterId
     ? withinPeriod.filter((p) => p.categoryId === purchaseCatFilterId)
     : withinPeriod;
 }, [purchases, pStart, pEnd, purchaseCatFilterId]);
-
   const byCategory = useMemo(() => {
   const m = new Map();
   for (const p of filteredPurchases) {
@@ -2626,20 +2622,15 @@ const filteredPurchases = useMemo(() => {
   }
   return m;
 }, [filteredPurchases]);
-  // Categories that have at least one purchase in the current period
 const categoriesForGrid = useMemo(() => {
   if (showAllCats) return purchaseCategories;
   const used = new Set(filteredPurchases.map(p => p.categoryId));
   return purchaseCategories.filter(c => used.has(c.id));
 }, [showAllCats, filteredPurchases, purchaseCategories]);
-
-// KPI: Total Purchases for the selected period
 const totalPurchasesInPeriod = useMemo(
   () => sumPurchases(filteredPurchases),
   [filteredPurchases]
 );
-
-// Map category -> total amount in period
 const catTotals = useMemo(() => {
   const m = new Map();
   for (const p of filteredPurchases) {
@@ -2648,11 +2639,6 @@ const catTotals = useMemo(() => {
   }
   return m;
 }, [filteredPurchases]);
-
-
-
-// KPI: Net after Purchases
-
 function inferInvUnitFromPurchaseUnit(u) {
   const m = UNIT_MAP[String(u || "").toLowerCase()];
   return m ? m.base : "piece";
@@ -2665,8 +2651,6 @@ const handleAddPurchase = () => {
     alert("Choose a category and enter an item name.");
     return;
   }
-
-  // Decide the target inventory id BEFORE touching state
   let targetInvId =
     ingredientId ||
     findInventoryIdForPurchase(
@@ -2675,7 +2659,6 @@ const handleAddPurchase = () => {
       purchaseCategories
     );
 
-  // Prepare list update & ensure inv item exists
   let nextInventory = [...inventory];
   if (!targetInvId) {
     const catName =
@@ -2687,8 +2670,6 @@ const handleAddPurchase = () => {
     nextInventory.push({ id, name: catName, unit: invUnit, qty: 0, costPerUnit: 0, minQty: 0 });
     targetInvId = id;
   }
-
-  // Apply quantity delta with conversion
   const invItem = nextInventory.find((it) => it.id === targetInvId);
   const delta = convertToInventoryUnit(qty, unit, invItem?.unit);
   if (delta != null) {
@@ -2709,8 +2690,6 @@ const handleAddPurchase = () => {
       `Purchase saved, but units incompatible (${unit} vs ${invItem?.unit}). Update the inventory unit first.`
     );
   }
-
-
 const targetItem = nextInventory.find(it => it.id === targetInvId);
 if (targetItem) {
   const cpu = unitPriceToInventoryCost(Number(unitPrice || 0), unit, targetItem.unit);
@@ -2720,11 +2699,7 @@ if (targetItem) {
     );
   }
 }
-
-
-  // Commit both states immutably
   setInventory(nextInventory);
-
   const row = {
     id: `p_${Date.now()}`,
     categoryId,
@@ -2736,7 +2711,6 @@ if (targetItem) {
     ingredientId: targetInvId,
   };
   setPurchases((arr) => [row, ...arr]);
-
   setNewPurchase({
     categoryId: "",
     itemName: "",
@@ -2747,8 +2721,6 @@ if (targetItem) {
     ingredientId: "",
   });
 };
-
-
   const addPurchaseCategory = () => {
   const nm = String(newCategoryName || "").trim();
   if (!nm) return alert("Enter category name");
@@ -2760,8 +2732,6 @@ if (targetItem) {
   setNewCategoryName("");
   setNewCategoryUnit("piece");
 };
-
-  // Admin-protected: wipe all purchases
 const resetAllPurchases = () => {
   const okAdmin = !!promptAdminAndPin();
   if (!okAdmin) return;
@@ -2769,19 +2739,12 @@ const resetAllPurchases = () => {
   setPurchases([]);
   setPurchaseCatFilterId("");
 };
-// === ADD BELOW: remove a single category AND all its purchases =========
 const removePurchaseCategory = (catId) => {
   const cat = purchaseCategories.find(c => c.id === catId);
   const name = cat?.name || "(unknown)";
   if (!window.confirm(`Delete category "${name}" and ALL its purchases? This cannot be undone.`)) return;
-
-  // 1) drop the category itself
   setPurchaseCategories(list => list.filter(c => c.id !== catId));
-
-  // 2) cascade delete purchases of this category
   setPurchases(list => list.filter(p => p.categoryId !== catId));
-
-  // 3) clear UI selections if they pointed to the removed id
   setPurchaseCatFilterId(prev => (prev === catId ? "" : prev));
   setNewPurchase(p => (p.categoryId === catId ? { ...p, categoryId: "" } : p));
 };
@@ -6903,6 +6866,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
