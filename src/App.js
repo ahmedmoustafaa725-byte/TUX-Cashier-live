@@ -1904,6 +1904,13 @@ const closeOpenSessionsAt = (endTime) => {
     list.map(s => !s.signOutAt ? { ...s, signOutAt: endTime } : s)
   );
 };
+const resetWorkerLog = () => {
+  const okAdmin = !!promptAdminAndPin();
+  if (!okAdmin) return;
+  if (!window.confirm("Delete ALL worker sessions from the Worker Log? This cannot be undone.")) return;
+  setWorkerSessions([]);
+  alert("Worker Log cleared ");
+};
 const sumHoursForWorker = (name, sessions, start, end) => {
   const rows = (sessions || []).filter(s => s.name === name);
   let hours = 0;
@@ -5689,8 +5696,50 @@ const generatePurchasesPDF = () => {
 {/* ───────────────────────── WORKER LOG TAB ───────────────────────── */}
 {activeTab === "admin" && adminSubTab === "workerlog" && (
   <div style={{ display:"grid", gap:14 }}>
-    <h2>Worker Log</h2>
+    <div
+    style={{
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      marginBottom: 10,
+      flexWrap: "wrap",
+    }}
+  >
+    <h3 style={{ margin: 0 }}>Worker Log</h3>
 
+    <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+      <button
+        onClick={() => closeOpenSessionsAt(new Date())}
+        title="Close all currently open sessions at the current time"
+        style={{
+          padding: "6px 10px",
+          borderRadius: 6,
+          border: "1px solid #ccc",
+          background: "#f1f1f1",
+          cursor: "pointer",
+        }}
+      >
+        Close Open Sessions
+      </button>
+
+      <button
+        onClick={resetWorkerLog}
+        title="Delete ALL worker sessions (admin only)"
+        style={{
+          padding: "6px 10px",
+          borderRadius: 6,
+          border: "1px solid #ccc",
+          background: "#ffebee",
+          color: "#b71c1c",
+          fontWeight: 700,
+          cursor: "pointer",
+        }}
+      >
+        Reset Worker Log
+      </button>
+    </div>
+  </div>
+    <h2>Worker Log</h2>
     {/* Filter row */}
     <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
       <button
@@ -5709,7 +5758,6 @@ const generatePurchasesPDF = () => {
           cursor:"pointer"
         }}
       >MONTH</button>
-
       {workerLogFilter === "day" && (
         <>
           <label><b>Pick day:</b></label>
@@ -5736,7 +5784,6 @@ const generatePurchasesPDF = () => {
         Period: {wStart.toLocaleDateString()} → {wEnd.toLocaleDateString()}
       </div>
     </div>
-
     {/* Sessions table */}
     <div style={{ border:`1px solid ${cardBorder}`, borderRadius:12, padding:12, background: dark ? "#151515" : "#fafafa" }}>
       <h3 style={{ marginTop:0 }}>Sessions</h3>
@@ -5785,7 +5832,6 @@ const generatePurchasesPDF = () => {
         </table>
       </div>
     </div>
-
     {/* Totals per worker + rate editor */}
     <div style={{ border:`1px solid ${cardBorder}`, borderRadius:12, padding:12, background: dark ? "#151515" : "#fafafa" }}>
       <h3 style={{ marginTop:0 }}>Totals (by worker)</h3>
@@ -5831,12 +5877,10 @@ const generatePurchasesPDF = () => {
           </tbody>
         </table>
       </div>
-
       <div style={{ marginTop:8, textAlign:"right", fontWeight:900 }}>
         Total payout: E£{workerMonthlyTotalPay.toFixed(2)}
       </div>
     </div>
-
     {/* PIN editor */}
     <div style={{ border:`1px solid ${cardBorder}`, borderRadius:12, padding:12, background: dark ? "#151515" : "#fafafa" }}>
       <h3 style={{ marginTop:0 }}>PINs</h3>
@@ -5861,12 +5905,10 @@ const generatePurchasesPDF = () => {
     </div>
   </div>
 )}
-
       {/* REPORTS */}
       {activeTab === "admin" && adminSubTab === "reports" && (
         <div>
           <h2>Reports</h2>
-
           {/* Totals overview */}
           <div
             style={{
@@ -5884,7 +5926,6 @@ const generatePurchasesPDF = () => {
             <div><b>Expenses:</b><br/>E£{totals.expensesTotal.toFixed(2)}</div>
             <div><b>Margin:</b><br/>E£{totals.margin.toFixed(2)}</div>
           </div>
-
           {/* Items summary (old style: name, unit price (avg), qty, total) */}
           <h3>Items Sold</h3>
           <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 16 }}>
@@ -5915,7 +5956,6 @@ const generatePurchasesPDF = () => {
               )}
             </tbody>
           </table>
-
           {/* Extras summary */}
           <h3>Extras Sold</h3>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -5976,15 +6016,11 @@ const generatePurchasesPDF = () => {
     </tbody>
   </table>
 )}
-
         </div>
       )}
-
-      
       {activeTab === "admin" && adminSubTab === "edit" && (
         <div>
           <h2>Edit</h2>
-
           {/* Items editor */}
           <h3>Menu Items</h3>
           <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 12 }}>
@@ -6076,7 +6112,6 @@ const generatePurchasesPDF = () => {
                               rowGap: 14,
                             }}
                           >
-
                           {inventory.map((inv) => {
                             const cur = Number((it.uses || {})[inv.id] || 0);
                             return (
@@ -6157,7 +6192,6 @@ const generatePurchasesPDF = () => {
             style={{ width: 40, height: 28, border: "none", background: "none", cursor: "pointer" }}
           />
         </label>
-
         <button
           onClick={addMenuFromForm}
           style={{
@@ -6176,12 +6210,7 @@ const generatePurchasesPDF = () => {
     </td>
   </tr>
 </tfoot>
-
-
-
           </table>
-
-
           {/* Extras editor */}
           <h3>Extras</h3>
           <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 12 }}>
@@ -6356,7 +6385,6 @@ const generatePurchasesPDF = () => {
   onClick={() => {
     const name = String(newExtraName || "").trim();
     if (!name) return alert("Name required.");
-
     const id = Date.now();
     setExtraList((arr) => [
       ...arr,
@@ -6368,7 +6396,6 @@ const generatePurchasesPDF = () => {
         color: "#ffffff",
       },
     ]);
-
     setNewExtraName("");
     setNewExtraPrice(0);
   }}
@@ -6383,9 +6410,6 @@ const generatePurchasesPDF = () => {
 >
   Add Extra
 </button>
-
-
-          {/* Workers / Payments / Order Types — side-by-side */}
 <div
   style={{
     display: "grid",
@@ -6524,7 +6548,6 @@ const generatePurchasesPDF = () => {
         <li style={{ opacity: 0.8, padding: 6 }}>No payment methods yet.</li>
       )}
     </ul>
-
     <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
       <input
         type="text"
@@ -6565,7 +6588,6 @@ const generatePurchasesPDF = () => {
     }}
   >
     <div style={{ fontWeight: 700, marginBottom: 8 }}>Order Types</div>
-
     <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
       {orderTypes.map((t, idx) => (
         <li
@@ -6604,7 +6626,6 @@ const generatePurchasesPDF = () => {
         <li style={{ opacity: 0.8, padding: 6 }}>No order types yet.</li>
       )}
     </ul>
-
     <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
       <input
         type="text"
@@ -6636,8 +6657,7 @@ const generatePurchasesPDF = () => {
     </div>
   </div>
 </div>
-
-{/* ── Delivery Zones & Fees (UNDER Workers/Payment/Order Type, ABOVE Admin block) ── */}
+{/* ── Delivery Zones & Fees  */}
 <div
   style={{
     border: `1px solid ${cardBorder}`,
@@ -6648,8 +6668,6 @@ const generatePurchasesPDF = () => {
   }}
 >
   <h3 style={{ marginTop: 0 }}>Delivery Zones & Fees</h3>
- 
-  {/* Add new zone */}
   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
     <input
       type="text"
@@ -6672,8 +6690,6 @@ const generatePurchasesPDF = () => {
       Add zone
     </button>
   </div>
-
-  {/* Existing zones */}
   <div style={{ overflowX: "auto" }}>
     <table style={{ width: "100%", borderCollapse: "collapse" }}>
       <thead>
@@ -6866,6 +6882,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
