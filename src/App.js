@@ -3581,89 +3581,6 @@ const generatePurchasesPDF = () => {
   }
 };
 
-
-  /* --------------------------- UI --------------------------- */
-
-  return (
-    <div style={containerStyle}>
-   {/* Header */}
-<div
-  style={{
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
-    gap: 8,
-    flexWrap: "wrap",
-  }}
->
-  <h1 style={{ margin: 0 }}>🍔 TUX — Burger Truck POS</h1>
-
-  {/* Right side: date/time + theme toggle */}
-  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-    <div style={{ fontSize: 12 }}>{localDateTime}
-</div>
-      {/* Low-stock alert button */}
-    <button
-      onClick={() => setShowLowStock(s => !s)}
-      title={lowStockCount ? `${lowStockCount} item(s) low in stock` : "No low-stock items"}
-      style={{
-        position: "relative",
-        padding: "6px 10px",
-        borderRadius: 6,
-        border: `1px solid ${btnBorder}`,
-        background: lowStockCount ? "#ffebee" : (dark ? "#2c2c2c" : "#f1f1f1"),
-        color: lowStockCount ? "#b71c1c" : (dark ? "#fff" : "#000"),
-        cursor: "pointer",
-        fontWeight: 700,
-      }}
-    >
-      🔔 Low Stock
-    {lowStockCount > 0 && (
-  <span
-    style={{
-      position: "absolute",
-      top: -4,
-      right: -4,
-      minWidth: 16,
-      height: 16,
-      borderRadius: 8,
-      padding: "0 4px",
-      display: "inline-flex",
-      alignItems: "center",
-      justifyContent: "center",
-      background: "#d32f2f",
-      color: "#fff",
-      fontSize: 10,
-      fontWeight: 800,
-      lineHeight: 1,
-      border: "1.5px solid white",
-    }}
-  >
-    {lowStockCount > 99 ? "99+" : lowStockCount}
-  </span>
-)}
-
-    </button>
-
-    <button
-      onClick={() => setDark((d) => !d)}
-      title={dark ? "Switch to Light" : "Switch to Dark"}
-      style={{
-        padding: "4px 10px",
-        borderRadius: 6,
-        border: `1px solid ${btnBorder}`,
-        background: dark ? "#2c2c2c" : "#f1f1f1",
-        color: dark ? "#fff" : "#000",
-        cursor: "pointer",
-      }}
-    >
-      {dark ? "☀ Light" : "🌙 Dark"}
-    </button>
-  </div>
-</div>
-
-
 // ===== Worker PIN Sign-in/out =====
 const [pinInput, setPinInput] = useState("");
 
@@ -3754,6 +3671,88 @@ const handleSignOutPin = () => {
   closeOpenSession(w.name, new Date());
   setPinInput("");
 };
+  /* --------------------------- UI --------------------------- */
+
+  return (
+    <div style={containerStyle}>
+   {/* Header */}
+<div
+  style={{
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+    gap: 8,
+    flexWrap: "wrap",
+  }}
+>
+  <h1 style={{ margin: 0 }}>🍔 TUX — Burger Truck POS</h1>
+
+  {/* Right side: date/time + theme toggle */}
+  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+    <div style={{ fontSize: 12 }}>{localDateTime}
+</div>
+      {/* Low-stock alert button */}
+    <button
+      onClick={() => setShowLowStock(s => !s)}
+      title={lowStockCount ? `${lowStockCount} item(s) low in stock` : "No low-stock items"}
+      style={{
+        position: "relative",
+        padding: "6px 10px",
+        borderRadius: 6,
+        border: `1px solid ${btnBorder}`,
+        background: lowStockCount ? "#ffebee" : (dark ? "#2c2c2c" : "#f1f1f1"),
+        color: lowStockCount ? "#b71c1c" : (dark ? "#fff" : "#000"),
+        cursor: "pointer",
+        fontWeight: 700,
+      }}
+    >
+      🔔 Low Stock
+    {lowStockCount > 0 && (
+  <span
+    style={{
+      position: "absolute",
+      top: -4,
+      right: -4,
+      minWidth: 16,
+      height: 16,
+      borderRadius: 8,
+      padding: "0 4px",
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      background: "#d32f2f",
+      color: "#fff",
+      fontSize: 10,
+      fontWeight: 800,
+      lineHeight: 1,
+      border: "1.5px solid white",
+    }}
+  >
+    {lowStockCount > 99 ? "99+" : lowStockCount}
+  </span>
+)}
+
+    </button>
+
+    <button
+      onClick={() => setDark((d) => !d)}
+      title={dark ? "Switch to Light" : "Switch to Dark"}
+      style={{
+        padding: "4px 10px",
+        borderRadius: 6,
+        border: `1px solid ${btnBorder}`,
+        background: dark ? "#2c2c2c" : "#f1f1f1",
+        color: dark ? "#fff" : "#000",
+        cursor: "pointer",
+      }}
+    >
+      {dark ? "☀ Light" : "🌙 Dark"}
+    </button>
+  </div>
+</div>
+
+
 
 
      {/* Shift Control Bar */}
@@ -7467,6 +7466,7 @@ const handleSignOutPin = () => {
     </div>
   );
 }
+
 
 
 
