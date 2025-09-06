@@ -1904,6 +1904,36 @@ const closeOpenSessionsAt = (endTime) => {
     list.map(s => !s.signOutAt ? { ...s, signOutAt: endTime } : s)
   );
 };
+  // Quick-add a worker via prompts (admin-protected)
+const quickAddWorker = () => {
+  const okAdmin = !!promptAdminAndPin();
+  if (!okAdmin) return;
+
+  const name = (window.prompt("Worker name:", "") || "").trim();
+  if (!name) return alert("Name is required.");
+
+  let pin = (window.prompt("PIN (4 digits):", "") || "").replace(/\D/g, "").slice(0, 4);
+  if (pin.length !== 4) return alert("PIN must be exactly 4 digits.");
+
+  const rateStr = (window.prompt("Hourly rate (E£/h):", "0") || "0").trim();
+  const rate = Number(rateStr);
+  if (!isFinite(rate) || rate < 0) return alert("Enter a valid hourly rate (>= 0).");
+  const nameExists =
+    (workerProfiles || []).some(p => p.name.toLowerCase() === name.toLowerCase()) ||
+    (workers || []).some(n => String(n).toLowerCase() === name.toLowerCase());
+  if (nameExists) return alert("A worker with this name already exists.");
+  const pinExists = (workerProfiles || []).some(p => String(p.pin) === pin);
+  if (pinExists) return alert("This PIN is already in use. Choose a different one.");
+  const baseId = `w_${slug(name)}`;
+  const existingIds = new Set((workerProfiles || []).map(p => p.id));
+  let id = baseId, i = 1;
+  while (existingIds.has(id)) id = `${baseId}_${++i}`;
+  const newProfile = { id, name, pin, rate: Number(rate.toFixed(2)), isActive: true };
+  setWorkerProfiles(list => [newProfile, ...list]);
+  setWorkers(list => [name, ...list.filter(n => n.toLowerCase() !== name.toLowerCase())]);
+
+  alert("Worker added ✅");
+};
 const resetWorkerLog = () => {
   const okAdmin = !!promptAdminAndPin();
   if (!okAdmin) return;
@@ -3410,8 +3440,6 @@ const generatePurchasesPDF = () => {
 {/* ───────────────────────────────── COGS TAB ───────────────────────────────── */}
 {activeTab === "admin" && adminSubTab === "cogs" && (
   <div style={{ display: "grid", gap: 14 }}>
-
-    {/* ── Target Margin Price Helper (Menu + Extras) ───────────────────── */}
     <div
       style={{
         border: `1px solid ${cardBorder}`,
@@ -5881,29 +5909,50 @@ const generatePurchasesPDF = () => {
         Total payout: E£{workerMonthlyTotalPay.toFixed(2)}
       </div>
     </div>
-    {/* PIN editor */}
-    <div style={{ border:`1px solid ${cardBorder}`, borderRadius:12, padding:12, background: dark ? "#151515" : "#fafafa" }}>
-      <h3 style={{ marginTop:0 }}>PINs</h3>
-      <div style={{ display:"grid", gap:8 }}>
-        {(workerProfiles || []).map(p => (
-          <div key={p.id} style={{ display:"grid", gridTemplateColumns:"1fr 200px 120px", gap:8, alignItems:"center" }}>
-            <div><b>{p.name}</b></div>
-            <input
-              type="password"
-              value={p.pin || ""}
-              onChange={(e) => {
-                const v = String(e.target.value || "").trim();
-                setWorkerProfiles(list => list.map(x => x.id === p.id ? { ...x, pin: v } : x));
-              }}
-              style={{ padding:6, border:`1px solid ${btnBorder}`, borderRadius:6 }}
-              placeholder="PIN"
-            />
-            <div style={{ textAlign:"right", opacity:.7 }}>Rate: E£{Number(p.rate || 0).toFixed(2)}/h</div>
-          </div>
-        ))}
-      </div>
+ {/* PIN editor */}
+<div style={{ border:`1px solid ${cardBorder}`, borderRadius:12, padding:12, background: dark ? "#151515" : "#fafafa" }}>
+  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
+    <h3 style={{ margin:0 }}>PINs</h3>
+    <div style={{ marginLeft:"auto" }}>
+      <button
+        onClick={quickAddWorker}
+        title="Add a new worker (name, PIN, rate)"
+        style={{
+          padding: "6px 10px",
+          borderRadius: 6,
+          border: `1px solid ${btnBorder}`,
+          background: "#e8f5e9",
+          cursor: "pointer",
+          fontWeight: 700,
+        }}
+      >
+        + Add Worker
+      </button>
     </div>
   </div>
+
+  <div style={{ display:"grid", gap:8 }}>
+    {(workerProfiles || []).map(p => (
+      <div key={p.id} style={{ display:"grid", gridTemplateColumns:"1fr 200px 120px", gap:8, alignItems:"center" }}>
+        <div><b>{p.name}</b></div>
+        <input
+          type="password"
+          value={p.pin || ""}
+          onChange={(e) => {
+            const v = String(e.target.value || "").trim();
+            setWorkerProfiles(list => list.map(x => x.id === p.id ? { ...x, pin: v } : x));
+          }}
+          style={{ padding:6, border:`1px solid ${btnBorder}`, borderRadius:6 }}
+          placeholder="PIN"
+        />
+        <div style={{ textAlign:"right", opacity:.7 }}>
+          Rate: E£{Number(p.rate || 0).toFixed(2)}/h
+        </div>
+      </div>
+    ))}
+  </div>
+</div>
+
 )}
       {/* REPORTS */}
       {activeTab === "admin" && adminSubTab === "reports" && (
@@ -6882,6 +6931,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
