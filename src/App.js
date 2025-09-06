@@ -2347,110 +2347,134 @@ function getPeriodRange(kind, dayMeta, dayStr, monthStr) {
     alert(`On-duty changed: ${prev || "?"} → ${newName}`);
   };
 
-  const endDay = async () => {
-    if (!dayMeta.startedAt) return alert("Start a shift first.");
-    const who = window.prompt("Enter your name to END THE DAY:", "");
-    const endBy = norm(who);
-    if (!endBy) return alert("Name is required.");
-  if (!dayMeta.reconciledAt || !dayMeta.startedAt || (dayMeta.reconciledAt < dayMeta.startedAt)) {
-    alert("You must save a Cash Drawer Reconciliation before ending the day. Go to the Reconcile tab.");
+const endDay = async () => {
+  if (!dayMeta.startedAt) return alert("Start a shift first.");
+  const who = window.prompt("Enter your name to END THE DAY:", "");
+  const endBy = norm(who);
+  if (!endBy) return alert("Name is required.");
+
+  if (
+    !dayMeta.reconciledAt ||
+    !dayMeta.startedAt ||
+    (dayMeta.reconciledAt < dayMeta.startedAt)
+  ) {
+    alert(
+      "You must save a Cash Drawer Reconciliation before ending the day. Go to the Reconcile tab."
+    );
     return;
   }
-    const endTime = new Date();
-    const metaForReport = { ...dayMeta, endedAt: endTime, endedBy: endBy };
 
-    generatePDF(false, metaForReport);
+  // One shared timestamp used for the report and to close all sessions
+  const endTime = new Date();
 
-    if (cloudEnabled && ordersColRef && fbUser && db) {
-      try {
-        const start = dayMeta.startedAt
-          ? new Date(dayMeta.startedAt)
-          : orders.length
-          ? new Date(Math.min(...orders.map((o) => +o.date)))
-          : endTime;
-        await purgeOrdersInCloud(db, ordersColRef, start, endTime);
-      } catch (e) {
-        console.warn("Cloud purge on endDay failed:", e);
-      }
-      try {
-        if (counterDocRef) {
-          await setDoc(
-            counterDocRef,
-            { lastOrderNo: 0, updatedAt: serverTimestamp() },
-            { merge: true }
-          );
-        }
-      } catch (e) {
-        console.warn("Counter reset failed:", e);
-      }
+  const metaForReport = { ...dayMeta, endedAt: endTime, endedBy: endBy };
+  generatePDF(false, metaForReport);
+
+  if (cloudEnabled && ordersColRef && fbUser && db) {
+    try {
+      const start = dayMeta.startedAt
+        ? new Date(dayMeta.startedAt)
+        : orders.length
+        ? new Date(Math.min(...orders.map((o) => +o.date)))
+        : endTime;
+      await purgeOrdersInCloud(db, ordersColRef, start, endTime);
+    } catch (e) {
+      console.warn("Cloud purge on endDay failed:", e);
     }
-
-    const validOrders = orders.filter((o) => !o.voided);
-    const revenueExclDelivery = validOrders.reduce(
-      (s, o) =>
-        s +
-        Number(
-          o.itemsTotal != null ? o.itemsTotal : o.total - (o.deliveryFee || 0)
-        ),
-      0
-    );
-    const expensesTotal = expenses.reduce(
-      (s, e) => s + Number((e.qty || 0) * (e.unitPrice || 0)),
-      0
-    );
-    const margin = revenueExclDelivery - expensesTotal;
-
-    const txs = [];
-    if (margin > 0) {
-      txs.push({
-        id: `tx_${Date.now()}`,
-        type: "init",
-        amount: margin,
-        worker: endBy,
-        note: "Auto Init from day margin",
-        date: new Date(),
-        locked: true,                // ⬅️ make it unremovable
-   source: "auto_day_margin",
-      });
-    } else if (margin < 0) {
-      txs.push({
-        id: `tx_${Date.now() + 1}`,
-        type: "adjustDown",
-        amount: Math.abs(margin),
-        worker: endBy,
-        note: "Auto Adjust Down (negative margin)",
-        date: new Date(),
-      });
+    try {
+      if (counterDocRef) {
+        await setDoc(
+          counterDocRef,
+          { lastOrderNo: 0, updatedAt: serverTimestamp() },
+          { merge: true }
+        );
+      }
+    } catch (e) {
+      console.warn("Counter reset failed:", e);
     }
-    if (txs.length) setBankTx((arr) => [...txs, ...arr]);
+  }
 
-    setOrders([]);
-    setNextOrderNo(1);
-    setInventoryLocked(false);
-    setInventoryLockedAt(null);
-    // Close all open worker sessions at end time
+  const validOrders = orders.filter((o) => !o.voided);
+  const revenueExclDelivery = validOrders.reduce(
+    (s, o) =>
+      s +
+      Number(
+        o.itemsTotal != null ? o.itemsTotal : o.total - (o.deliveryFee || 0)
+      ),
+    0
+  );
+  const expensesTotal = expenses.reduce(
+    (s, e) => s + Number((e.qty || 0) * (e.unitPrice || 0)),
+    0
+  );
+  const margin = revenueExclDelivery - expensesTotal;
 
-
-
-    setDayMeta({
-      startedBy: "",
-      currentWorker: "",
-      startedAt: null,
-      endedAt: null,
-      endedBy: "",
-      lastReportAt: null,
-      resetBy: "",
-      resetAt: null,
-      currentWorkers: [],
-      shiftChanges: [],
+  const txs = [];
+  if (margin > 0) {
+    txs.push({
+      id: `tx_${Date.now()}`,
+      type: "init",
+      amount: margin,
+      worker: endBy,
+      note: "Auto Init from day margin",
+      date: new Date(),
+      locked: true, // make it unremovable
+      source: "auto_day_margin",
     });
-    setReconCounts({});
-setReconSavedBy("");
-// reconHistory NOT cleared (per your requirement)
+  } else if (margin < 0) {
+    txs.push({
+      id: `tx_${Date.now() + 1}`,
+      type: "adjustDown",
+      amount: Math.abs(margin),
+      worker: endBy,
+      note: "Auto Adjust Down (negative margin)",
+      date: new Date(),
+    });
+  }
+  if (txs.length) setBankTx((arr) => [...txs, ...arr]);
 
+  setOrders([]);
+  setNextOrderNo(1);
+  setInventoryLocked(false);
+  setInventoryLockedAt(null);
 
-    alert(`Day ended by ${endBy}. Report downloaded and day reset ✅`);
-  };
+  // Close all open worker sessions at end time (use the SAME endTime)
+  // Build a unique list of currently on-duty names from your state
+  const fromCurrentWorkers = Array.isArray(dayMeta?.currentWorkers)
+    ? dayMeta.currentWorkers
+        .map((w) => (typeof w === "string" ? w : w?.name || w?.workerName))
+        .filter(Boolean)
+    : [];
+
+  const fromSessionsOpen =
+    typeof sessionsOpen !== "undefined" && Array.isArray(sessionsOpen)
+      ? sessionsOpen.map((s) => s.workerName).filter(Boolean)
+      : [];
+
+  const onDutyNames = Array.from(new Set([...fromCurrentWorkers, ...fromSessionsOpen]));
+
+  // If closeOpenSession is async, this awaits all; if it's sync, await is harmless
+  await Promise.all(onDutyNames.map((nm) => closeOpenSession(nm, endTime)));
+
+  setDayMeta({
+    startedBy: "",
+    currentWorker: "",
+    startedAt: null,
+    endedAt: null,
+    endedBy: "",
+    lastReportAt: null,
+    resetBy: "",
+    resetAt: null,
+    currentWorkers: [],
+    shiftChanges: [],
+  });
+  setReconCounts({});
+  setReconSavedBy("");
+  // reconHistory NOT cleared (per your requirement)
+
+  alert(`Day ended by ${endBy}. Report downloaded and day reset`);
+};
+
 
   // --------- Cart / Checkout ----------
   const [isCheckingOut, setIsCheckingOut] = useState(false);
@@ -7443,6 +7467,7 @@ const handleSignOutPin = () => {
     </div>
   );
 }
+
 
 
 
