@@ -2429,9 +2429,8 @@ function getPeriodRange(kind, dayMeta, dayStr, monthStr) {
     setInventoryLocked(false);
     setInventoryLockedAt(null);
     // Close all open worker sessions at end time
-const endTime = new Date();
-// (this is already defined in your code at top of endDay)
-(onDutyNames || []).forEach(nm => closeOpenSession(nm, endTime));
+
+
 
     setDayMeta({
       startedBy: "",
@@ -7444,6 +7443,7 @@ const handleSignOutPin = () => {
     </div>
   );
 }
+
 
 
 
