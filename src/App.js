@@ -57,7 +57,6 @@ function saveLocalPartial(patch) {
     localStorage.setItem(LS_KEY, JSON.stringify({ ...cur, ...patch }));
   } catch {}
 }
-
 function packStateForCloud(state) {
   const {
     menu,
@@ -73,7 +72,6 @@ function packStateForCloud(state) {
     inventorySnapshot,
     inventoryLockedAt,
     adminPins,
- 
     orderTypes,
     defaultDeliveryFee,
     expenses,
@@ -81,7 +79,6 @@ function packStateForCloud(state) {
     bankTx,
      reconHistory,
   } = state;
-
 const purchases = Array.isArray(state.purchases)
   ? state.purchases.map((p) => ({
       ...p,
@@ -93,7 +90,6 @@ const purchases = Array.isArray(state.purchases)
     : [];
 
   const customers = Array.isArray(state.customers) ? state.customers : [];
-
   const deliveryZones = Array.isArray(state.deliveryZones)
     ? state.deliveryZones
     : [];
@@ -104,7 +100,6 @@ const purchases = Array.isArray(state.purchases)
       signInAt: toIso(s.signInAt),
       signOutAt: toIso(s.signOutAt),
     })),
-
     version: 1,
     updatedAt: serverTimestamp(),
     menu,
@@ -159,8 +154,6 @@ restockedAt: toIso(o.restockedAt),
     })),
   };
 }
-
-
 function unpackStateFromCloud(data, fallbackDayMeta = {}) {
   const out = {};
   if (Array.isArray(data.orders)) {
@@ -192,7 +185,6 @@ function unpackStateFromCloud(data, fallbackDayMeta = {}) {
     }));
   }
   if (data.inventoryLockedAt) out.inventoryLockedAt = new Date(data.inventoryLockedAt);
-
   if (data.dayMeta) {
     out.dayMeta = {
       startedBy: data.dayMeta.startedBy || "",
@@ -255,8 +247,7 @@ return {
   deliveryName: order.deliveryName || "",
 deliveryPhone: order.deliveryPhone || "",
 deliveryAddress: order.deliveryAddress || "",
-deliveryZoneId: order.deliveryZoneId || "",   // ⬅️ NEW
-
+deliveryZoneId: order.deliveryZoneId || "",   
   total: order.total,
   itemsTotal: order.itemsTotal,
   cashReceived: order.cashReceived ?? null,
@@ -284,7 +275,6 @@ function orderFromCloudDoc(id, d) {
     paymentParts: Array.isArray(d.paymentParts)
   ? d.paymentParts.map((p) => ({ method: p.method, amount: Number(p.amount || 0) }))
   : [],
-
     orderType: d.orderType,
     deliveryFee: Number(d.deliveryFee || 0),
     deliveryName: d.deliveryName || "",
@@ -697,7 +687,6 @@ const cashBlock = (() => {
   }
   .note .label{ font-weight:700; font-size:9pt; margin-bottom:1mm; }
   .note .body{ font-size:10pt; white-space: pre-wrap; }
-
   .table { display:grid; grid-auto-rows:auto; row-gap:1mm; }
   .thead, .tr {
     display:grid;
@@ -712,7 +701,6 @@ const cashBlock = (() => {
   .c-qty, .c-price, .c-total { text-align: right; }
   .c-item { word-break: break-word; }
   .extra { font-size: 10pt; opacity: .9; }
-
   .totals { display: grid; gap: 1mm; margin-top: 1mm; }
   .totals .row { display: flex; justify-content: space-between; gap: 4mm; font-weight: 600; }
   .total { font-size: 13pt; font-weight: 900; }
@@ -723,7 +711,6 @@ const cashBlock = (() => {
   .logos img { display: block; object-fit: contain; height: auto; }
   .logos img.menu { width: calc((${widthMm}mm - ${m*2}mm) * .42); }
   .logos img.delivery { width: calc((${widthMm}mm - ${m*2}mm) * .52); }
-
   @media screen { body { background:#f6f6f6; } .receipt { box-shadow: 0 0 6px rgba(0,0,0,.12); margin: 8px auto; } }
   @media print { .receipt { box-shadow:none; } }
 </style>
@@ -804,7 +791,6 @@ const upsertCustomer = (list, rec) => {
   const without = (list || []).filter(c => normalizePhone(c.phone) !== phone);
   return [{ ...rec, phone }, ...without];
 };
-
 function dedupeCustomers(list = []) {
   const seen = new Set();
   const out = [];
@@ -965,7 +951,6 @@ const saveReconciliation = () => {
       variance: Number((actual - expected).toFixed(2)),
     };
   }
-
   const rec = {
     id: `rec_${Date.now()}`,
     savedBy: who,
@@ -1024,8 +1009,6 @@ const [newPurchase, setNewPurchase] = useState({
   date: new Date().toISOString().slice(0, 10),
   ingredientId: "", 
 });
-
-  
 const [deliveryZoneId, setDeliveryZoneId] = useState("");               
 const [customers, setCustomers] = useState([]);                         
 const [deliveryZones, setDeliveryZones] = useState(DEFAULT_ZONES);    
@@ -1068,7 +1051,6 @@ const verifyAdminPin = (n) => {
 const lockAdminPin = (n) => {
   setUnlockedPins((u) => ({ ...u, [n]: false }));
 };
-
 const unlockAdminPin = (n) => {
   if (!verifyAdminPin(n)) return;
   setUnlockedPins((u) => ({ ...u, [n]: true }));
@@ -1954,6 +1936,24 @@ const sumHoursForWorker = (name, sessions, start, end) => {
   }
   return Number(hours.toFixed(2));
 };
+function hoursForSession(s, now = new Date()) {
+  const a = s?.signInAt instanceof Date ? s.signInAt : (s?.signInAt ? new Date(s.signInAt) : null);
+  if (!a) return 0;
+  const b = s?.signOutAt
+    ? (s.signOutAt instanceof Date ? s.signOutAt : new Date(s.signOutAt))
+    : now; 
+  const ms = Math.max(0, +b - +a);
+  return Number((ms / 36e5).toFixed(2));
+}
+function rateForWorker(name) {
+  const p = (workerProfiles || []).find(w => w.name === name);
+  return Number(p?.rate || 0); 
+}
+function payForSession(s, now = new Date()) {
+  const hrs = hoursForSession(s, now);
+  const rate = rateForWorker(s.name);
+  return Number((hrs * rate).toFixed(2));
+}
 useMemo(() => workerSessions.length, [workerSessions]);
 const [wStart, wEnd] = useMemo(() => {
   return getPeriodRange(workerLogFilter, dayMeta, workerLogDay, workerLogMonth);
@@ -5822,7 +5822,7 @@ const generatePurchasesPDF = () => {
               <th style={{ textAlign:"left",  padding:8, borderBottom:`1px solid ${cardBorder}` }}>Worker</th>
               <th style={{ textAlign:"left",  padding:8, borderBottom:`1px solid ${cardBorder}` }}>Sign in</th>
               <th style={{ textAlign:"left",  padding:8, borderBottom:`1px solid ${cardBorder}` }}>Sign out</th>
-              <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>Hours</th>
+             <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}> Hours / Est. Pay</th>
             </tr>
           </thead>
           <tbody>
@@ -5842,13 +5842,20 @@ const generatePurchasesPDF = () => {
                 const hrs = s.signInAt
                   ? sumHoursForWorker(s.name, [s], wStart, wEnd)
                   : 0;
+                const estPay = hrs * rateForWorker(s.name);
                 return (
                   <tr key={s.id}>
                     <td style={{ padding:8 }}>{a ? a.toLocaleDateString() : "—"}</td>
                     <td style={{ padding:8 }}>{s.name}</td>
                     <td style={{ padding:8 }}>{a ? a.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) : "—"}</td>
                     <td style={{ padding:8 }}>{b ? b.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) : (s.signOutAt ? "—" : "OPEN")}</td>
-                    <td style={{ padding:8, textAlign:"right" }}>{hrs.toFixed(2)}</td>
+                   <td style={{ padding:8, textAlign:"right", whiteSpace:"nowrap" }}>
+                  <b>{hrs.toFixed(2)} h</b>
+                  <span style={{ opacity:.8, marginLeft:8 }}>
+                    • Est: {currency(estPay)}
+                  </span>
+                </td>
+
                   </tr>
                 );
               })}
@@ -6999,6 +7006,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
