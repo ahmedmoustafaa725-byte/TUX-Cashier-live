@@ -2112,9 +2112,10 @@ const workerMonthlyTotalPay = useMemo(
         date: new Date(),
       });
     }
-    if (txs.length) setBankTx((arr) => [...txs, ...arr]);
-    // Close any open worker sessions at end time
-    closeOpenSessionsAt(endTime);
+if (txs.length) setBankTx((arr) => [...txs, ...arr]);
+lastLockedRef.current = [];  
+setExpenses([]);              
+closeOpenSessionsAt(endTime);
     setOrders([]);
     setNextOrderNo(1);
     setInventoryLocked(false);
@@ -6998,6 +6999,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
