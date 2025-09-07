@@ -829,6 +829,12 @@ const [targetMarginPct, setTargetMarginPct] = useState(() => {
   const v = Number(l?.targetMarginPct);
   return isFinite(v) ? v : 0.5; // default 50% like your screenshot
 });
+  const [bankFilter, setBankFilter] = useState("day");
+const [bankDay, setBankDay] = useState(new Date().toISOString().slice(0, 10));
+const [bankMonth, setBankMonth] = useState(() => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+});
 const [newItemName, setNewItemName] = useState("");
 const [newItemPrice, setNewItemPrice] = useState(0);
 const [newItemColor, setNewItemColor] = useState("#ffffff");
@@ -1098,14 +1104,22 @@ useEffect(() => {
   const [newExpUnitPrice, setNewExpUnitPrice] = useState(0);
   const [newExpNote, setNewExpNote] = useState("");
 const [adminUnlocked, setAdminUnlocked] = useState(false);
-  const removeBankTx = (id) => {
+const removeBankTx = (id) => {
   setBankTx(arr => {
     const row = arr.find(t => t.id === id);
     if (!row) return arr;
+    
+    // Prevent removal of payout and purchase transactions
+    if (row.note === "Worker Payout" || row.note === "Daily Purchases") {
+      alert("This transaction cannot be removed as it represents worker payout or daily purchases.");
+      return arr;
+    }
+    
     if (isBankLocked(row)) {
       alert("This Auto Init from day margin transaction is locked and cannot be removed.");
       return arr;
     }
+    
     return arr.filter(t => t.id !== id);
   });
 };
@@ -2116,7 +2130,37 @@ const workerMonthlyTotalPay = useMemo(
       0
     );
     const margin = revenueExclDelivery - expensesTotal;
+// Calculate total worker payout and purchases for the day
+const totalPayout = workerMonthlyStats.reduce((sum, worker) => sum + worker.pay, 0);
+const totalPurchasesToday = purchases
+  .filter(p => {
+    const purchaseDate = new Date(p.date);
+    return purchaseDate >= dayMeta.startedAt && purchaseDate <= endTime;
+  })
+  .reduce((sum, p) => sum + (p.qty * p.unitPrice), 0);
 
+// Add transactions for payout and purchases
+if (totalPayout > 0) {
+  txs.push({
+    id: `tx_payout_${Date.now()}`,
+    type: "withdraw",
+    amount: totalPayout,
+    worker: endBy,
+    note: "Worker Payout",
+    date: new Date(),
+  });
+}
+
+if (totalPurchasesToday > 0) {
+  txs.push({
+    id: `tx_purchases_${Date.now()}`,
+    type: "withdraw",
+    amount: totalPurchasesToday,
+    worker: endBy,
+    note: "Daily Purchases",
+    date: new Date(),
+  });
+}
     const txs = [];
     if (margin > 0) {
       txs.push({
@@ -2644,7 +2688,13 @@ for (const o of validOrders) {
     );
     return { items, extras };
   }, [orders]);
-
+const filteredBankTx = useMemo(() => {
+  const [start, end] = getPeriodRange(bankFilter, dayMeta, bankDay, bankMonth);
+  return bankTx.filter(t => {
+    const d = t.date instanceof Date ? t.date : new Date(t.date);
+    return d >= start && d <= end;
+  });
+}, [bankTx, bankFilter, bankDay, bankMonth, dayMeta]);
   const inventoryReportRows = useMemo(() => {
     if (!inventorySnapshot || inventorySnapshot.length === 0) return [];
     const snapMap = {};
@@ -5600,171 +5650,197 @@ const generatePurchasesPDF = () => {
     </div>
   </div>
 )}
-      {/* BANK */}
      {activeTab === "admin" && adminSubTab === "bank" && (
-        <div>
-          <h2>Bank / Cashbox</h2>
-          <div
-            style={{
-              marginBottom: 10,
-              padding: 10,
-              borderRadius: 6,
-              background: dark ? "#1b2631" : "#e3f2fd",
-              display: "flex",
-              gap: 12,
-              alignItems: "center",
-              flexWrap: "wrap",
-            }}
-          >
-            <strong>Balance:</strong> <span>E£{bankBalance.toFixed(2)}</span>
-            {/* Add this reset button after the balance display */}
-<button
-  onClick={() => {
-    const okAdmin = !!promptAdminAndPin();
-    if (!okAdmin) return;
-    if (window.confirm("Reset ALL bank transactions? This cannot be undone.")) {
-      setBankTx([]);
-    }
-  }}
-  style={{
-    background: "#c62828",
-    color: "#fff",
-    border: "none",
-    borderRadius: 6,
-    padding: "8px 12px",
-    cursor: "pointer",
-    marginLeft: "auto"
-  }}
->
-  Reset Bank Transactions
-</button>
-          </div>
+  <div>
+    <h2>Bank / Cashbox</h2>
+    
+    {/* Balance Display */}
+    <div
+      style={{
+        marginBottom: 10,
+        padding: 10,
+        borderRadius: 6,
+        background: dark ? "#1b2631" : "#e3f2fd",
+        display: "flex",
+        gap: 12,
+        alignItems: "center",
+        flexWrap: "wrap",
+      }}
+    >
+      <strong>Balance:</strong> <span>E£{bankBalance.toFixed(2)}</span>
+      
+      {/* Filter Controls */}
+      <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+        <select
+          value={bankFilter}
+          onChange={(e) => setBankFilter(e.target.value)}
+          style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+        >
+          <option value="day">Day</option>
+          <option value="month">Month</option>
+          <option value="year">Year</option>
+        </select>
+        
+        {bankFilter === "day" && (
+          <input
+            type="date"
+            value={bankDay}
+            onChange={(e) => setBankDay(e.target.value)}
+            style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+          />
+        )}
+        
+        {bankFilter === "month" && (
+          <input
+            type="month"
+            value={bankMonth}
+            onChange={(e) => setBankMonth(e.target.value)}
+            style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+          />
+        )}
+      </div>
+    </div>
 
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              alignItems: "center",
-              flexWrap: "wrap",
-              marginBottom: 12,
-            }}
-          >
-            <select
-              value={bankForm.type}
-              onChange={(e) => setBankForm((f) => ({ ...f, type: e.target.value }))}
-              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-            >
-              <option value="deposit">Deposit (+)</option>
-              <option value="withdraw">Withdraw (-)</option>
-              <option value="adjustUp">Adjust Up (+)</option>
-              <option value="adjustDown">Adjust Down (-)</option>
-              <option value="init">Init (set by margin)</option>
-            </select>
-            <input
-              type="number"
-              placeholder="Amount"
-              value={bankForm.amount}
-              onChange={(e) => setBankForm((f) => ({ ...f, amount: Number(e.target.value || 0) }))}
-              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 160 }}
-            />
-            <input
-              type="text"
-              placeholder="Worker"
-              list="bank-worker-list"
-              value={bankForm.worker}
-              onChange={(e) => setBankForm((f) => ({ ...f, worker: e.target.value }))}
-              style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 180 }}
-            />
-            <datalist id="bank-worker-list">
-              {workers.map((w) => (
-                <option key={w} value={w} />
-              ))}
-            </datalist>
-            <input
-              type="text"
-              placeholder="Note"
-              value={bankForm.note}
-              onChange={(e) => setBankForm((f) => ({ ...f, note: e.target.value }))}
-              style={{ padding:                   6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 240 }}
-            />
-            <button
-              onClick={() => {
-                const amt = Number(bankForm.amount || 0);
-                if (!amt) return alert("Amount must be > 0.");
-                const row = {
-                  id: `tx_${Date.now()}`,
-                  type: bankForm.type || "deposit",
-                  amount: Math.abs(amt),
-                  worker: bankForm.worker || "",
-                  note: bankForm.note || "",
-                  date: new Date(),
-                };
-                setBankTx((arr) => [row, ...arr]);
-                setBankForm({ type: "deposit", amount: 0, worker: "", note: "" });
-              }}
-              style={{
-                background: "#1976d2",
-                color: "#fff",
-                border: "none",
-                borderRadius: 6,
-                padding: "8px 12px",
-                cursor: "pointer",
-              }}
-            >
-              Add Entry
-            </button>
-          </div>
+    {/* Add Transaction Form */}
+    <div
+      style={{
+        display: "flex",
+        gap: 8,
+        alignItems: "center",
+        flexWrap: "wrap",
+        marginBottom: 12,
+      }}
+    >
+      <select
+        value={bankForm.type}
+        onChange={(e) => setBankForm((f) => ({ ...f, type: e.target.value }))}
+        style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+      >
+        <option value="deposit">Deposit (+)</option>
+        <option value="withdraw">Withdraw (-)</option>
+        <option value="adjustUp">Adjust Up (+)</option>
+        <option value="adjustDown">Adjust Down (-)</option>
+        <option value="init">Init (set by margin)</option>
+      </select>
+      <input
+        type="number"
+        placeholder="Amount"
+        value={bankForm.amount}
+        onChange={(e) => setBankForm((f) => ({ ...f, amount: Number(e.target.value || 0) }))}
+        style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 160 }}
+      />
+      <input
+        type="text"
+        placeholder="Worker"
+        list="bank-worker-list"
+        value={bankForm.worker}
+        onChange={(e) => setBankForm((f) => ({ ...f, worker: e.target.value }))}
+        style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 180 }}
+      />
+      <datalist id="bank-worker-list">
+        {workers.map((w) => (
+          <option key={w} value={w} />
+        ))}
+      </datalist>
+      <input
+        type="text"
+        placeholder="Note"
+        value={bankForm.note}
+        onChange={(e) => setBankForm((f) => ({ ...f, note: e.target.value }))}
+        style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 240 }}
+      />
+      <button
+        onClick={() => {
+          const amt = Number(bankForm.amount || 0);
+          if (!amt) return alert("Amount must be > 0.");
+          const row = {
+            id: `tx_${Date.now()}`,
+            type: bankForm.type || "deposit",
+            amount: Math.abs(amt),
+            worker: bankForm.worker || "",
+            note: bankForm.note || "",
+            date: new Date(),
+          };
+          setBankTx((arr) => [row, ...arr]);
+          setBankForm({ type: "deposit", amount: 0, worker: "", note: "" });
+        }}
+        style={{
+          background: "#1976d2",
+          color: "#fff",
+          border: "none",
+          borderRadius: 6,
+          padding: "8px 12px",
+          cursor: "pointer",
+        }}
+      >
+        Add Entry
+      </button>
+    </div>
 
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Type</th>
-                <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Amount (E£)</th>
-                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Worker</th>
-                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Date</th>
-                <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Note</th>
-                <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {bankTx.map((t) => (
-                <tr key={t.id}>
-                  <td style={{ padding: 6 }}>{t.type}</td>
-                  <td style={{ padding: 6, textAlign: "right" }}>{Number(t.amount || 0).toFixed(2)}</td>
-                  <td style={{ padding: 6 }}>{t.worker}</td>
-                  <td style={{ padding: 6 }}>{t.date ? formatDateDDMMYY(t.date) : ""}</td>
-                  <td style={{ padding: 6 }}>{t.note}</td>
-                  <td style={{ padding: 6 }}>
-                   <button
-                          onClick={() => removeBankTx(t.id)}
-                          disabled={isBankLocked(t)}
-                          title={isBankLocked(t) ? "Locked transaction" : "Remove"}
-                          style={{
-                            background: "#c62828",
-                            color: "#fff",
-                            border: "none",
-                            borderRadius: 6,
-                            padding: "6px 10px",
-                            cursor: isBankLocked(t) ? "not-allowed" : "pointer",
-                            opacity: isBankLocked(t) ? 0.6 : 1,
-                          }}
-                        >
-                          🗑
-                        </button>
-                  </td>
-                </tr>
-              ))}
-              {bankTx.length === 0 && (
-                <tr>
-                  <td colSpan={6} style={{ padding: 8, opacity: 0.8 }}>
-                    No bank entries yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
+    {/* Transactions Table */}
+    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <thead>
+        <tr>
+          <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Type</th>
+          <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Amount (E£)</th>
+          <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Worker</th>
+          <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Date</th>
+          <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Note</th>
+          <th style={{ borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {filteredBankTx.map((t) => {
+          const isPositive = t.type === "deposit" || t.type === "init" || t.type === "adjustUp";
+          const isLocked = t.note === "Worker Payout" || t.note === "Daily Purchases";
+          const amountColor = isPositive ? "#2e7d32" : "#c62828";
+          
+          return (
+            <tr key={t.id}>
+              <td style={{ padding: 6 }}>{t.type}</td>
+              <td style={{ 
+                padding: 6, 
+                textAlign: "right",
+                color: amountColor,
+                fontWeight: "bold"
+              }}>
+                {isPositive ? "+" : "-"}E£{Number(t.amount || 0).toFixed(2)}
+              </td>
+              <td style={{ padding: 6 }}>{t.worker}</td>
+              <td style={{ padding: 6 }}>{t.date ? formatDateDDMMYY(t.date) : ""}</td>
+              <td style={{ padding: 6 }}>{t.note}</td>
+              <td style={{ padding: 6 }}>
+                <button
+                  onClick={() => removeBankTx(t.id)}
+                  disabled={isLocked}
+                  title={isLocked ? "This transaction cannot be removed" : "Remove"}
+                  style={{
+                    background: "#c62828",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 6,
+                    padding: "6px 10px",
+                    cursor: isLocked ? "not-allowed" : "pointer",
+                    opacity: isLocked ? 0.6 : 1,
+                  }}
+                >
+                  Remove
+                </button>
+              </td>
+            </tr>
+          );
+        })}
+        {filteredBankTx.length === 0 && (
+          <tr>
+            <td colSpan={6} style={{ padding: 8, opacity: 0.8 }}>
+              No bank entries for the selected period.
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  </div>
+)}
 {/* ───────────────────────── WORKER LOG TAB ───────────────────────── */}
 {activeTab === "admin" && adminSubTab === "workerlog" && (
   <div style={{ display:"grid", gap:14 }}>
@@ -7064,6 +7140,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
