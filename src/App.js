@@ -2132,7 +2132,19 @@ const workerMonthlyTotalPay = useMemo(
     );
     const margin = revenueExclDelivery - expensesTotal;
 const txs = [];
-const totalPayout = workerMonthlyStats.reduce((sum, worker) => sum + worker.pay, 0);
+// Calculate today's payout only (not monthly)
+const todayPayout = workerMonthlyStats
+  .filter(worker => {
+    // Calculate hours just for today
+    const hours = sumHoursForWorker(worker.name, workerSessions, dayMeta.startedAt, endTime);
+    return hours > 0;
+  })
+  .reduce((sum, worker) => {
+    const hours = sumHoursForWorker(worker.name, workerSessions, dayMeta.startedAt, endTime);
+    return sum + (hours * worker.rate);
+  }, 0);
+
+// Calculate today's purchases only
 const totalPurchasesToday = purchases
   .filter(p => {
     const purchaseDate = new Date(p.date);
@@ -2141,15 +2153,15 @@ const totalPurchasesToday = purchases
   .reduce((sum, p) => sum + (p.qty * p.unitPrice), 0);
 
 // Add transactions for payout and purchases
-if (totalPayout > 0) {
+if (todayPayout > 0) {
   txs.push({
     id: `tx_payout_${Date.now()}`,
     type: "withdraw",
-    amount: totalPayout,
+    amount: todayPayout,
     worker: endBy,
-    note: "Worker Payout",
+    note: "Today's Worker Payout",
     date: new Date(),
-    locked: true, // Prevent removal
+    locked: true,
     source: "auto_day_payout"
   });
 }
@@ -2160,13 +2172,12 @@ if (totalPurchasesToday > 0) {
     type: "withdraw",
     amount: totalPurchasesToday,
     worker: endBy,
-    note: "Daily Purchases",
+    note: "Today's Purchases",
     date: new Date(),
-    locked: true, // Prevent removal
+    locked: true,
     source: "auto_day_purchases"
   });
 }
-
 if (margin > 0) {
   txs.push({
     id: `tx_${Date.now()}`,
@@ -5740,6 +5751,25 @@ const generatePurchasesPDF = () => {
           {utility.name}
         </button>
       ))}
+{/* Add this reset button */}
+      <button
+        onClick={() => {
+          const okAdmin = !!promptAdminAndPin();
+          if (!okAdmin) return;
+          if (!window.confirm("Reset ALL bank transactions? This cannot be undone.")) return;
+          setBankTx([]);
+        }}
+        style={{
+          padding: "8px 12px",
+          borderRadius: 6,
+          border: `1px solid ${btnBorder}`,
+          background: "#d32f2f",
+          color: "white",
+          cursor: "pointer"
+        }}
+      >
+        Reset All Transactions
+      </button>
     </div>
 
     {/* Add Transaction Form */}
@@ -7181,6 +7211,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
