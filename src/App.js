@@ -3338,17 +3338,18 @@ const generatePurchasesPDF = () => {
         {label}
       </button>
     ))}
+
     <div style={{ marginLeft: "auto" }}></div>
 
-      <button
-        onClick={() => { setAdminUnlocked(false); setActiveTab("orders"); }} // optional: kick out of Admin
-        style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${btnBorder}` }}
-      >
-        Lock Admin
-      </button>
-    </div>
+    <button
+      onClick={() => { setAdminUnlocked(false); setActiveTab("orders"); }}
+      style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${btnBorder}` }}
+    >
+      Lock Admin
+    </button>
   </div>
 )}
+
 {/* ───────────────────────────────── COGS TAB ───────────────────────────────── */}
 {activeTab === "admin" && adminSubTab === "cogs" && (
   <div style={{ display: "grid", gap: 14 }}>
@@ -6843,6 +6844,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
