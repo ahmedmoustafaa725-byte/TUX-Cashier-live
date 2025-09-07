@@ -3339,7 +3339,7 @@ const generatePurchasesPDF = () => {
       </button>
     ))}
 
-    <div style={{ marginLeft: "auto" }}></div>
+    <div style={{ marginLeft: "auto" }} />
 
     <button
       onClick={() => { setAdminUnlocked(false); setActiveTab("orders"); }}
@@ -3349,7 +3349,6 @@ const generatePurchasesPDF = () => {
     </button>
   </div>
 )}
-
 {/* ───────────────────────────────── COGS TAB ───────────────────────────────── */}
 {activeTab === "admin" && adminSubTab === "cogs" && (
   <div style={{ display: "grid", gap: 14 }}>
@@ -3674,7 +3673,6 @@ const generatePurchasesPDF = () => {
             </div>
             <div style={{ flex: 1, minWidth: 300 }}>
               <h3>Extras</h3>
-              {/* TILE GRID (multi-select) */}
               <div
                 style={{
                   display: "grid",
@@ -3782,8 +3780,6 @@ const generatePurchasesPDF = () => {
                       </ul>
                     )}
                   </div>
-
-                  {/* Qty stepper in cart */}
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <button
                       onClick={() => changeQty(idx, -1)}
@@ -3812,7 +3808,6 @@ const generatePurchasesPDF = () => {
                       +
                     </button>
                   </div>
-
                   <div style={{ minWidth: 120, textAlign: "right" }}>
                     <div>
                       <small>Line total</small>
@@ -3821,7 +3816,6 @@ const generatePurchasesPDF = () => {
                       <b>E£{lineTotal.toFixed(2)}</b>
                     </div>
                   </div>
-
                   <button
                     onClick={() => removeFromCart(idx)}
                     style={{
@@ -3839,8 +3833,6 @@ const generatePurchasesPDF = () => {
               );
             })}
           </ul>
-
-          {/* Notes */}
           <div style={{ margin: "8px 0 12px" }}>
             <label>
               <strong>Order notes:</strong>{" "}
@@ -3861,10 +3853,7 @@ const generatePurchasesPDF = () => {
               />
             </label>
           </div>
-
-          {/* Selection groups & Checkout */}
           <div style={{ display: "grid", gap: 12 }}>
-            {/* Button groups row */}
             <div
               style={{
                 display: "grid",
@@ -3904,8 +3893,6 @@ const generatePurchasesPDF = () => {
     </div>
   )}
 </div>
-
-
               {/* Payment group */}
               <div
                 style={{
@@ -3933,8 +3920,6 @@ const generatePurchasesPDF = () => {
     </button>
   ))}
 </div>
-
-{/* Split toggle */}
 <div style={{ marginTop: 8 }}>
   <label>
     <input
@@ -3943,14 +3928,12 @@ const generatePurchasesPDF = () => {
       onChange={(e) => {
         const on = e.target.checked;
         setSplitPay(on);
-        if (on) setPayment(""); // ignore single payment when split
+        if (on) setPayment("");
       }}
     />{" "}
     Split into two methods
   </label>
 </div>
-
-{/* Split UI */}
 {splitPay && (
   <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
     <div>
@@ -3991,8 +3974,6 @@ const generatePurchasesPDF = () => {
     </div>
   </div>
 )}
-
-{/* Cash inputs */}
 {!splitPay && payment === "Cash" && (
   <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
     <label>
@@ -4022,7 +4003,6 @@ const generatePurchasesPDF = () => {
     </small>
   </div>
 )}
-
 {splitPay && (payA === "Cash" || payB === "Cash") && (
   <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
     <label>
@@ -6844,6 +6824,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
