@@ -86,7 +86,6 @@ const purchases = Array.isArray(state.purchases)
  const purchaseCategories = Array.isArray(state.purchaseCategories)
     ? state.purchaseCategories
     : [];
-
   const customers = Array.isArray(state.customers) ? state.customers : [];
   const deliveryZones = Array.isArray(state.deliveryZones)
     ? state.deliveryZones
@@ -841,54 +840,6 @@ const [newItemColor, setNewItemColor] = useState("#ffffff");
   setNewItemName("");
   setNewItemPrice(0);
   setNewItemColor("#ffffff");
-};
-  // This function deletes a worker from all relevant places in the app
-const handleDeleteWorker = (workerIdToDelete) => {
-  // Find the full profile of the worker we are about to delete
-  const workerToRemove = workerProfiles.find(p => p.id === workerIdToDelete);
-  
-  // If for some reason we can't find the worker, we stop.
-  if (!workerToRemove) {
-    console.error("Could not find worker to delete with ID:", workerIdToDelete);
-    return;
-  }
-  
-  // Show a confirmation pop-up to prevent accidental deletion
-  const isConfirmed = window.confirm(
-    `Are you sure you want to remove ${workerToRemove.name}? This will also remove them from the worker list and delete all their session logs.`
-  );
-
-  // If the user clicks "OK", proceed with deletion
-  if (isConfirmed) {
-    // 1. Remove from the detailed profiles list (this is what you see in the Edit tab)
-    setWorkerProfiles(currentProfiles =>
-      currentProfiles.filter(profile => profile.id !== workerIdToDelete)
-    );
-    
-    // 2. Remove from the simple worker names list
-    setWorkers(currentWorkers =>
-      currentWorkers.filter(name => name !== workerToRemove.name)
-    );
-    
-    // 3. Remove all their past sessions (this cleans up the Worker Log)
-    setWorkerSessions(currentSessions =>
-      currentSessions.filter(session => session.name !== workerToRemove.name)
-    );
-  }
-};
-const handleResetBank = () => {
-
-  const isConfirmed = window.confirm(
-    "Are you sure you want to clear all deletable bank transactions? Locked entries will not be removed."
-  );
-
-  if (isConfirmed) {
-   
-    setBankTx(currentTransactions =>
-      currentTransactions.filter(tx => isBankLocked(tx))
-    );
-    alert("Bank transactions have been reset.");
-  }
 };
 const [inventory, setInventory] = useState(DEFAULT_INVENTORY);
 const [inventoryLocked, setInventoryLocked] = useState(false);
@@ -5635,7 +5586,6 @@ const generatePurchasesPDF = () => {
               </table>
             </div>
           </div>
-
         );
       })}
     </div>
@@ -5645,12 +5595,6 @@ const generatePurchasesPDF = () => {
      {activeTab === "admin" && adminSubTab === "bank" && (
         <div>
           <h2>Bank / Cashbox</h2>
-       <button 
-  onClick={handleResetBank} 
-  style={{ backgroundColor: '#dc3545', color: 'white', padding: '8px 16px', border: 'none', borderRadius: '4px', cursor: 'pointer', marginBottom: '1rem' }}
->
-  Reset Bank
-</button>
           <div
             style={{
               marginBottom: 10,
@@ -5664,6 +5608,27 @@ const generatePurchasesPDF = () => {
             }}
           >
             <strong>Balance:</strong> <span>E£{bankBalance.toFixed(2)}</span>
+            {/* Add this reset button after the balance display */}
+<button
+  onClick={() => {
+    const okAdmin = !!promptAdminAndPin();
+    if (!okAdmin) return;
+    if (window.confirm("Reset ALL bank transactions? This cannot be undone.")) {
+      setBankTx([]);
+    }
+  }}
+  style={{
+    background: "#c62828",
+    color: "#fff",
+    border: "none",
+    borderRadius: 6,
+    padding: "8px 12px",
+    cursor: "pointer",
+    marginLeft: "auto"
+  }}
+>
+  Reset Bank Transactions
+</button>
           </div>
 
           <div
@@ -6633,20 +6598,28 @@ const generatePurchasesPDF = () => {
         >
           <span>{w}</span>
           <button
-            onClick={() =>
-              setWorkers((arr) => arr.filter((x, i) => i !== idx))  }
-     onClick={() => handleDeleteWorker(worker.id) handleDeleteWorker(worker.id) }
-            style={{
-              background: "#c62828",
-              color: "#fff",
-              border: "none",
-              borderRadius: 6,
-              padding: "4px 8px",
-              cursor: "pointer",
-            }}
-          >
-            Remove
-          </button>
+  onClick={() => {
+    const workerName = workers[idx];
+    setWorkers((arr) => arr.filter((x, i) => i !== idx));
+    // Also remove from worker sessions and profiles
+    setWorkerSessions((sessions) => 
+      sessions.filter((s) => s.name !== workerName)
+    );
+    setWorkerProfiles((profiles) =>
+      profiles.filter((p) => p.name !== workerName)
+    );
+  }}
+  style={{
+    background: "#c62828",
+    color: "#fff",
+    border: "none",
+    borderRadius: 6,
+    padding: "4px 8px",
+    cursor: "pointer",
+  }}
+>
+  Remove
+</button>
         </li>
       ))}
       {workers.length === 0 && (
@@ -7066,4 +7039,3 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
-
