@@ -3338,7 +3338,6 @@ const generatePurchasesPDF = () => {
         {label}
       </button>
     ))}
-
     <div style={{ marginLeft: "auto" }} />
 
     <button
@@ -3349,6 +3348,7 @@ const generatePurchasesPDF = () => {
     </button>
   </div>
 )}
+
 {/* ───────────────────────────────── COGS TAB ───────────────────────────────── */}
 {activeTab === "admin" && adminSubTab === "cogs" && (
   <div style={{ display: "grid", gap: 14 }}>
@@ -6824,6 +6824,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
