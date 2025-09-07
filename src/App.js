@@ -5844,52 +5844,46 @@ const generatePurchasesPDF = () => {
           <th style={{ textAlign:"left",  padding:8, borderBottom:`1px solid ${cardBorder}` }}>Sign in</th>
           <th style={{ textAlign:"left",  padding:8, borderBottom:`1px solid ${cardBorder}` }}>Sign out</th>
           <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>Hours</th>
-          {/* NEW */}
           <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>Est. Payout (E£)</th>
         </tr>
       </thead>
       <tbody>
-        {(workerSessions || [])
-          .filter(s => {
-            const a = s.signInAt ? new Date(s.signInAt) : null;
-            if (!a) return false;
-            const outAt = s.signOutAt ? new Date(s.signOutAt) : null;
-            // show if overlaps with [wStart,wEnd]
-            const from = a, to = outAt || wEnd;
-            return to >= wStart && from <= wEnd;
-          })
-          .sort((a,b) => +new Date(b.signInAt) - +new Date(a.signInAt))
-          .map(s => {
-            const a = s.signInAt ? new Date(s.signInAt) : null;
-            const b = s.signOutAt ? new Date(s.signOutAt) : null;
-            const hrs = s.signInAt
-              ? sumHoursForWorker(s.name, [s], wStart, wEnd)
-              : 0;
+        {sessionsForPeriod.map((s) => {
+          const a = s.signInAt ? new Date(s.signInAt) : null;
+          const b = s.signOutAt ? new Date(s.signOutAt) : null;
 
-            // NEW: rate & estimated payout
-            const rate = (workerProfiles || []).find(p => p.name === s.name)?.rate || 0;
-            const estPay = Number((hrs * rate).toFixed(2));
+          // USE helper: hours for THIS session in [wStart,wEnd]
+          const hrs = hoursForSession(s, wStart, wEnd);
 
-            return (
-              <tr key={s.id}>
-                <td style={{ padding:8 }}>{a ? a.toLocaleDateString() : "—"}</td>
-                <td style={{ padding:8 }}>{s.name}</td>
-                <td style={{ padding:8 }}>{a ? a.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) : "—"}</td>
-                <td style={{ padding:8 }}>{b ? b.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) : (s.signOutAt ? "—" : "OPEN")}</td>
-                <td style={{ padding:8, textAlign:"right" }}>{hrs.toFixed(2)}</td>
-                {/* NEW: Est. payout cell */}
-                <td style={{ padding:8, textAlign:"right", fontWeight:700 }}>E£{estPay.toFixed(2)}</td>
-              </tr>
-            );
-          })}
-        {!(workerSessions || []).length && (
-          /* UPDATED colspan from 5 -> 6 because we added a column */
+          // USE helper: quick hourly rate lookup
+          const rate = Number(rateByName[s.name] || 0);
+
+          // live estimated payout
+          const estPay = Number((hrs * rate).toFixed(2));
+
+          return (
+            <tr key={s.id}>
+              <td style={{ padding:8 }}>{a ? a.toLocaleDateString() : "—"}</td>
+              <td style={{ padding:8 }}>{s.name}</td>
+              <td style={{ padding:8 }}>{a ? a.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) : "—"}</td>
+              <td style={{ padding:8 }}>
+                {b
+                  ? b.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})
+                  : (s.signOutAt ? "—" : "OPEN")}
+              </td>
+              <td style={{ padding:8, textAlign:"right" }}>{hrs.toFixed(2)}</td>
+              <td style={{ padding:8, textAlign:"right", fontWeight:700 }}>E£{estPay.toFixed(2)}</td>
+            </tr>
+          );
+        })}
+        {sessionsForPeriod.length === 0 && (
           <tr><td colSpan={6} style={{ padding:8, opacity:.7 }}>No sessions yet.</td></tr>
         )}
       </tbody>
     </table>
   </div>
 </div>
+
 
     {/* Totals per worker + rate editor */}
     <div style={{ border:`1px solid ${cardBorder}`, borderRadius:12, padding:12, background: dark ? "#151515" : "#fafafa" }}>
@@ -7031,3 +7025,4 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
