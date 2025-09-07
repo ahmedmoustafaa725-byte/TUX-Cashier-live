@@ -4074,7 +4074,7 @@ const generatePurchasesPDF = () => {
     background: dark ? "#191919" : "#fafafa",
   }}
 >
-  <div style={{ fontWeight: 700, marginBottom: 6 }}>Worker (on-duty only)</div>
+  <div style={{ fontWeight: 700, marginBottom: 6 }}>Worker</div>
   {!activeWorkers.length ? (
     <div style={{ opacity:.8 }}>No one is on duty. Ask a worker to sign in (Shift bar).</div>
   ) : (
@@ -7181,6 +7181,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
