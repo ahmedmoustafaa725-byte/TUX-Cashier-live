@@ -1949,11 +1949,7 @@ function rateForWorker(name) {
   const p = (workerProfiles || []).find(w => w.name === name);
   return Number(p?.rate || 0); 
 }
-function payForSession(s, now = new Date()) {
-  const hrs = hoursForSession(s, now);
-  const rate = rateForWorker(s.name);
-  return Number((hrs * rate).toFixed(2));
-}
+
 useMemo(() => workerSessions.length, [workerSessions]);
 const [wStart, wEnd] = useMemo(() => {
   return getPeriodRange(workerLogFilter, dayMeta, workerLogDay, workerLogMonth);
@@ -7006,6 +7002,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
