@@ -55,6 +55,14 @@ function saveLocalPartial(patch) {
     localStorage.setItem(LS_KEY, JSON.stringify({ ...cur, ...patch }));
   } catch {}
 }
+function formatDateDDMMYY(date) {
+  if (!date) return "";
+  const d = new Date(date);
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = String(d.getFullYear()).slice(-2);
+  return `${day}/${month}/${year}`;
+}
 function packStateForCloud(state) {
   const {
     menu,
@@ -231,6 +239,7 @@ if (Array.isArray(data.workerSessions)) {
   }
   return out;
 }
+
 function normalizeOrderForCloud(order) {
 return {
   orderNo: order.orderNo,
@@ -4819,7 +4828,7 @@ const generatePurchasesPDF = () => {
                   <td style={{ padding: 6, textAlign: "right" }}>
                     E£{(Number(e.qty || 0) * Number(e.unitPrice || 0)).toFixed(2)}
                   </td>
-                  <td style={{ padding: 6 }}>{e.date ? fmtDateTime(e.date) : ""}</td>
+                  <td style={{ padding: 6 }}>{e.date ? formatDateDDMMYY(e.date) : ""}</td>
                   <td style={{ padding: 6 }}>{e.note}</td>
                   <td style={{ padding: 6 }}>
                   <button
@@ -5723,7 +5732,7 @@ const generatePurchasesPDF = () => {
                   <td style={{ padding: 6 }}>{t.type}</td>
                   <td style={{ padding: 6, textAlign: "right" }}>{Number(t.amount || 0).toFixed(2)}</td>
                   <td style={{ padding: 6 }}>{t.worker}</td>
-                  <td style={{ padding: 6 }}>{t.date ? new Date(t.date).toLocaleString() : ""}</td>
+                  <td style={{ padding: 6 }}>{t.date ? formatDateDDMMYY(t.date) : ""}</td>
                   <td style={{ padding: 6 }}>{t.note}</td>
                   <td style={{ padding: 6 }}>
                    <button
@@ -5873,14 +5882,13 @@ const generatePurchasesPDF = () => {
           const estPay = Number((hrs * rate).toFixed(2));
           return (
             <tr key={s.id}>
-              <td style={{ padding:8 }}>{a ? a.toLocaleDateString() : "—"}</td>
-              <td style={{ padding:8 }}>{s.name}</td>
-              <td style={{ padding:8 }}>{a ? a.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) : "—"}</td>
-              <td style={{ padding:8 }}>
-                {b
-                  ? b.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})
-                  : (s.signOutAt ? "—" : "OPEN")}
-              </td>
+          <td style={{ padding:8 }}>{a ? formatDateDDMMYY(a) : "—"}</td>
+<td style={{ padding:8 }}>{a ? a.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) : "—"}</td>
+<td style={{ padding:8 }}>
+  {b
+    ? b.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})
+    : (s.signOutAt ? "—" : "OPEN")}
+</td>
               <td style={{ padding:8, textAlign:"right" }}>{hrs.toFixed(2)}</td>
               <td style={{ padding:8, textAlign:"right", fontWeight:700 }}>E£{estPay.toFixed(2)}</td>
             </tr>
@@ -7039,3 +7047,4 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
