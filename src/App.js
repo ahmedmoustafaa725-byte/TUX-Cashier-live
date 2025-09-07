@@ -2138,7 +2138,7 @@ const totalPurchasesToday = purchases
     return purchaseDate >= dayMeta.startedAt && purchaseDate <= endTime;
   })
   .reduce((sum, p) => sum + (p.qty * p.unitPrice), 0);
-
+const txs = [];
 // Add transactions for payout and purchases
 if (totalPayout > 0) {
   txs.push({
@@ -7140,6 +7140,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
