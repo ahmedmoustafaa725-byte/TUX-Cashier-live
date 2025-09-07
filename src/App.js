@@ -495,6 +495,12 @@ const DEFAULT_ADMIN_PINS = {
   5: "5555",
   6: "6666",
 };
+const UTILITY_TYPES = [
+  { name: "Electricity", note: "Electricity Bill" },
+  { name: "Water", note: "Water Bill" },
+  { name: "Internet", note: "Internet Bill" },
+  { name: "Gas", note: "Gas Bill" }
+];
 const norm = (v) => String(v ?? "").trim();
 const isExpenseVoidEligible = (t) => {
   const k = norm(t).toLowerCase();
@@ -1109,14 +1115,9 @@ const removeBankTx = (id) => {
     const row = arr.find(t => t.id === id);
     if (!row) return arr;
     
-    // Prevent removal of payout and purchase transactions
-    if (row.note === "Worker Payout" || row.note === "Daily Purchases") {
-      alert("This transaction cannot be removed as it represents worker payout or daily purchases.");
-      return arr;
-    }
-    
-    if (isBankLocked(row)) {
-      alert("This Auto Init from day margin transaction is locked and cannot be removed.");
+    // Prevent removal of payout, purchase, and negative margin transactions
+    if (row.locked || row.source?.includes('auto_day')) {
+      alert("This transaction is locked and cannot be removed.");
       return arr;
     }
     
@@ -2131,7 +2132,7 @@ const workerMonthlyTotalPay = useMemo(
     );
     const margin = revenueExclDelivery - expensesTotal;
 const txs = [];
-    const totalPayout = workerMonthlyStats.reduce((sum, worker) => sum + worker.pay, 0);
+const totalPayout = workerMonthlyStats.reduce((sum, worker) => sum + worker.pay, 0);
 const totalPurchasesToday = purchases
   .filter(p => {
     const purchaseDate = new Date(p.date);
@@ -2148,6 +2149,8 @@ if (totalPayout > 0) {
     worker: endBy,
     note: "Worker Payout",
     date: new Date(),
+    locked: true, // Prevent removal
+    source: "auto_day_payout"
   });
 }
 
@@ -2159,30 +2162,34 @@ if (totalPurchasesToday > 0) {
     worker: endBy,
     note: "Daily Purchases",
     date: new Date(),
+    locked: true, // Prevent removal
+    source: "auto_day_purchases"
   });
 }
-    
-    if (margin > 0) {
-      txs.push({
-        id: `tx_${Date.now()}`,
-        type: "init",
-        amount: margin,
-        worker: endBy,
-        note: "Auto Init from day margin",
-        date: new Date(),
-        locked: true,               
-   source: "auto_day_margin",
-      });
-    } else if (margin < 0) {
-      txs.push({
-        id: `tx_${Date.now() + 1}`,
-        type: "adjustDown",
-        amount: Math.abs(margin),
-        worker: endBy,
-        note: "Auto Adjust Down (negative margin)",
-        date: new Date(),
-      });
-    }
+
+if (margin > 0) {
+  txs.push({
+    id: `tx_${Date.now()}`,
+    type: "init",
+    amount: margin,
+    worker: endBy,
+    note: "Auto Init from day margin",
+    date: new Date(),
+    locked: true,
+    source: "auto_day_margin",
+  });
+} else if (margin < 0) {
+  txs.push({
+    id: `tx_${Date.now() + 1}`,
+    type: "adjustDown",
+    amount: Math.abs(margin),
+    worker: endBy,
+    note: "Auto Adjust Down (negative margin)",
+    date: new Date(),
+    locked: true, // Prevent removal of negative margin
+    source: "auto_day_negative_margin"
+  });
+}
 if (txs.length) setBankTx((arr) => [...txs, ...arr]);
 lastLockedRef.current = [];  
 setExpenses([]);              
@@ -5650,7 +5657,7 @@ const generatePurchasesPDF = () => {
     </div>
   </div>
 )}
-     {activeTab === "admin" && adminSubTab === "bank" && (
+    {activeTab === "admin" && adminSubTab === "bank" && (
   <div>
     <h2>Bank / Cashbox</h2>
     
@@ -5667,7 +5674,17 @@ const generatePurchasesPDF = () => {
         flexWrap: "wrap",
       }}
     >
-      <strong>Balance:</strong> <span>E£{bankBalance.toFixed(2)}</span>
+      <div>
+        <strong>Current Balance:</strong> E£{bankBalance.toFixed(2)}
+      </div>
+      <div>
+        <strong>Today's Balance:</strong> E£{filteredBankTx.reduce((sum, t) => {
+          const a = Number(t.amount || 0);
+          if (t.type === "deposit" || t.type === "init" || t.type === "adjustUp") return sum + a;
+          if (t.type === "withdraw" || t.type === "adjustDown") return sum - a;
+          return sum;
+        }, 0).toFixed(2)}
+      </div>
       
       {/* Filter Controls */}
       <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
@@ -5699,6 +5716,30 @@ const generatePurchasesPDF = () => {
           />
         )}
       </div>
+    </div>
+
+    {/* Utility Buttons */}
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+      {UTILITY_TYPES.map(utility => (
+        <button
+          key={utility.name}
+          onClick={() => setBankForm({
+            ...bankForm,
+            type: "withdraw",
+            note: utility.note,
+            amount: 0
+          })}
+          style={{
+            padding: "8px 12px",
+            borderRadius: 6,
+            border: `1px solid ${btnBorder}`,
+            background: dark ? "#2c2c2c" : "#f1f1f1",
+            cursor: "pointer"
+          }}
+        >
+          {utility.name}
+        </button>
+      ))}
     </div>
 
     {/* Add Transaction Form */}
@@ -5792,7 +5833,7 @@ const generatePurchasesPDF = () => {
       <tbody>
         {filteredBankTx.map((t) => {
           const isPositive = t.type === "deposit" || t.type === "init" || t.type === "adjustUp";
-          const isLocked = t.note === "Worker Payout" || t.note === "Daily Purchases";
+          const isLocked = t.locked;
           const amountColor = isPositive ? "#2e7d32" : "#c62828";
           
           return (
@@ -7140,6 +7181,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
