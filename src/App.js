@@ -5882,13 +5882,14 @@ const generatePurchasesPDF = () => {
           const estPay = Number((hrs * rate).toFixed(2));
           return (
             <tr key={s.id}>
-          <td style={{ padding:8 }}>{a ? formatDateDDMMYY(a) : "—"}</td>
-<td style={{ padding:8 }}>{a ? a.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) : "—"}</td>
-<td style={{ padding:8 }}>
-  {b
-    ? b.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})
-    : (s.signOutAt ? "—" : "OPEN")}
-</td>
+              <td style={{ padding:8 }}>{a ? formatDateDDMMYY(a) : "—"}</td>
+              <td style={{ padding:8 }}>{s.name}</td>
+              <td style={{ padding:8 }}>{a ? a.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) : "—"}</td>
+              <td style={{ padding:8 }}>
+                {b
+                  ? b.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})
+                  : (s.signOutAt ? "—" : "OPEN")}
+              </td>
               <td style={{ padding:8, textAlign:"right" }}>{hrs.toFixed(2)}</td>
               <td style={{ padding:8, textAlign:"right", fontWeight:700 }}>E£{estPay.toFixed(2)}</td>
             </tr>
@@ -7047,4 +7048,5 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
