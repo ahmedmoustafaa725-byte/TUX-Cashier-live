@@ -6068,6 +6068,22 @@ const generatePurchasesPDF = () => {
       {/* REPORTS */}
       {activeTab === "admin" && adminSubTab === "reports" && (
         <div>
+         <div style={{ marginBottom: '16px' }}>
+      <button
+        onClick={() => generatePDF(false)}
+        style={{
+          padding: '10px 16px',
+          background: '#1976d2',
+          color: 'white',
+          border: 'none',
+          borderRadius: '6px',
+          cursor: 'pointer',
+          fontWeight: 'bold'
+        }}
+      >
+        Download Report PDF
+      </button>
+    </div>
           <h2>Reports</h2>
           {/* Totals overview */}
           <div
@@ -7048,5 +7064,6 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
