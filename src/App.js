@@ -29,7 +29,6 @@ const toIso = (v) => {
   const d = new Date(v);
   return isNaN(d) ? null : d.toISOString();
 };
-/* --------------------------- FIREBASE CONFIG --------------------------- */
 const firebaseConfig = {
   apiKey: "AIzaSyAp1F6t8zgRiJI9xOzFkKJVsCQIT9BWXno",
   authDomain: "tux-cashier-system.firebaseapp.com",
@@ -44,7 +43,6 @@ function ensureFirebase() {
   const db = getFirestore(theApp);
   return { auth, db };
 }
-/* --------------------------- APP SETTINGS --------------------------- */
 const SHOP_ID = "tux";
 const LS_KEY = "tux_pos_local_state_v1";
 function loadLocal() {
@@ -843,6 +841,54 @@ const [newItemColor, setNewItemColor] = useState("#ffffff");
   setNewItemName("");
   setNewItemPrice(0);
   setNewItemColor("#ffffff");
+};
+  // This function deletes a worker from all relevant places in the app
+const handleDeleteWorker = (workerIdToDelete) => {
+  // Find the full profile of the worker we are about to delete
+  const workerToRemove = workerProfiles.find(p => p.id === workerIdToDelete);
+  
+  // If for some reason we can't find the worker, we stop.
+  if (!workerToRemove) {
+    console.error("Could not find worker to delete with ID:", workerIdToDelete);
+    return;
+  }
+  
+  // Show a confirmation pop-up to prevent accidental deletion
+  const isConfirmed = window.confirm(
+    `Are you sure you want to remove ${workerToRemove.name}? This will also remove them from the worker list and delete all their session logs.`
+  );
+
+  // If the user clicks "OK", proceed with deletion
+  if (isConfirmed) {
+    // 1. Remove from the detailed profiles list (this is what you see in the Edit tab)
+    setWorkerProfiles(currentProfiles =>
+      currentProfiles.filter(profile => profile.id !== workerIdToDelete)
+    );
+    
+    // 2. Remove from the simple worker names list
+    setWorkers(currentWorkers =>
+      currentWorkers.filter(name => name !== workerToRemove.name)
+    );
+    
+    // 3. Remove all their past sessions (this cleans up the Worker Log)
+    setWorkerSessions(currentSessions =>
+      currentSessions.filter(session => session.name !== workerToRemove.name)
+    );
+  }
+};
+const handleResetBank = () => {
+
+  const isConfirmed = window.confirm(
+    "Are you sure you want to clear all deletable bank transactions? Locked entries will not be removed."
+  );
+
+  if (isConfirmed) {
+   
+    setBankTx(currentTransactions =>
+      currentTransactions.filter(tx => isBankLocked(tx))
+    );
+    alert("Bank transactions have been reset.");
+  }
 };
 const [inventory, setInventory] = useState(DEFAULT_INVENTORY);
 const [inventoryLocked, setInventoryLocked] = useState(false);
@@ -5589,18 +5635,22 @@ const generatePurchasesPDF = () => {
               </table>
             </div>
           </div>
+
         );
       })}
     </div>
   </div>
 )}
-
-
-
       {/* BANK */}
      {activeTab === "admin" && adminSubTab === "bank" && (
         <div>
           <h2>Bank / Cashbox</h2>
+       <button 
+  onClick={handleResetBank} 
+  style={{ backgroundColor: '#dc3545', color: 'white', padding: '8px 16px', border: 'none', borderRadius: '4px', cursor: 'pointer', marginBottom: '1rem' }}
+>
+  Reset Bank
+</button>
           <div
             style={{
               marginBottom: 10,
@@ -5769,7 +5819,6 @@ const generatePurchasesPDF = () => {
       >
         Close Open Sessions
       </button>
-
       <button
         onClick={resetWorkerLog}
         title="Delete ALL worker sessions (admin only)"
@@ -5851,16 +5900,12 @@ const generatePurchasesPDF = () => {
         {sessionsForPeriod.map((s) => {
           const a = s.signInAt ? new Date(s.signInAt) : null;
           const b = s.signOutAt ? new Date(s.signOutAt) : null;
-
           // USE helper: hours for THIS session in [wStart,wEnd]
           const hrs = hoursForSession(s, wStart, wEnd);
-
           // USE helper: quick hourly rate lookup
           const rate = Number(rateByName[s.name] || 0);
-
           // live estimated payout
           const estPay = Number((hrs * rate).toFixed(2));
-
           return (
             <tr key={s.id}>
               <td style={{ padding:8 }}>{a ? a.toLocaleDateString() : "—"}</td>
@@ -5883,8 +5928,6 @@ const generatePurchasesPDF = () => {
     </table>
   </div>
 </div>
-
-
     {/* Totals per worker + rate editor */}
     <div style={{ border:`1px solid ${cardBorder}`, borderRadius:12, padding:12, background: dark ? "#151515" : "#fafafa" }}>
       <h3 style={{ marginTop:0 }}>Totals (by worker)</h3>
@@ -6592,6 +6635,7 @@ const generatePurchasesPDF = () => {
           <button
             onClick={() =>
               setWorkers((arr) => arr.filter((x, i) => i !== idx))
+              onClick={() => handleDeleteWorker(worker.id) handleDeleteWorker(worker.id)
             }
             style={{
               background: "#c62828",
@@ -6911,7 +6955,6 @@ const generatePurchasesPDF = () => {
     </table>
   </div>
 </div>
-        
 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8 }}>
   {[1,2,3,4,5,6].map((n) => {
     const isUnlocked = !!unlockedPins[n];
@@ -6957,7 +7000,6 @@ const generatePurchasesPDF = () => {
       {activeTab === "admin" && adminSubTab === "settings" && (
         <div>
           <h2>Settings</h2>
-
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
             <div style={{ padding: 10, borderRadius: 6, border: `1px solid ${cardBorder}` }}>
               <h4 style={{ marginTop: 0 }}>Printing</h4>
@@ -7025,4 +7067,3 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
-
