@@ -6634,9 +6634,8 @@ const generatePurchasesPDF = () => {
           <span>{w}</span>
           <button
             onClick={() =>
-              setWorkers((arr) => arr.filter((x, i) => i !== idx))
-              onClick={() => handleDeleteWorker(worker.id) handleDeleteWorker(worker.id)
-            }
+              setWorkers((arr) => arr.filter((x, i) => i !== idx))  }
+     onClick={() => handleDeleteWorker(worker.id) handleDeleteWorker(worker.id) }
             style={{
               background: "#c62828",
               color: "#fff",
@@ -7067,3 +7066,4 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
