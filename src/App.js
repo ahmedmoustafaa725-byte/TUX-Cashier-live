@@ -2130,15 +2130,15 @@ const workerMonthlyTotalPay = useMemo(
       0
     );
     const margin = revenueExclDelivery - expensesTotal;
-// Calculate total worker payout and purchases for the day
-const totalPayout = workerMonthlyStats.reduce((sum, worker) => sum + worker.pay, 0);
+const txs = [];
+    const totalPayout = workerMonthlyStats.reduce((sum, worker) => sum + worker.pay, 0);
 const totalPurchasesToday = purchases
   .filter(p => {
     const purchaseDate = new Date(p.date);
     return purchaseDate >= dayMeta.startedAt && purchaseDate <= endTime;
   })
   .reduce((sum, p) => sum + (p.qty * p.unitPrice), 0);
-const txs = [];
+
 // Add transactions for payout and purchases
 if (totalPayout > 0) {
   txs.push({
@@ -2161,7 +2161,7 @@ if (totalPurchasesToday > 0) {
     date: new Date(),
   });
 }
-    const txs = [];
+    
     if (margin > 0) {
       txs.push({
         id: `tx_${Date.now()}`,
@@ -7140,6 +7140,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
