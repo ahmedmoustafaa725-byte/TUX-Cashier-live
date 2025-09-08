@@ -2132,52 +2132,7 @@ const workerMonthlyTotalPay = useMemo(
     );
     const margin = revenueExclDelivery - expensesTotal;
 const txs = [];
-// Calculate today's payout only (not monthly)
-const todayPayout = workerMonthlyStats
-  .filter(worker => {
-    // Calculate hours just for today
-    const hours = sumHoursForWorker(worker.name, workerSessions, dayMeta.startedAt, endTime);
-    return hours > 0;
-  })
-  .reduce((sum, worker) => {
-    const hours = sumHoursForWorker(worker.name, workerSessions, dayMeta.startedAt, endTime);
-    return sum + (hours * worker.rate);
-  }, 0);
 
-// Calculate today's purchases only
-const totalPurchasesToday = purchases
-  .filter(p => {
-    const purchaseDate = new Date(p.date);
-    return purchaseDate >= dayMeta.startedAt && purchaseDate <= endTime;
-  })
-  .reduce((sum, p) => sum + (p.qty * p.unitPrice), 0);
-
-// Add transactions for payout and purchases
-if (todayPayout > 0) {
-  txs.push({
-    id: `tx_payout_${Date.now()}`,
-    type: "withdraw",
-    amount: todayPayout,
-    worker: endBy,
-    note: "Today's Worker Payout",
-    date: new Date(),
-    locked: true,
-    source: "auto_day_payout"
-  });
-}
-
-if (totalPurchasesToday > 0) {
-  txs.push({
-    id: `tx_purchases_${Date.now()}`,
-    type: "withdraw",
-    amount: totalPurchasesToday,
-    worker: endBy,
-    note: "Today's Purchases",
-    date: new Date(),
-    locked: true,
-    source: "auto_day_purchases"
-  });
-}
 if (margin > 0) {
   txs.push({
     id: `tx_${Date.now()}`,
@@ -7211,6 +7166,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
