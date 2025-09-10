@@ -822,9 +822,37 @@ const isBankLocked = (t) =>
     t?.source === "auto_day_margin" ||
     (t?.type === "init" && /Auto Init from day margin/i.test(t?.note || ""))
   );
+const getDateRange = (timeFrame, date) => {
+  const start = new Date(date);
+  const end = new Date(date);
+  
+  if (timeFrame === 'week') {
+    start.setDate(date.getDate() - date.getDay());
+    end.setDate(date.getDate() + (6 - date.getDay()));
+  } else {
+    start.setDate(1);
+    end.setMonth(date.getMonth() + 1, 0);
+  }
+  
+  return { start, end };
+};
+
+const calculateUsage = () => {
+  // This would calculate actual usage data
+  // You'll need to implement this based on your data structure
+  return {
+    totalUsed: 0,
+    estimatedCost: 0,
+    itemsTracked: 0
+  };
+};
 export default function App() {
   const [activeTab, setActiveTab] = useState("orders");
 const [adminSubTab, setAdminSubTab] = useState("inventory"); 
+  const [usageTimeFrame, setUsageTimeFrame] = useState('week'); // 'week' or 'month'
+const [usageDate, setUsageDate] = useState(new Date());
+const [usageMetric, setUsageMetric] = useState('quantity'); // 'quantity' or 'cost'
+const [usageSearch, setUsageSearch] = useState('');
   const [dark, setDark] = useState(false);
   const [workers, setWorkers] = useState(BASE_WORKERS);
 const [newWorker, setNewWorker] = useState("");
@@ -3427,7 +3455,8 @@ const generatePurchasesPDF = () => {
     ["board", "Orders Board"],
     ["expenses", "Expenses"],
      ["reconcile","Reconcile"],
-    ["admin", "Admin"], // <-- new consolidated tab
+     ["usage", "Inventory Usage"],
+    ["admin", "Admin"], 
   ].map(([key, label]) => (
     <button
       key={key}
@@ -3445,6 +3474,104 @@ const generatePurchasesPDF = () => {
     </button>
   ))}
 </div>
+{activeTab === "usage" && (
+  <div>
+    <h2>Inventory Usage</h2>
+    
+    {/* Filters */}
+    <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
+      <select 
+        value={usageTimeFrame} 
+        onChange={(e) => setUsageTimeFrame(e.target.value)}
+        style={{ padding: '8px', borderRadius: '4px' }}
+      >
+        <option value="week">Weekly</option>
+        <option value="month">Monthly</option>
+      </select>
+      
+      <input
+        type="date"
+        value={usageDate.toISOString().split('T')[0]}
+        onChange={(e) => setUsageDate(new Date(e.target.value))}
+        style={{ padding: '8px', borderRadius: '4px' }}
+      />
+      
+      <select 
+        value={usageMetric} 
+        onChange={(e) => setUsageMetric(e.target.value)}
+        style={{ padding: '8px', borderRadius: '4px' }}
+      >
+        <option value="quantity">Quantity</option>
+        <option value="cost">Cost</option>
+      </select>
+      
+      <input
+        type="text"
+        placeholder="Search items..."
+        value={usageSearch}
+        onChange={(e) => setUsageSearch(e.target.value)}
+        style={{ padding: '8px', borderRadius: '4px', minWidth: '200px' }}
+      />
+    </div>
+
+    {/* KPI Cards */}
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '16px' }}>
+      <div style={{ padding: '16px', background: dark ? '#2a2a2a' : '#f5f5f5', borderRadius: '8px' }}>
+        <h3>Total Used</h3>
+        <p>0 units</p>
+      </div>
+      <div style={{ padding: '16px', background: dark ? '#2a2a2a' : '#f5f5f5', borderRadius: '8px' }}>
+        <h3>Estimated Cost</h3>
+        <p>E£0.00</p>
+      </div>
+      <div style={{ padding: '16px', background: dark ? '#2a2a2a' : '#f5f5f5', borderRadius: '8px' }}>
+        <h3>Items Tracked</h3>
+        <p>0</p>
+      </div>
+    </div>
+
+    {/* Charts */}
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+      <div>
+        <h3>Top Items</h3>
+        <div style={{ height: '300px', background: dark ? '#2a2a2a' : '#f5f5f5' }}>
+          {/* Bar chart will go here */}
+          <p>Bar chart placeholder</p>
+        </div>
+      </div>
+      <div>
+        <h3>Daily Trend</h3>
+        <div style={{ height: '300px', background: dark ? '#2a2a2a' : '#f5f5f5' }}>
+          {/* Line chart will go here */}
+          <p>Line chart placeholder</p>
+        </div>
+      </div>
+    </div>
+
+    {/* Table */}
+    <div>
+      <h3>Detailed Usage</h3>
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Used</th>
+            <th>Est. Cost</th>
+            <th>Purchased</th>
+            <th>Waste</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td colSpan="5" style={{ textAlign: 'center', padding: '16px' }}>
+              Table data will appear here
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+)}
 {activeTab === "admin" && (
   <div style={{ display: "flex", gap: 8, margin: "0 0 12px", flexWrap: "wrap" }}>
     {[
@@ -7166,6 +7293,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
