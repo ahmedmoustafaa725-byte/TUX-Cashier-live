@@ -918,6 +918,15 @@ const [workerProfiles, setWorkerProfiles] = useState(BASE_WORKER_PROFILES);
 const [showAddWorker, setShowAddWorker] = useState(false);
 const [newWName, setNewWName] = useState("");
 const [newWPin, setNewWPin] = useState("");
+
+  const dateRange = useMemo(() => {
+    return getDateRange(usageTimeFrame, usageDate);
+  }, [usageTimeFrame, usageDate]);
+
+  const usageData = useMemo(() => {
+  
+    return calculateUsage();
+  }, []);
 const [newWRate, setNewWRate] = useState("");
 const [workerSessions, setWorkerSessions] = useState([]);
 const [workerLogFilter, setWorkerLogFilter] = useState("month"); // 'day' | 'month'
@@ -7293,6 +7302,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
