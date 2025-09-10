@@ -822,30 +822,6 @@ const isBankLocked = (t) =>
     t?.source === "auto_day_margin" ||
     (t?.type === "init" && /Auto Init from day margin/i.test(t?.note || ""))
   );
-const getDateRange = (timeFrame, date) => {
-  const start = new Date(date);
-  const end = new Date(date);
-  
-  if (timeFrame === 'week') {
-    start.setDate(date.getDate() - date.getDay());
-    end.setDate(date.getDate() + (6 - date.getDay()));
-  } else {
-    start.setDate(1);
-    end.setMonth(date.getMonth() + 1, 0);
-  }
-  
-  return { start, end };
-};
-
-const calculateUsage = () => {
-  // This would calculate actual usage data
-  // You'll need to implement this based on your data structure
-  return {
-    totalUsed: 0,
-    estimatedCost: 0,
-    itemsTracked: 0
-  };
-};
 export default function App() {
   const [activeTab, setActiveTab] = useState("orders");
 const [adminSubTab, setAdminSubTab] = useState("inventory"); 
@@ -918,15 +894,6 @@ const [workerProfiles, setWorkerProfiles] = useState(BASE_WORKER_PROFILES);
 const [showAddWorker, setShowAddWorker] = useState(false);
 const [newWName, setNewWName] = useState("");
 const [newWPin, setNewWPin] = useState("");
-
-  const dateRange = useMemo(() => {
-    return getDateRange(usageTimeFrame, usageDate);
-  }, [usageTimeFrame, usageDate]);
-
-  const usageData = useMemo(() => {
-  
-    return calculateUsage();
-  }, []);
 const [newWRate, setNewWRate] = useState("");
 const [workerSessions, setWorkerSessions] = useState([]);
 const [workerLogFilter, setWorkerLogFilter] = useState("month"); // 'day' | 'month'
@@ -3465,7 +3432,7 @@ const generatePurchasesPDF = () => {
     ["expenses", "Expenses"],
      ["reconcile","Reconcile"],
      ["usage", "Inventory Usage"],
-    ["admin", "Admin"], 
+    ["admin", "Admin"], // <-- new consolidated tab
   ].map(([key, label]) => (
     <button
       key={key}
@@ -7302,9 +7269,6 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
-
-
-
 
 
 
