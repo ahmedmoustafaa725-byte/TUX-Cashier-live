@@ -452,9 +452,7 @@ function sumPaymentsByMethod(orders = []) {
   }
   return m;
 }
-const cardBorder = dark ? "#555" : "#ddd";
-const softBg = dark ? "#1e1e1e" : "#f5f5f5";
-const btnBorder = "#ccc";
+
 const DEFAULT_INV_UNIT_BY_CATNAME = {
   buns: "piece",
   meat: "g",
@@ -7540,6 +7538,7 @@ function processUsageData(orders, purchases, inventory, dateRange, metric) {
     </div>
   );
 }
+
 
 
 
