@@ -452,6 +452,9 @@ function sumPaymentsByMethod(orders = []) {
   }
   return m;
 }
+const cardBorder = dark ? "#555" : "#ddd";
+const softBg = dark ? "#1e1e1e" : "#f5f5f5";
+const btnBorder = "#ccc";
 const DEFAULT_INV_UNIT_BY_CATNAME = {
   buns: "piece",
   meat: "g",
@@ -825,16 +828,16 @@ const isBankLocked = (t) =>
 export default function App() {
   const [activeTab, setActiveTab] = useState("orders");
 const [adminSubTab, setAdminSubTab] = useState("inventory"); 
-  const [dark, setDark] = useState(false);
-  const [usageView, setUsageView] = useState({
-  period: "week",
-  dateRange: {
-    start: new Date(new Date().setDate(new Date().getDate() - 7)),
-    end: new Date()
-  },
-  metric: "quantity",
-  searchQuery: ""
+  // Add these state variables for the Inventory Usage tab
+const [usageSubTab, setUsageSubTab] = useState("overview"); // For usage tab sub-sections
+const [usagePeriod, setUsagePeriod] = useState("week"); // 'week' or 'month'
+const [usageDateRange, setUsageDateRange] = useState({
+  start: new Date(new Date().setDate(new Date().getDate() - 7)),
+  end: new Date()
 });
+const [usageMetric, setUsageMetric] = useState("quantity"); // 'quantity' or 'cost'
+const [usageSearch, setUsageSearch] = useState("");
+  const [dark, setDark] = useState(false);
   const [workers, setWorkers] = useState(BASE_WORKERS);
 const [newWorker, setNewWorker] = useState("");
 const [paymentMethods, setPaymentMethods] = useState(DEFAULT_PAYMENT_METHODS);
@@ -3197,219 +3200,367 @@ const generatePurchasesPDF = () => {
   }
 };
 
-// ... other code ...
-
-// ============ INVENTORY USAGE TAB COMPONENT ============
-const InventoryUsageTab = () => {
-  // Calculate usage data based on orders and purchases
-  const calculateUsageData = () => {
-    const usageMap = {};
-    const { start, end } = usageView.dateRange;
+  // FIFO Cost Helper
+function calculateFIFOCost(itemId, usedQuantity, purchases, inventory) {
+  const itemPurchases = purchases
+    .filter(p => p.ingredientId === itemId)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+  
+  let remainingQty = usedQuantity;
+  let totalCost = 0;
+  
+  for (const purchase of itemPurchases) {
+    if (remainingQty <= 0) break;
     
-    // Process orders (usage)
-    orders.forEach(order => {
-      if (order.voided || order.date < start || order.date > end) return;
-      
+    const availableQty = purchase.qty;
+    const useQty = Math.min(remainingQty, availableQty);
+    const unitCost = purchase.unitPrice;
+    
+    totalCost += useQty * unitCost;
+    remainingQty -= useQty;
+  }
+  
+  return totalCost;
+}
+
+// Usage Data Reducer
+function processUsageData(orders, purchases, inventory, dateRange, metric) {
+  const usageMap = {};
+  const startDate = new Date(dateRange.start);
+  const endDate = new Date(dateRange.end);
+  endDate.setHours(23, 59, 59, 999);
+  
+  // Process orders to get usage
+  orders
+    .filter(order => !order.voided && new Date(order.date) >= startDate && new Date(order.date) <= endDate)
+    .forEach(order => {
       order.cart.forEach(item => {
-        if (!usageMap[item.id]) {
-          usageMap[item.id] = {
-            id: item.id,
-            name: item.name,
-            used: 0,
-            purchased: 0,
-            cost: 0
-          };
-        }
-        
-        const qty = item.qty || 1;
-        usageMap[item.id].used += qty;
-        
-        // Calculate cost if metric is cost
-        if (usageView.metric === "cost") {
-          const itemCost = computeCOGSForItemDef(
-            menu.find(m => m.id === item.id) || 
-            extraList.find(e => e.id === item.id),
-            invById
-          );
-          usageMap[item.id].cost += itemCost * qty;
+        if (item.uses) {
+          Object.entries(item.uses).forEach(([ingredientId, qtyUsed]) => {
+            if (!usageMap[ingredientId]) {
+              const inventoryItem = inventory.find(i => i.id === ingredientId);
+              if (!inventoryItem) return;
+              
+              usageMap[ingredientId] = {
+                id: ingredientId,
+                name: inventoryItem.name,
+                unit: inventoryItem.unit,
+                used: 0,
+                cost: 0,
+                purchased: 0
+              };
+            }
+            
+            const actualQty = qtyUsed * (item.qty || 1);
+            usageMap[ingredientId].used += actualQty;
+            
+            if (metric === "cost") {
+              usageMap[ingredientId].cost += calculateFIFOCost(
+                ingredientId, 
+                actualQty, 
+                purchases, 
+                inventory
+              );
+            }
+          });
         }
       });
     });
-    
-    // Process purchases (restocking)
-    purchases.forEach(purchase => {
-      const purchaseDate = purchase.date instanceof Date ? purchase.date : new Date(purchase.date);
-      if (purchaseDate < start || purchaseDate > end) return;
-      
-      const invItem = inventory.find(i => i.id === purchase.ingredientId);
-      if (!invItem) return;
-      
-      if (!usageMap[invItem.id]) {
-        usageMap[invItem.id] = {
-          id: invItem.id,
-          name: invItem.name,
-          used: 0,
-          purchased: 0,
-          cost: 0
-        };
+  
+  // Process purchases to get quantities purchased
+  purchases
+    .filter(p => new Date(p.date) >= startDate && new Date(p.date) <= endDate)
+    .forEach(purchase => {
+      if (purchase.ingredientId && usageMap[purchase.ingredientId]) {
+        usageMap[purchase.ingredientId].purchased += purchase.qty;
       }
-      
-      const convertedQty = convertToInventoryUnit(
-        purchase.qty, 
-        purchase.unit, 
-        invItem.unit
-      ) || purchase.qty;
-      
-      usageMap[invItem.id].purchased += convertedQty;
     });
-    
-    // Apply search filter
-    let results = Object.values(usageMap);
-    if (usageView.searchQuery) {
-      const query = usageView.searchQuery.toLowerCase();
-      results = results.filter(item => 
-        item.name.toLowerCase().includes(query)
-      );
-    }
-    
-    return results;
-  };
   
-  const usageData = calculateUsageData();
+  return Object.values(usageMap);
+}
+
+  const UsageTab = () => {
+  const usageData = processUsageData(orders, purchases, inventory, usageDateRange, usageMetric);
+  const filteredData = usageData.filter(item => 
+    item.name.toLowerCase().includes(usageSearch.toLowerCase())
+  );
   
-  // Calculate KPIs
-  const totalUsed = usageData.reduce((sum, item) => sum + item.used, 0);
-  const totalCost = usageData.reduce((sum, item) => sum + item.cost, 0);
-  const itemsTracked = usageData.length;
+  const totalUsed = filteredData.reduce((sum, item) => sum + item.used, 0);
+  const totalCost = filteredData.reduce((sum, item) => sum + item.cost, 0);
+  const itemsTracked = filteredData.length;
+  
+  // Find top 5 items for chart
+  const topItems = [...filteredData]
+    .sort((a, b) => b.used - a.used)
+    .slice(0, 5);
+  
+  // Group by day for trend chart
+  const dailyUsage = {};
+  orders
+    .filter(order => !order.voided && new Date(order.date) >= usageDateRange.start && new Date(order.date) <= usageDateRange.end)
+    .forEach(order => {
+      const dateStr = new Date(order.date).toLocaleDateString();
+      if (!dailyUsage[dateStr]) dailyUsage[dateStr] = 0;
+      
+      order.cart.forEach(item => {
+        if (item.uses) {
+          Object.values(item.uses).forEach(qtyUsed => {
+            dailyUsage[dateStr] += qtyUsed * (item.qty || 1);
+          });
+        }
+      });
+    });
+  
+  const trendData = Object.entries(dailyUsage).map(([date, usage]) => ({ date, usage }));
+  trendData.sort((a, b) => new Date(a.date) - new Date(b.date));
+  
+  const maxUsage = Math.max(...trendData.map(d => d.usage), 1);
   
   return (
     <div>
       <h2>Inventory Usage</h2>
       
       {/* Controls */}
-      <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
-        <select
-          value={usageView.period}
-          onChange={(e) => setUsageView({...usageView, period: e.target.value})}
-        >
-          <option value="week">Weekly</option>
-          <option value="month">Monthly</option>
-        </select>
+      <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
+        <div>
+          <label>Period: </label>
+          <select 
+            value={usagePeriod}
+            onChange={e => {
+              setUsagePeriod(e.target.value);
+              const days = e.target.value === "week" ? 7 : 30;
+              setUsageDateRange({
+                start: new Date(new Date().setDate(new Date().getDate() - days)),
+                end: new Date()
+              });
+            }}
+            style={{ padding: "6px 10px", borderRadius: 6, marginLeft: 8 }}
+          >
+            <option value="week">Weekly</option>
+            <option value="month">Monthly</option>
+          </select>
+        </div>
         
-        <input
-          type="date"
-          value={usageView.dateRange.start.toISOString().split('T')[0]}
-          onChange={(e) => setUsageView({
-            ...usageView, 
-            dateRange: {...usageView.dateRange, start: new Date(e.target.value)}
-          })}
-        />
-        <span>to</span>
-        <input
-          type="date"
-          value={usageView.dateRange.end.toISOString().split('T')[0]}
-          onChange={(e) => setUsageView({
-            ...usageView, 
-            dateRange: {...usageView.dateRange, end: new Date(e.target.value)}
-          })}
-        />
+        <div>
+          <label>From: </label>
+          <input
+            type="date"
+            value={usageDateRange.start.toISOString().split('T')[0]}
+            onChange={e => setUsageDateRange({ ...usageDateRange, start: new Date(e.target.value) })}
+            style={{ padding: "6px 10px", borderRadius: 6, marginLeft: 8 }}
+          />
+        </div>
         
-        <select
-          value={usageView.metric}
-          onChange={(e) => setUsageView({...usageView, metric: e.target.value})}
-        >
-          <option value="quantity">Quantity</option>
-          <option value="cost">Cost</option>
-        </select>
+        <div>
+          <label>To: </label>
+          <input
+            type="date"
+            value={usageDateRange.end.toISOString().split('T')[0]}
+            onChange={e => setUsageDateRange({ ...usageDateRange, end: new Date(e.target.value) })}
+            style={{ padding: "6px 10px", borderRadius: 6, marginLeft: 8 }}
+          />
+        </div>
         
-        <input
-          type="text"
-          placeholder="Search items..."
-          value={usageView.searchQuery}
-          onChange={(e) => setUsageView({...usageView, searchQuery: e.target.value})}
-          style={{ minWidth: 200 }}
-        />
+        <div>
+          <label>Metric: </label>
+          <select 
+            value={usageMetric}
+            onChange={e => setUsageMetric(e.target.value)}
+            style={{ padding: "6px 10px", borderRadius: 6, marginLeft: 8 }}
+          >
+            <option value="quantity">Quantity</option>
+            <option value="cost">Cost</option>
+          </select>
+        </div>
+        
+        <div>
+          <input
+            type="text"
+            placeholder="Search items..."
+            value={usageSearch}
+            onChange={e => setUsageSearch(e.target.value)}
+            style={{ padding: "6px 10px", borderRadius: 6, minWidth: 200 }}
+          />
+        </div>
       </div>
       
       {/* KPI Cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 16 }}>
-        <div style={{ padding: 16, background: dark ? "#2a2a2a" : "#f0f0f0", borderRadius: 8 }}>
-          <h3>Total Used</h3>
-          <p>{totalUsed} {usageView.metric === "quantity" ? "units" : "E£"}</p>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 24 }}>
+        <div style={{ 
+          padding: 16, 
+          borderRadius: 8, 
+          background: dark ? "#2a2a2a" : "#f0f0f0",
+          textAlign: "center"
+        }}>
+          <h3 style={{ margin: 0 }}>Total Used</h3>
+          <p style={{ fontSize: 24, fontWeight: "bold", margin: 0 }}>
+            {usageMetric === "quantity" ? totalUsed.toFixed(2) : `E£${totalCost.toFixed(2)}`}
+          </p>
         </div>
-        <div style={{ padding: 16, background: dark ? "#2a2a2a" : "#f0f0f0", borderRadius: 8 }}>
-          <h3>Estimated Cost</h3>
-          <p>E£{totalCost.toFixed(2)}</p>
+        
+        <div style={{ 
+          padding: 16, 
+          borderRadius: 8, 
+          background: dark ? "#2a2a2a" : "#f0f0f0",
+          textAlign: "center"
+        }}>
+          <h3 style={{ margin: 0 }}>Estimated Cost</h3>
+          <p style={{ fontSize: 24, fontWeight: "bold", margin: 0 }}>
+            E£{totalCost.toFixed(2)}
+          </p>
         </div>
-        <div style={{ padding: 16, background: dark ? "#2a2a2a" : "#f0f0f0", borderRadius: 8 }}>
-          <h3>Items Tracked</h3>
-          <p>{itemsTracked}</p>
-        </div>
-      </div>
-      
-      {/* Top Items Chart (simplified) */}
-      <div style={{ marginBottom: 16 }}>
-        <h3>Top Items by {usageView.metric === "quantity" ? "Usage" : "Cost"}</h3>
-        <div style={{ height: 300, background: dark ? "#1a1a1a" : "#f9f9f9", padding: 16, borderRadius: 8 }}>
-          {/* This would be a proper chart in a real implementation */}
-          <p>Bar chart would appear here showing top items</p>
-          {usageData
-            .sort((a, b) => (usageView.metric === "quantity" ? b.used - a.used : b.cost - a.cost))
-            .slice(0, 5)
-            .map(item => (
-              <div key={item.id} style={{ marginBottom: 8 }}>
-                <div style={{ 
-                  width: `${Math.min(100, (usageView.metric === "quantity" ? item.used : item.cost) / 
-                  (usageView.metric === "quantity" ? totalUsed : totalCost) * 100)}%`, 
-                  background: "#4caf50", 
-                  padding: 4,
-                  color: "white"
-                }}>
-                  {item.name}: {usageView.metric === "quantity" ? item.used : `E£${item.cost.toFixed(2)}`}
-                </div>
-              </div>
-            ))
-          }
+        
+        <div style={{ 
+          padding: 16, 
+          borderRadius: 8, 
+          background: dark ? "#2a2a2a" : "#f0f0f0",
+          textAlign: "center"
+        }}>
+          <h3 style={{ margin: 0 }}>Items Tracked</h3>
+          <p style={{ fontSize: 24, fontWeight: "bold", margin: 0 }}>
+            {itemsTracked}
+          </p>
         </div>
       </div>
       
-      {/* Daily Trend (simplified) */}
-      <div style={{ marginBottom: 16 }}>
-        <h3>Daily Trend</h3>
-        <div style={{ height: 200, background: dark ? "#1a1a1a" : "#f9f9f9", padding: 16, borderRadius: 8 }}>
-          {/* This would be a proper line chart in a real implementation */}
-          <p>Line chart would appear here showing daily usage trend</p>
+      {/* Charts */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginBottom: 24 }}>
+        {/* Top Items Bar Chart */}
+        <div style={{ 
+          padding: 16, 
+          borderRadius: 8, 
+          background: dark ? "#2a2a2a" : "#f0f0f0",
+          minHeight: 300
+        }}>
+          <h3 style={{ marginTop: 0 }}>Top Items</h3>
+          {topItems.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {topItems.map(item => {
+                const percentage = (item.used / Math.max(...topItems.map(i => i.used))) * 100;
+                return (
+                  <div key={item.id}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                      <span>{item.name}</span>
+                      <span>
+                        {usageMetric === "quantity" 
+                          ? `${item.used.toFixed(2)} ${item.unit}` 
+                          : `E£${item.cost.toFixed(2)}`
+                        }
+                      </span>
+                    </div>
+                    <div style={{ 
+                      width: "100%", 
+                      height: 20, 
+                      background: dark ? "#444" : "#ddd",
+                      borderRadius: 4,
+                      overflow: "hidden"
+                    }}>
+                      <div style={{ 
+                        width: `${percentage}%`, 
+                        height: "100%", 
+                        background: "#4caf50",
+                        transition: "width 0.3s"
+                      }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p style={{ textAlign: "center", opacity: 0.7 }}>No data available</p>
+          )}
+        </div>
+        
+        {/* Daily Trend Line Chart */}
+        <div style={{ 
+          padding: 16, 
+          borderRadius: 8, 
+          background: dark ? "#2a2a2a" : "#f0f0f0",
+          minHeight: 300
+        }}>
+          <h3 style={{ marginTop: 0 }}>Daily Trend</h3>
+          {trendData.length > 0 ? (
+            <div style={{ 
+              display: "flex", 
+              alignItems: "flex-end", 
+              gap: 8, 
+              height: 200,
+              padding: "16px 0"
+            }}>
+              {trendData.map((day, index) => {
+                const height = (day.usage / maxUsage) * 180;
+                return (
+                  <div key={index} style={{ 
+                    display: "flex", 
+                    flexDirection: "column", 
+                    alignItems: "center",
+                    flex: 1
+                  }}>
+                    <div style={{ 
+                      width: "100%", 
+                      height: height,
+                      background: "#2196f3",
+                      borderRadius: "4px 4px 0 0"
+                    }} />
+                    <div style={{ fontSize: 12, marginTop: 8 }}>
+                      {new Date(day.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p style={{ textAlign: "center", opacity: 0.7 }}>No data available</p>
+          )}
         </div>
       </div>
       
       {/* Detailed Table */}
-      <div>
-        <h3>Detailed Usage</h3>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Item</th>
-              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Used</th>
-              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Purchased</th>
-              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Est. Cost</th>
-            </tr>
-          </thead>
-          <tbody>
-            {usageData.map(item => (
-              <tr key={item.id}>
-                <td style={{ padding: 8 }}>{item.name}</td>
-                <td style={{ padding: 8, textAlign: "right" }}>{item.used}</td>
-                <td style={{ padding: 8, textAlign: "right" }}>{item.purchased}</td>
-                <td style={{ padding: 8, textAlign: "right" }}>E£{item.cost.toFixed(2)}</td>
+      <div style={{ 
+        padding: 16, 
+        borderRadius: 8, 
+        background: dark ? "#2a2a2a" : "#f0f0f0"
+      }}>
+        <h3 style={{ marginTop: 0 }}>Detailed Usage</h3>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Item</th>
+                <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Used</th>
+                <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Est. Cost</th>
+                <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Purchased</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filteredData.map(item => (
+                <tr key={item.id}>
+                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{item.name}</td>
+                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
+                    {item.used.toFixed(2)} {item.unit}
+                  </td>
+                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
+                    E£{item.cost.toFixed(2)}
+                  </td>
+                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
+                    {item.purchased.toFixed(2)} {item.unit}
+                  </td>
+                </tr>
+              ))}
+              {filteredData.length === 0 && (
+                <tr>
+                  <td colSpan={4} style={{ padding: 16, textAlign: "center", opacity: 0.7 }}>
+                    No items found
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
 };
-
   /* --------------------------- UI --------------------------- */
 
   return (
@@ -3648,7 +3799,7 @@ const InventoryUsageTab = () => {
     ["board", "Orders Board"],
     ["expenses", "Expenses"],
      ["reconcile","Reconcile"],
-     ["usage", "Inventory Usage"],
+     ["usage", "Usage"],
     ["admin", "Admin"], // <-- new consolidated tab
   ].map(([key, label]) => (
     <button
@@ -3667,7 +3818,7 @@ const InventoryUsageTab = () => {
     </button>
   ))}
 </div>
-{activeTab === "usage" && <InventoryUsageTab />}  {/* Add this line */}
+{activeTab === "usage" && <UsageTab />}
 {activeTab === "admin" && (
   <div style={{ display: "flex", gap: 8, margin: "0 0 12px", flexWrap: "wrap" }}>
     {[
@@ -7389,6 +7540,11 @@ const InventoryUsageTab = () => {
     </div>
   );
 }
+
+
+
+
+
 
 
 
