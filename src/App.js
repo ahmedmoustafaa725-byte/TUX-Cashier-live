@@ -3409,13 +3409,7 @@ const InventoryUsageTab = () => {
     </div>
   );
 };
-// ============ END OF INVENTORY USAGE TAB ============
 
-/* --------------------------- UI --------------------------- */
-return (
-  <div style={containerStyle}>
-    {/* Header */}
-    // ... rest of your code
   /* --------------------------- UI --------------------------- */
 
   return (
@@ -7395,6 +7389,7 @@ return (
     </div>
   );
 }
+
 
 
 
