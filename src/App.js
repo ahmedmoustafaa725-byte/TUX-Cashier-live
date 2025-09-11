@@ -5013,7 +5013,7 @@ const generatePurchasesPDF = () => {
           ? getWeekRange(usageWeekDate, usageWeekStart)
           : getMonthRange(usageMonth);
 
-        const invById  = mapById(inventory || []);
+      
         const menuById = mapById(menu || []);
         const exById   = mapById(extraList || []);
 
@@ -7396,6 +7396,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
