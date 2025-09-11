@@ -935,7 +935,7 @@ const [dayMeta, setDayMeta] = useState({
 const [workerProfiles, setWorkerProfiles] = useState(BASE_WORKER_PROFILES);
 const [showAddWorker, setShowAddWorker] = useState(false);
   const [usageFilter, setUsageFilter] = React.useState("week");      // "week" | "month"
-const [usageWeekStart, setUsageWeekStart] = React.useState("mon"); // "sun" | "mon"
+
 const [usageWeekDate, setUsageWeekDate] = React.useState(new Date().toISOString().slice(0,10)); // YYYY-MM-DD
 const [usageMonth, setUsageMonth] = React.useState(new Date().toISOString().slice(0,7));        // YYYY-MM
 
@@ -7448,3 +7448,4 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
