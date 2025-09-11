@@ -566,6 +566,43 @@ function fmtDateTime(d) {
   const time = dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   return `${fmtDate(dt)} ${time}`;
 }
+// --- Helpers for Inventory Usage ---
+function startOfDay(d){ const x=new Date(d); x.setHours(0,0,0,0); return x; }
+function endOfDay(d){ const x=new Date(d); x.setHours(23,59,59,999); return x; }
+
+function getWeekRange(dateStr, startsOn="mon"){
+  const d=new Date(dateStr); const day=d.getDay(); // 0=Sun..6=Sat
+  const offset=(startsOn==="mon")?(day===0?6:day-1):day;
+  const start=startOfDay(new Date(d.getFullYear(), d.getMonth(), d.getDate()-offset));
+  const end=endOfDay(new Date(start.getFullYear(), start.getMonth(), start.getDate()+6));
+  return {start,end};
+}
+function getMonthRange(yyyymm){
+  const [Y,M]=yyyymm.split("-").map(Number);
+  const start=startOfDay(new Date(Y,M-1,1));
+  const end=endOfDay(new Date(Y,M,0));
+  return {start,end};
+}
+
+// Unit conversions (extend to your needs)
+const UNIT_CONV={
+  g:{g:1,kg:1/1000}, kg:{g:1000,kg:1},
+  ml:{ml:1,l:1/1000}, l:{ml:1000,l:1},
+  pcs:{pcs:1,piece:1,pc:1}, piece:{pcs:1,piece:1,pc:1}, pc:{pcs:1,piece:1,pc:1},
+};
+function convertUnit(qty, fromUnit, toUnit){
+  const f=String(fromUnit||"").toLowerCase(); const t=String(toUnit||"").toLowerCase();
+  if(f===t||!f||!t) return Number(qty||0);
+  const row=UNIT_CONV[f]; if(row&&row[t]!=null) return Number(qty||0)*row[t];
+  return Number(qty||0); // unknown => 1:1
+}
+function mapById(arr){ const m=new Map(); (arr||[]).forEach(it=>m.set(it.id,it)); return m; }
+function findDefByLine(line, defs){
+  if(line?.id!=null){ const byId=defs.find(d=>d.id===line.id); if(byId) return byId; }
+  if(line?.name){ const nm=String(line.name).toLowerCase(); const byName=defs.find(d=>String(d.name).toLowerCase()===nm); if(byName) return byName; }
+  return null;
+}
+
 function buildReceiptHTML(order, widthMm = 80) {
   const m = Math.max(0, Math.min(4, 4)); // padding mm
   const currency = (v) => `E£${Number(v || 0).toFixed(2)}`;
@@ -888,6 +925,11 @@ const [dayMeta, setDayMeta] = useState({
 });
 const [workerProfiles, setWorkerProfiles] = useState(BASE_WORKER_PROFILES);
 const [showAddWorker, setShowAddWorker] = useState(false);
+  const [usageFilter, setUsageFilter] = React.useState("week");      // "week" | "month"
+const [usageWeekStart, setUsageWeekStart] = React.useState("mon"); // "sun" | "mon"
+const [usageWeekDate, setUsageWeekDate] = React.useState(new Date().toISOString().slice(0,10)); // YYYY-MM-DD
+const [usageMonth, setUsageMonth] = React.useState(new Date().toISOString().slice(0,7));        // YYYY-MM
+
 const [newWName, setNewWName] = useState("");
 const [newWPin, setNewWPin] = useState("");
 const [newWRate, setNewWRate] = useState("");
@@ -3426,6 +3468,7 @@ const generatePurchasesPDF = () => {
     ["orders", "Orders"],
     ["board", "Orders Board"],
     ["expenses", "Expenses"],
+    ["usage", "Inventory Usage"],
      ["reconcile","Reconcile"],
     ["admin", "Admin"], // <-- new consolidated tab
   ].map(([key, label]) => (
@@ -4898,6 +4941,193 @@ const generatePurchasesPDF = () => {
           </table>
         </div>
       )}
+
+{/* ───────────────────────── INVENTORY USAGE (top-level) ───────────────────────── */}
+{activeTab === "usage" && (
+  <div style={{ display:"grid", gap:14 }}>
+    <h2>Inventory Usage</h2>
+
+    {/* Filter row */}
+    <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+      <button
+        onClick={() => setUsageFilter("week")}
+        style={{ padding:"6px 10px", borderRadius:6, border:`1px solid ${btnBorder}`,
+                 background: usageFilter==="week" ? "#ffd54f" : (dark ? "#2c2c2c" : "#f1f1f1"), cursor:"pointer" }}
+      >WEEK</button>
+      <button
+        onClick={() => setUsageFilter("month")}
+        style={{ padding:"6px 10px", borderRadius:6, border:`1px solid ${btnBorder}`,
+                 background: usageFilter==="month" ? "#ffd54f" : (dark ? "#2c2c2c" : "#f1f1f1"), cursor:"pointer" }}
+      >MONTH</button>
+
+      {usageFilter === "week" && (
+        <>
+          <label><b>Week starts:</b></label>
+          <select
+            value={usageWeekStart}
+            onChange={(e)=>setUsageWeekStart(e.target.value)}
+            style={{ padding:6, borderRadius:6, border:`1px solid ${btnBorder}` }}
+          >
+            <option value="sun">Sun</option>
+            <option value="mon">Mon</option>
+          </select>
+
+          <label><b>Pick a day:</b></label>
+          <input
+            type="date"
+            value={usageWeekDate}
+            onChange={(e)=>setUsageWeekDate(e.target.value)}
+            style={{ padding:6, borderRadius:6, border:`1px solid ${btnBorder}` }}
+          />
+        </>
+      )}
+
+      {usageFilter === "month" && (
+        <>
+          <label><b>Pick month:</b></label>
+          <input
+            type="month"
+            value={usageMonth}
+            onChange={(e)=>setUsageMonth(e.target.value)}
+            style={{ padding:6, borderRadius:6, border:`1px solid ${btnBorder}` }}
+          />
+        </>
+      )}
+
+      <div style={{ marginLeft:"auto", opacity:.8 }}>
+        {(() => {
+          const {start,end} = usageFilter==="week"
+            ? getWeekRange(usageWeekDate, usageWeekStart)
+            : getMonthRange(usageMonth);
+          return <>Period: {start.toLocaleDateString()} → {end.toLocaleDateString()}</>;
+        })()}
+      </div>
+    </div>
+
+    {/* Summary */}
+    <div style={{ border:`1px solid ${cardBorder}`, borderRadius:12, padding:12, background: dark ? "#151515" : "#fafafa" }}>
+      <h3 style={{ marginTop:0 }}>Summary (by inventory item)</h3>
+
+      {(() => {
+        const {start,end} = usageFilter==="week"
+          ? getWeekRange(usageWeekDate, usageWeekStart)
+          : getMonthRange(usageMonth);
+
+        const invById  = mapById(inventory || []);
+        const menuById = mapById(menu || []);
+        const exById   = mapById(extraList || []);
+
+        // Non-voided orders in period
+        const ordersInPeriod = (orders || []).filter(o => {
+          if (o?.voided) return false;
+          const d = o?.date ? new Date(o.date) : null;
+          return d && d >= start && d <= end;
+        });
+
+        // Used map (inventory id -> qty)
+        const used = new Map();
+        const addUse = (invId, qty) => {
+          if (!invId || !Number.isFinite(qty)) return;
+          used.set(invId, Number(used.get(invId) || 0) + Number(qty || 0));
+        };
+
+        for (const o of ordersInPeriod) {
+          for (const line of (o.cart || [])) {
+            const lineQty = Number(line.qty || 1);
+
+            // main item usage
+            const defItem = findDefByLine(line, menu || []) || (line?.id!=null ? menuById.get(line.id) : null);
+            if (defItem?.uses) {
+              for (const [invId, perUnit] of Object.entries(defItem.uses)) {
+                addUse(invId, Number(perUnit || 0) * lineQty);
+              }
+            }
+
+            // extras usage
+            for (const ex of (line.extras || [])) {
+              const defEx = findDefByLine(ex, extraList || []) || (ex?.id!=null ? exById.get(ex.id) : null);
+              if (defEx?.uses) {
+                for (const [invId, perUnit] of Object.entries(defEx.uses)) {
+                  addUse(invId, Number(perUnit || 0) * lineQty);
+                }
+              }
+            }
+          }
+        }
+
+        // Purchases in period → convert to inventory units
+        const purchasesInPeriod = (purchases || []).filter(p => {
+          const d = p?.date ? new Date(p.date) : null; // purchase date is "YYYY-MM-DD"
+          return d && d >= start && d <= end;
+        });
+
+        const purchased = new Map(); // invId -> qty
+        const addPurchased = (invId, qty) => {
+          purchased.set(invId, Number(purchased.get(invId) || 0) + Number(qty || 0));
+        };
+
+        for (const row of purchasesInPeriod) {
+          const inv = (inventory || []).find(it => String(it.name).toLowerCase() === String(row.itemName||"").toLowerCase());
+          if (!inv) continue; // no direct name match
+          const qtyInInvUnit = convertUnit(Number(row.qty || 0), row.unit, inv.unit);
+          addPurchased(inv.id, qtyInInvUnit);
+        }
+
+        // Build rows for all inventory items
+        const rows = (inventory || []).map(inv => {
+          const usedQty      = Number(used.get(inv.id) || 0);
+          const purchasedQty = Number(purchased.get(inv.id) || 0);
+          const net          = purchasedQty - usedQty;
+          const endQty       = Number(inv.qty || 0);
+          const usedCost     = usedQty * Number(inv.costPerUnit || 0);
+
+          return { id:inv.id, name:inv.name, unit:inv.unit, usedQty, purchasedQty, net, endQty, usedCost };
+        });
+
+        const totalUsedCost = rows.reduce((s,r)=> s + r.usedCost, 0);
+
+        return (
+          <div style={{ overflowX:"auto", marginTop:8 }}>
+            <table style={{ width:"100%", borderCollapse:"collapse" }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign:"left",  padding:8, borderBottom:`1px solid ${cardBorder}` }}>Item</th>
+                  <th style={{ textAlign:"left",  padding:8, borderBottom:`1px solid ${cardBorder}` }}>Unit</th>
+                  <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>Used</th>
+                  <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>Purchased</th>
+                  <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>Net (P−U)</th>
+                  <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>End Qty</th>
+                  <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>Used Cost (E£)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.length === 0 ? (
+                  <tr><td colSpan={7} style={{ padding:8, opacity:.7 }}>No inventory items.</td></tr>
+                ) : rows.map(r => (
+                  <tr key={r.id}>
+                    <td style={{ padding:8 }}>{r.name}</td>
+                    <td style={{ padding:8 }}>{r.unit}</td>
+                    <td style={{ padding:8, textAlign:"right" }}>{Number(r.usedQty||0).toFixed(2)}</td>
+                    <td style={{ padding:8, textAlign:"right" }}>{Number(r.purchasedQty||0).toFixed(2)}</td>
+                    <td style={{ padding:8, textAlign:"right" }}>{Number(r.net||0).toFixed(2)}</td>
+                    <td style={{ padding:8, textAlign:"right" }}>{Number(r.endQty||0).toFixed(2)}</td>
+                    <td style={{ padding:8, textAlign:"right", fontWeight:700 }}>E£{Number(r.usedCost||0).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={6} style={{ padding:8, textAlign:"right", fontWeight:900 }}>Total Used Cost</td>
+                  <td style={{ padding:8, textAlign:"right", fontWeight:900 }}>E£{Number(totalUsedCost||0).toFixed(2)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        );
+      })()}
+    </div>
+  </div>
+)}
 
 
 {/* ───────────────────────── Reconcile TAB ───────────────────────── */}
@@ -7166,6 +7396,7 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
 
