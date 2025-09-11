@@ -566,33 +566,25 @@ function fmtDateTime(d) {
   const time = dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   return `${fmtDate(dt)} ${time}`;
 }
-// === Helpers (add near your other utilities) =============================
-
-// Always-Sunday week range
-function getWeekRangeSunday(isoDateStr) {
-  const d = isoDateStr ? new Date(isoDateStr) : new Date();
-  const day = d.getDay(); // 0=Sun
-  const start = new Date(d);
-  start.setDate(d.getDate() - day);         // back to Sunday
-  start.setHours(0,0,0,0);
-
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);         // through Saturday
-  end.setHours(23,59,59,999);
-
-  return { start, end };
-}
-
-// dd/mm/yy
-function fmtDDMMYY(dateLike) {
-  const d = new Date(dateLike);
-  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "2-digit" });
-}
-
 // --- Helpers for Inventory Usage ---
 function startOfDay(d){ const x=new Date(d); x.setHours(0,0,0,0); return x; }
 function endOfDay(d){ const x=new Date(d); x.setHours(23,59,59,999); return x; }
 
+// Week range: always Sunday → Saturday
+function getWeekRange(anchorIsoDate) {
+  const d = anchorIsoDate ? new Date(anchorIsoDate) : new Date();
+  const start = new Date(d);
+  // 0 = Sunday
+  const dow = start.getDay(); // 0..6
+  start.setDate(start.getDate() - dow);      // back to Sunday
+  start.setHours(0, 0, 0, 0);
+
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);          // Saturday
+  end.setHours(23, 59, 59, 999);
+
+  return { start, end };
+}
 
 function getMonthRange(yyyymm){
   const [Y,M]=yyyymm.split("-").map(Number);
@@ -943,6 +935,7 @@ const [dayMeta, setDayMeta] = useState({
 const [workerProfiles, setWorkerProfiles] = useState(BASE_WORKER_PROFILES);
 const [showAddWorker, setShowAddWorker] = useState(false);
   const [usageFilter, setUsageFilter] = React.useState("week");      // "week" | "month"
+const [usageWeekStart, setUsageWeekStart] = React.useState("mon"); // "sun" | "mon"
 const [usageWeekDate, setUsageWeekDate] = React.useState(new Date().toISOString().slice(0,10)); // YYYY-MM-DD
 const [usageMonth, setUsageMonth] = React.useState(new Date().toISOString().slice(0,7));        // YYYY-MM
 
@@ -3247,23 +3240,6 @@ const generatePurchasesPDF = () => {
 };
 
 
-// Jump from Usage -> Purchases with matching period
-function openPurchasesForPeriod(start, end) {
-  // We only have DAY/MONTH/YEAR filters in Purchases, so default to MONTH
-  const y = start.getFullYear();
-  const m = String(start.getMonth() + 1).padStart(2, "0");
-
-  setActiveTab("admin");
-  setAdminSubTab("purchases");
-  setPurchaseFilter("month");
-  setPurchaseMonth(`${y}-${m}`);
-  // show everything
-  setPurchaseCatFilterId && setPurchaseCatFilterId("");
-  setShowAllCats && setShowAllCats(true);
-  // (Optional) clear the inline "Add purchase" form focus if you want
-}
-
-  
   /* --------------------------- UI --------------------------- */
 
   return (
@@ -3494,8 +3470,7 @@ function openPurchasesForPeriod(start, end) {
   </div>
 )}
 
-
-      {/* Tabs */}
+ {/* Tabs */}
 <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
   {[
     ["orders", "Orders"],
@@ -4993,7 +4968,7 @@ function openPurchasesForPeriod(start, end) {
                  background: usageFilter==="month" ? "#ffd54f" : (dark ? "#2c2c2c" : "#f1f1f1"), cursor:"pointer" }}
       >MONTH</button>
 
-     {usageFilter === "week" && (
+{usageFilter === "week" && (
   <>
     <label><b>Pick a day:</b></label>
     <input
@@ -5002,6 +4977,7 @@ function openPurchasesForPeriod(start, end) {
       onChange={(e)=>setUsageWeekDate(e.target.value)}
       style={{ padding:6, borderRadius:6, border:`1px solid ${btnBorder}` }}
     />
+    <small style={{ opacity:.75, marginLeft:8 }}>(Week starts Sunday)</small>
   </>
 )}
 
@@ -5018,231 +4994,189 @@ function openPurchasesForPeriod(start, end) {
         </>
       )}
 
-   <div style={{ marginLeft:"auto", opacity:.8 }}>
-  {(() => {
-    const {start,end} = usageFilter==="week"
-      ? getWeekRangeSunday(usageWeekDate)
-      : getMonthRange(usageMonth);
-    return <>Period: {fmtDDMMYY(start)} → {fmtDDMMYY(end)}</>;
-  })()}
-</div>
-
+      <div style={{ marginLeft:"auto", opacity:.8 }}>
+        {(() => {
+          const {start,end} = usageFilter==="week"
+            ? getWeekRange(usageWeekDate)
+            : getMonthRange(usageMonth);
+          return <>Period: {start.toLocaleDateString()} → {end.toLocaleDateString()}</>;
+        })()}
+      </div>
     </div>
 
     {/* Summary */}
     <div style={{ border:`1px solid ${cardBorder}`, borderRadius:12, padding:12, background: dark ? "#151515" : "#fafafa" }}>
       <h3 style={{ marginTop:0 }}>Summary (by inventory item)</h3>
 
-      {(() => {
-        const {start,end} = usageFilter==="week"
-  ? getWeekRangeSunday(usageWeekDate)
-  : getMonthRange(usageMonth);
+    {(() => {
+  // 1) Period
+  const {start,end} = usageFilter==="week"
+    ? getWeekRange(usageWeekDate)
+    : getMonthRange(usageMonth);
 
+  // 2) Helpers
+  const menuById = mapById(menu || []);
+  const exById   = mapById(extraList || []);
+  const add = (map, key, qty) => map.set(key, Number(map.get(key) || 0) + Number(qty || 0));
 
-      
-        const menuById = mapById(menu || []);
-        const exById   = mapById(extraList || []);
+  // 3) ORDERS → Used (same logic as before)
+  const ordersInPeriod = (orders || []).filter(o => {
+    if (o?.voided) return false;
+    const d = o?.date ? new Date(o.date) : null;
+    return d && d >= start && d <= end;
+  });
 
-        // Non-voided orders in period
-        const ordersInPeriod = (orders || []).filter(o => {
-          if (o?.voided) return false;
-          const d = o?.date ? new Date(o.date) : null;
-          return d && d >= start && d <= end;
-        });
+  const used = new Map(); // invId -> qty used
+  for (const o of ordersInPeriod) {
+    for (const line of (o.cart || [])) {
+      const lineQty = Number(line.qty || 1);
 
-        // Used map (inventory id -> qty)
-        const used = new Map();
-        const addUse = (invId, qty) => {
-          if (!invId || !Number.isFinite(qty)) return;
-          used.set(invId, Number(used.get(invId) || 0) + Number(qty || 0));
-        };
-
-        for (const o of ordersInPeriod) {
-          for (const line of (o.cart || [])) {
-            const lineQty = Number(line.qty || 1);
-
-            // main item usage
-            const defItem = findDefByLine(line, menu || []) || (line?.id!=null ? menuById.get(line.id) : null);
-            if (defItem?.uses) {
-              for (const [invId, perUnit] of Object.entries(defItem.uses)) {
-                addUse(invId, Number(perUnit || 0) * lineQty);
-              }
-            }
-
-            // extras usage
-            for (const ex of (line.extras || [])) {
-              const defEx = findDefByLine(ex, extraList || []) || (ex?.id!=null ? exById.get(ex.id) : null);
-              if (defEx?.uses) {
-                for (const [invId, perUnit] of Object.entries(defEx.uses)) {
-                  addUse(invId, Number(perUnit || 0) * lineQty);
-                }
-              }
-            }
+      // main item usage
+      const defItem = findDefByLine(line, menu || []) || (line?.id!=null ? menuById.get(line.id) : null);
+      if (defItem?.uses) {
+        for (const [invId, perUnit] of Object.entries(defItem.uses)) {
+          add(used, invId, Number(perUnit || 0) * lineQty);
+        }
+      }
+      // extras usage
+      for (const ex of (line.extras || [])) {
+        const defEx = findDefByLine(ex, extraList || []) || (ex?.id!=null ? exById.get(ex.id) : null);
+        if (defEx?.uses) {
+          for (const [invId, perUnit] of Object.entries(defEx.uses)) {
+            add(used, invId, Number(perUnit || 0) * lineQty);
           }
         }
+      }
+    }
+  }
 
-        // Purchases in period → convert to inventory units
-        const purchasesInPeriod = (purchases || []).filter(p => {
-          const d = p?.date ? new Date(p.date) : null; // purchase date is "YYYY-MM-DD"
-          return d && d >= start && d <= end;
-        });
+  // 4) PURCHASES → Purchased (reads from Purchases tab)
+  //    We match purchase.itemName to inventory.name (case-insensitive), then convert units.
+  const purchasesInPeriod = (purchases || []).filter(p => {
+    const d = p?.date ? new Date(p.date) : null; // "YYYY-MM-DD" in your Purchases tab
+    return d && d >= start && d <= end;
+  });
 
-        const purchased = new Map(); // invId -> qty
-        const addPurchased = (invId, qty) => {
-          purchased.set(invId, Number(purchased.get(invId) || 0) + Number(qty || 0));
-        };
-
-        for (const row of purchasesInPeriod) {
-          const inv = (inventory || []).find(it => String(it.name).toLowerCase() === String(row.itemName||"").toLowerCase());
-          if (!inv) continue; // no direct name match
-          const qtyInInvUnit = convertUnit(Number(row.qty || 0), row.unit, inv.unit);
-          addPurchased(inv.id, qtyInInvUnit);
-        }
-
-        // Build rows for all inventory items
-        const rows = (inventory || []).map(inv => {
-          const usedQty      = Number(used.get(inv.id) || 0);
-          const purchasedQty = Number(purchased.get(inv.id) || 0);
-          const net          = purchasedQty - usedQty;
-          const endQty       = Number(inv.qty || 0);
-          const usedCost     = usedQty * Number(inv.costPerUnit || 0);
-
-          return { id:inv.id, name:inv.name, unit:inv.unit, usedQty, purchasedQty, net, endQty, usedCost };
-        });
-
-        const totalUsedCost = rows.reduce((s,r)=> s + r.usedCost, 0);
-
-        return (
-          <div style={{ overflowX:"auto", marginTop:8 }}>
-            <table style={{ width:"100%", borderCollapse:"collapse" }}>
-              <thead>
-                <tr>
-                  <th style={{ textAlign:"left",  padding:8, borderBottom:`1px solid ${cardBorder}` }}>Item</th>
-                  <th style={{ textAlign:"left",  padding:8, borderBottom:`1px solid ${cardBorder}` }}>Unit</th>
-                  <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>Used</th>
-                  <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>Purchased</th>
-                  <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>Net (P−U)</th>
-                  <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>End Qty</th>
-                  <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>Used Cost (E£)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.length === 0 ? (
-                  <tr><td colSpan={7} style={{ padding:8, opacity:.7 }}>No inventory items.</td></tr>
-                ) : rows.map(r => (
-                  <tr key={r.id}>
-                    <td style={{ padding:8 }}>{r.name}</td>
-                    <td style={{ padding:8 }}>{r.unit}</td>
-                    <td style={{ padding:8, textAlign:"right" }}>{Number(r.usedQty||0).toFixed(2)}</td>
-                   <td style={{ padding:8, textAlign:"right" }}>
-  <button
-    onClick={() => openPurchasesForPeriod(start, end)}
-    title="Open Purchases (same period)"
-    style={{
-      background:"none",
-      border:"none",
-      padding:0,
-      cursor:"pointer",
-      textDecoration:"underline",
-      color: "#1976d2"
-    }}
-  >
-    {Number(r.purchasedQty||0).toFixed(2)}
-  </button>
-</td>
-
-                    <td style={{ padding:8, textAlign:"right" }}>{Number(r.net||0).toFixed(2)}</td>
-                    <td style={{ padding:8, textAlign:"right" }}>{Number(r.endQty||0).toFixed(2)}</td>
-                    <td style={{ padding:8, textAlign:"right", fontWeight:700 }}>E£{Number(r.usedCost||0).toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td colSpan={6} style={{ padding:8, textAlign:"right", fontWeight:900 }}>Total Used Cost</td>
-                  <td style={{ padding:8, textAlign:"right", fontWeight:900 }}>E£{Number(totalUsedCost||0).toFixed(2)}</td>
-                </tr>
-              </tfoot>
-            </table>
-                  {/* Mini chart: Used vs End Qty */}
-<div style={{ marginTop: 12 }}>
-  <h4 style={{ margin: "8px 0" }}>Used vs End Qty</h4>
-  {(() => {
-    if (!rows.length) return null;
-    const max = Math.max(
-      1,
-      ...rows.map(r => Math.max(Number(r.usedQty||0), Number(r.endQty||0)))
+  const purchased = new Map(); // invId -> qty purchased (converted to inventory unit)
+  for (const row of purchasesInPeriod) {
+    const inv = (inventory || []).find(
+      it => String(it.name).toLowerCase() === String(row.itemName || "").toLowerCase()
     );
+    if (!inv) continue; // name didn't match an inventory item
+    const qtyInInvUnit = convertUnit(Number(row.qty || 0), row.unit, inv.unit);
+    add(purchased, inv.id, qtyInInvUnit);
+  }
 
-    return (
-      <div style={{ display:"grid", gap:10 }}>
-        {rows.map(r => (
-          <div key={r.id}>
-            <div style={{ fontSize:12, opacity:0.8, marginBottom:4 }}>{r.name}</div>
+  // 5) Build rows for all inventory items
+  const rows = (inventory || []).map(inv => {
+    const usedQty      = Number(used.get(inv.id) || 0);
+    const purchasedQty = Number(purchased.get(inv.id) || 0);
+    const net          = purchasedQty - usedQty;
+    const endQty       = Number(inv.qty || 0);
+    const usedCost     = usedQty * Number(inv.costPerUnit || 0);
+    return { id:inv.id, name:inv.name, unit:inv.unit, usedQty, purchasedQty, net, endQty, usedCost };
+  });
 
-            {/* two horizontal bars, same scale */}
-            <div style={{ display:"grid", gap:4 }}>
-              {/* Used */}
-              <div style={{
-                height:10,
-                background: dark ? "#253238" : "#e3f2fd",
-                borderRadius:6,
-                position:"relative"
-              }}>
-                <div
-                  title={`Used: ${Number(r.usedQty||0).toFixed(2)} ${r.unit}`}
-                  style={{
-                    position:"absolute", left:0, top:0, bottom:0,
-                    width: `${(Number(r.usedQty||0) / max) * 100}%`,
-                    background: "#42a5f5",
-                    borderRadius:6
-                  }}
-                />
-              </div>
+  const totalUsedCost = rows.reduce((s,r)=> s + r.usedCost, 0);
 
-              {/* End Qty */}
-              <div style={{
-                height:10,
-                background: dark ? "#1c2c1d" : "#e8f5e9",
-                borderRadius:6,
-                position:"relative"
-              }}>
-                <div
-                  title={`End: ${Number(r.endQty||0).toFixed(2)} ${r.unit}`}
-                  style={{
-                    position:"absolute", left:0, top:0, bottom:0,
-                    width: `${(Number(r.endQty||0) / max) * 100}%`,
-                    background: "#66bb6a",
-                    borderRadius:6
-                  }}
-                />
-              </div>
-            </div>
+  // 6) Render table + vertical chart
+  return (
+    <>
+      {/* Table */}
+      <div style={{ overflowX:"auto", marginTop:8 }}>
+        <table style={{ width:"100%", borderCollapse:"collapse" }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign:"left",  padding:8, borderBottom:`1px solid ${cardBorder}` }}>Item</th>
+              <th style={{ textAlign:"left",  padding:8, borderBottom:`1px solid ${cardBorder}` }}>Unit</th>
+              <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>Used</th>
+              <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>Purchased</th>
+              <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>Net (P−U)</th>
+              <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>End Qty</th>
+              <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>Used Cost (E£)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr><td colSpan={7} style={{ padding:8, opacity:.7 }}>No inventory items.</td></tr>
+            ) : rows.map(r => (
+              <tr key={r.id}>
+                <td style={{ padding:8 }}>{r.name}</td>
+                <td style={{ padding:8 }}>{r.unit}</td>
+                <td style={{ padding:8, textAlign:"right" }}>{Number(r.usedQty||0).toFixed(2)}</td>
+                <td style={{ padding:8, textAlign:"right" }}>{Number(r.purchasedQty||0).toFixed(2)}</td>
+                <td style={{ padding:8, textAlign:"right" }}>{Number(r.net||0).toFixed(2)}</td>
+                <td style={{ padding:8, textAlign:"right" }}>{Number(r.endQty||0).toFixed(2)}</td>
+                <td style={{ padding:8, textAlign:"right", fontWeight:700 }}>E£{Number(r.usedCost||0).toFixed(2)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan={6} style={{ padding:8, textAlign:"right", fontWeight:900 }}>Total Used Cost</td>
+              <td style={{ padding:8, textAlign:"right", fontWeight:900 }}>E£{Number(totalUsedCost||0).toFixed(2)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
 
-            <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginTop:4 }}>
-              <span>Used: {Number(r.usedQty||0).toFixed(2)} {r.unit}</span>
-              <span>End: {Number(r.endQty||0).toFixed(2)} {r.unit}</span>
-            </div>
-          </div>
-        ))}
-
-        {/* Legend */}
-        <div style={{ display:"flex", gap:16, fontSize:12, opacity:.85, marginTop:4 }}>
-          <span style={{ display:"inline-flex", alignItems:"center", gap:6 }}>
-            <span style={{ width:12, height:12, background:"#42a5f5", borderRadius:2 }} /> Used
-          </span>
-          <span style={{ display:"inline-flex", alignItems:"center", gap:6 }}>
-            <span style={{ width:12, height:12, background:"#66bb6a", borderRadius:2 }} /> End Qty
-          </span>
+      {/* Vertical bar chart: End Qty vs Used */}
+      <div
+        style={{
+          marginTop: 14,
+          padding: 12,
+          border: `1px solid ${cardBorder}`,
+          borderRadius: 12,
+          background: dark ? "#101010" : "#fff",
+        }}
+      >
+        <div style={{ fontWeight: 700, marginBottom: 8 }}>End Qty vs Used</div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-end",
+            gap: 12,
+            height: 200,
+            paddingBottom: 24,
+            borderBottom: `1px dashed ${cardBorder}`,
+            overflowX: "auto",
+          }}
+        >
+          {(() => {
+            const max = Math.max(1, ...rows.map(r => Math.max(r.endQty, r.usedQty)));
+            const barMax = 160; // px
+            return rows.map(r => {
+              const hEnd  = (Number(r.endQty)  / max) * barMax;
+              const hUsed = (Number(r.usedQty) / max) * barMax;
+              return (
+                <div key={r.id} style={{ width: 40, display: "grid", gridTemplateRows: "1fr auto", alignItems: "end" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, alignItems: "end" }}>
+                    <div
+                      title={`End: ${Number(r.endQty||0).toFixed(2)} ${r.unit}`}
+                      style={{ height: hEnd, borderRadius: 4, background: dark ? "#4caf50" : "#81c784" }}
+                    />
+                    <div
+                      title={`Used: ${Number(r.usedQty||0).toFixed(2)} ${r.unit}`}
+                      style={{ height: hUsed, borderRadius: 4, background: dark ? "#039be5" : "#64b5f6" }}
+                    />
+                  </div>
+                  <div style={{ textAlign:"center", fontSize:10, marginTop:6, whiteSpace:"nowrap" }}>{r.name}</div>
+                </div>
+              );
+            });
+          })()}
+        </div>
+        <div style={{ display:"flex", gap:12, alignItems:"center", marginTop:8 }}>
+          <span style={{ width:12, height:12, borderRadius:3, background: dark ? "#4caf50" : "#81c784" }}></span>
+          <small>End Qty</small>
+          <span style={{ width:12, height:12, borderRadius:3, background: dark ? "#039be5" : "#64b5f6", marginLeft:12 }}></span>
+          <small>Used</small>
         </div>
       </div>
-    );
-  })()}
-</div>
+    </>
+  );
+})()}
 
-          </div>
-        );
-      })()}
     </div>
   </div>
 )}
@@ -7514,12 +7448,3 @@ function openPurchasesForPeriod(start, end) {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
