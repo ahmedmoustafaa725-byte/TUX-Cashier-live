@@ -593,13 +593,7 @@ function fmtDDMMYY(dateLike) {
 function startOfDay(d){ const x=new Date(d); x.setHours(0,0,0,0); return x; }
 function endOfDay(d){ const x=new Date(d); x.setHours(23,59,59,999); return x; }
 
-function getWeekRange(dateStr, startsOn="mon"){
-  const d=new Date(dateStr); const day=d.getDay(); // 0=Sun..6=Sat
-  const offset=(startsOn==="mon")?(day===0?6:day-1):day;
-  const start=startOfDay(new Date(d.getFullYear(), d.getMonth(), d.getDate()-offset));
-  const end=endOfDay(new Date(start.getFullYear(), start.getMonth(), start.getDate()+6));
-  return {start,end};
-}
+
 function getMonthRange(yyyymm){
   const [Y,M]=yyyymm.split("-").map(Number);
   const start=startOfDay(new Date(Y,M-1,1));
@@ -7520,6 +7514,7 @@ function openPurchasesForPeriod(start, end) {
     </div>
   );
 }
+
 
 
 
