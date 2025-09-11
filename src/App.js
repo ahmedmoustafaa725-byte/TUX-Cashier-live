@@ -239,92 +239,7 @@ if (Array.isArray(data.workerSessions)) {
   }
   return out;
 }
-// FIFO cost calculation helper
-const calculateFIFOCost = (itemId, usageQty, purchases) => {
-  const itemPurchases = purchases
-    .filter(p => p.ingredientId === itemId)
-    .sort((a, b) => new Date(a.date) - new Date(b.date));
-  
-  let remainingQty = usageQty;
-  let totalCost = 0;
-  
-  for (const purchase of itemPurchases) {
-    if (remainingQty <= 0) break;
-    
-    const availableQty = purchase.qty;
-    const usedQty = Math.min(remainingQty, availableQty);
-    const unitCost = purchase.unitPrice;
-    
-    totalCost += usedQty * unitCost;
-    remainingQty -= usedQty;
-  }
-  
-  return totalCost;
-};
-// Reducer to process inventory usage data
-const processUsageData = (period, view, metric, searchTerm) => {
-  const [startDate, endDate] = getPeriodRange(view, {}, period, period);
-  
-  // Filter orders and purchases within the period
-  const periodOrders = orders.filter(o => 
-    !o.voided && isWithin(new Date(o.date), startDate, endDate)
-  );
-  
-  const periodPurchases = purchases.filter(p => 
-    isWithin(new Date(p.date), startDate, endDate)
-  );
-  
-  // Calculate usage from orders
-  const usageMap = {};
-  
-  periodOrders.forEach(order => {
-    order.cart.forEach(item => {
-      if (item.uses) {
-        Object.entries(item.uses).forEach(([ingredientId, qty]) => {
-          if (!usageMap[ingredientId]) {
-            usageMap[ingredientId] = {
-              id: ingredientId,
-              name: inventory.find(i => i.id === ingredientId)?.name || 'Unknown',
-              used: 0,
-              purchased: 0,
-              cost: 0
-            };
-          }
-          usageMap[ingredientId].used += qty;
-        });
-      }
-    });
-  });
-  
-  // Calculate purchases
-  periodPurchases.forEach(purchase => {
-    if (purchase.ingredientId && usageMap[purchase.ingredientId]) {
-      usageMap[purchase.ingredientId].purchased += purchase.qty;
-    }
-  });
-  
-  // Calculate costs
-  Object.values(usageMap).forEach(item => {
-    item.cost = calculateFIFOCost(item.id, item.used, periodPurchases);
-  });
-  
-  // Filter by search term
-  let results = Object.values(usageMap);
-  if (searchTerm) {
-    const term = searchTerm.toLowerCase();
-    results = results.filter(item => 
-      item.name.toLowerCase().includes(term)
-    );
-  }
-  
-  // Sort by selected metric
-  results.sort((a, b) => {
-    if (metric === 'quantity') return b.used - a.used;
-    return b.cost - a.cost;
-  });
-  
-  return results;
-};
+
 function normalizeOrderForCloud(order) {
 return {
   orderNo: order.orderNo,
@@ -430,7 +345,6 @@ const BASE_EXTRAS = [
   { id: 112, name: "Mozzarella Cheese", price: 20, uses: {} },
   { id: 113, name: "Tux Hawawshi Sauce", price: 10, uses: {} },
 ];
-
 const DEFAULT_INVENTORY = [
   { id: "meat",   name: "Meat",   unit: "g",     qty: 0, costPerUnit: 0, minQty: 0 },
   { id: "cheese", name: "Cheese", unit: "slices",qty: 0, costPerUnit: 0, minQty: 0 },
@@ -562,10 +476,6 @@ const ensureInvIdUnique = (id, list) => {
   }
   return candidate;
 };
-const [usageView, setUsageView] = useState('weekly'); // 'weekly' or 'monthly'
-const [usageDate, setUsageDate] = useState(new Date().toISOString().slice(0, 10));
-const [usageMetric, setUsageMetric] = useState('quantity'); // 'quantity' or 'cost'
-const [usageSearch, setUsageSearch] = useState('');
 const inferUnitFromCategoryName = (name) =>
   DEFAULT_INV_UNIT_BY_CATNAME[String(name || "").toLowerCase()] || "piece";
 function findInventoryIdForPurchase(row, inventory, purchaseCategories) {
@@ -1895,21 +1805,6 @@ const sumPurchases = (rows = []) =>
   rows.reduce((s, p) => s + Number(p.qty || 0) * Number(p.unitPrice || 0), 0);
   
 function getPeriodRange(kind, dayMeta, dayStr, monthStr) {
-  if (kind === "weekly" && dayStr) {
-    // Parse the week input (YYYY-Www)
-    const [year, week] = dayStr.split('-W').map(Number);
-    const firstDay = new Date(year, 0, 1 + (week - 1) * 7);
-    const dayOfWeek = firstDay.getDay();
-    const start = new Date(firstDay);
-    start.setDate(firstDay.getDate() - dayOfWeek);
-    start.setHours(0, 0, 0, 0);
-    
-    const end = new Date(start);
-    end.setDate(start.getDate() + 6);
-    end.setHours(23, 59, 59, 999);
-    
-    return [start, end];
-  }
   if (kind === "day" && dayStr) {
     const d = new Date(`${dayStr}T00:00:00`);
     const start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
@@ -3531,7 +3426,6 @@ const generatePurchasesPDF = () => {
     ["orders", "Orders"],
     ["board", "Orders Board"],
     ["expenses", "Expenses"],
-    ["usage", "Inventory Usage"],
      ["reconcile","Reconcile"],
     ["admin", "Admin"], // <-- new consolidated tab
   ].map(([key, label]) => (
@@ -5005,298 +4899,7 @@ const generatePurchasesPDF = () => {
         </div>
       )}
 
-{/* INVENTORY USAGE TAB */}
-{activeTab === "usage" && (
-  <div>
-    <h2>Inventory Usage</h2>
-    
-    {/* Controls */}
-    <div style={{
-      display: 'flex', 
-      gap: '12px', 
-      marginBottom: '16px', 
-      flexWrap: 'wrap',
-      alignItems: 'center'
-    }}>
-      {/* View Toggle */}
-      <div>
-        <button
-          onClick={() => setUsageView('weekly')}
-          style={{
-            padding: '8px 12px',
-            background: usageView === 'weekly' ? '#ffd54f' : (dark ? '#2c2c2c' : '#f1f1f1'),
-            border: `1px solid ${btnBorder}`,
-            borderRadius: '6px 0 0 6px'
-          }}
-        >
-          Weekly
-        </button>
-        <button
-          onClick={() => setUsageView('monthly')}
-          style={{
-            padding: '8px 12px',
-            background: usageView === 'monthly' ? '#ffd54f' : (dark ? '#2c2c2c' : '#f1f1f1'),
-            border: `1px solid ${btnBorder}`,
-            borderRadius: '0 6px 6px 0'
-          }}
-        >
-          Monthly
-        </button>
-      </div>
-      
-      {/* Date Picker */}
-      <input
-        type={usageView === 'weekly' ? 'week' : 'month'}
-        value={usageDate}
-        onChange={(e) => setUsageDate(e.target.value)}
-        style={{ padding: '8px', borderRadius: '6px', border: `1px solid ${btnBorder}` }}
-      />
-      
-      {/* Metric Selector */}
-      <select
-        value={usageMetric}
-        onChange={(e) => setUsageMetric(e.target.value)}
-        style={{ padding: '8px', borderRadius: '6px', border: `1px solid ${btnBorder}` }}
-      >
-        <option value="quantity">Quantity</option>
-        <option value="cost">Estimated Cost</option>
-      </select>
-      
-      {/* Search */}
-      <input
-        type="text"
-        placeholder="Search items..."
-        value={usageSearch}
-        onChange={(e) => setUsageSearch(e.target.value)}
-        style={{ 
-          padding: '8px', 
-          borderRadius: '6px', 
-          border: `1px solid ${btnBorder}`,
-          minWidth: '200px'
-        }}
-      />
-    </div>
-    
-    {/* KPI Cards */}
-    <div style={{
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-      gap: '16px',
-      marginBottom: '24px'
-    }}>
-      {(() => {
-        const usageData = processUsageData(usageDate, usageView, usageMetric, usageSearch);
-        const totalUsed = usageData.reduce((sum, item) => sum + item.used, 0);
-        const totalCost = usageData.reduce((sum, item) => sum + item.cost, 0);
-        
-        return (
-          <>
-            <div style={{
-              padding: '16px',
-              borderRadius: '8px',
-              background: dark ? '#1e1e1e' : '#fff',
-              border: `1px solid ${cardBorder}`,
-              textAlign: 'center'
-            }}>
-              <h3 style={{ margin: '0 0 8px 0' }}>Total Used</h3>
-              <p style={{ 
-                fontSize: '24px', 
-                fontWeight: 'bold',
-                margin: 0,
-                color: usageMetric === 'quantity' ? '#1976d2' : '#2e7d32'
-              }}>
-                {usageMetric === 'quantity' 
-                  ? totalUsed.toLocaleString() 
-                  : `E£${totalCost.toFixed(2)}`
-                }
-              </p>
-            </div>
-            
-            <div style={{
-              padding: '16px',
-              borderRadius: '8px',
-              background: dark ? '#1e1e1e' : '#fff',
-              border: `1px solid ${cardBorder}`,
-              textAlign: 'center'
-            }}>
-              <h3 style={{ margin: '0 0 8px 0' }}>Estimated Cost</h3>
-              <p style={{ 
-                fontSize: '24px', 
-                fontWeight: 'bold',
-                margin: 0,
-                color: '#2e7d32'
-              }}>
-                E£{totalCost.toFixed(2)}
-              </p>
-            </div>
-            
-            <div style={{
-              padding: '16px',
-              borderRadius: '8px',
-              background: dark ? '#1e1e1e' : '#fff',
-              border: `1px solid ${cardBorder}`,
-              textAlign: 'center'
-            }}>
-              <h3 style={{ margin: '0 0 8px 0' }}>Items Tracked</h3>
-              <p style={{ 
-                fontSize: '24px', 
-                fontWeight: 'bold',
-                margin: 0,
-                color: '#7b1fa2'
-              }}>
-                {usageData.length}
-              </p>
-            </div>
-          </>
-        );
-      })()}
-    </div>
-    
-    {/* Charts and Table */}
-    {(() => {
-      const usageData = processUsageData(usageDate, usageView, usageMetric, usageSearch);
-      
-      return (
-        <>
-          {/* Top Items Bar Chart (simplified) */}
-          <div style={{
-            marginBottom: '24px',
-            padding: '16px',
-            borderRadius: '8px',
-            background: dark ? '#1e1e1e' : '#fff',
-            border: `1px solid ${cardBorder}`
-          }}>
-            <h3>Top Items by {usageMetric === 'quantity' ? 'Usage' : 'Cost'}</h3>
-            <div style={{ height: '300px', overflowX: 'auto' }}>
-              {/* This would be replaced with a real chart library */}
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'flex-end', 
-                gap: '8px', 
-                height: '250px',
-                padding: '16px 0'
-              }}>
-                {usageData.slice(0, 10).map((item, index) => {
-                  const maxValue = Math.max(...usageData.slice(0, 10).map(i => 
-                    usageMetric === 'quantity' ? i.used : i.cost
-                  ));
-                  const height = ((usageMetric === 'quantity' ? item.used : item.cost) / maxValue) * 200;
-                  
-                  return (
-                    <div key={item.id} style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      width: '60px'
-                    }}>
-                      <div style={{
-                        height: `${height}px`,
-                        width: '40px',
-                        background: index % 2 === 0 ? '#42a5f5' : '#ab47bc',
-                        borderRadius: '4px 4px 0 0'
-                      }} />
-                      <div style={{
-                        marginTop: '8px',
-                        fontSize: '12px',
-                        textAlign: 'center',
-                        fontWeight: 'bold'
-                      }}>
-                        {usageMetric === 'quantity' 
-                          ? item.used.toLocaleString() 
-                          : `E£${item.cost.toFixed(2)}`
-                        }
-                      </div>
-                      <div style={{
-                        marginTop: '4px',
-                        fontSize: '10px',
-                        textAlign: 'center',
-                        textOverflow: 'ellipsis',
-                        overflow: 'hidden',
-                        whiteSpace: 'nowrap',
-                        width: '100%'
-                      }}>
-                        {item.name}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-          
-          {/* Daily Trend Line Chart (simplified) */}
-          <div style={{
-            marginBottom: '24px',
-            padding: '16px',
-            borderRadius: '8px',
-            background: dark ? '#1e1e1e' : '#fff',
-            border: `1px solid ${cardBorder}`
-          }}>
-            <h3>Daily Trend</h3>
-            <div style={{ height: '300px' }}>
-              {/* Placeholder for line chart */}
-              <div style={{
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center',
-                height: '100%',
-                color: dark ? '#666' : '#ccc',
-                fontStyle: 'italic'
-              }}>
-                Daily trend chart would appear here
-              </div>
-            </div>
-          </div>
-          
-          {/* Detailed Table */}
-          <div style={{
-            padding: '16px',
-            borderRadius: '8px',
-            background: dark ? '#1e1e1e' : '#fff',
-            border: `1px solid ${cardBorder}`
-          }}>
-            <h3>Detailed Usage</h3>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr>
-                    <th style={{ textAlign: 'left', padding: '8px', borderBottom: `1px solid ${cardBorder}` }}>Item</th>
-                    <th style={{ textAlign: 'right', padding: '8px', borderBottom: `1px solid ${cardBorder}` }}>Used</th>
-                    <th style={{ textAlign: 'right', padding: '8px', borderBottom: `1px solid ${cardBorder}` }}>Est. Cost</th>
-                    <th style={{ textAlign: 'right', padding: '8px', borderBottom: `1px solid ${cardBorder}` }}>Purchased</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {usageData.map(item => (
-                    <tr key={item.id}>
-                      <td style={{ padding: '8px', borderBottom: `1px solid ${cardBorder}` }}>{item.name}</td>
-                      <td style={{ padding: '8px', borderBottom: `1px solid ${cardBorder}`, textAlign: 'right' }}>
-                        {item.used.toLocaleString()}
-                      </td>
-                      <td style={{ padding: '8px', borderBottom: `1px solid ${cardBorder}`, textAlign: 'right' }}>
-                        E£{item.cost.toFixed(2)}
-                      </td>
-                      <td style={{ padding: '8px', borderBottom: `1px solid ${cardBorder}`, textAlign: 'right' }}>
-                        {item.purchased.toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
-                  {usageData.length === 0 && (
-                    <tr>
-                      <td colSpan={4} style={{ padding: '16px', textAlign: 'center', opacity: 0.7 }}>
-                        No usage data for the selected period
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </>
-      );
-    })()}
-  </div>
-)}
+
 {/* ───────────────────────── Reconcile TAB ───────────────────────── */}
 {activeTab === "reconcile" && (
   <div style={{ display: "grid", gap: 14 }}>
@@ -7563,9 +7166,6 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
-
-
-
 
 
 
