@@ -566,6 +566,29 @@ function fmtDateTime(d) {
   const time = dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   return `${fmtDate(dt)} ${time}`;
 }
+// === Helpers (add near your other utilities) =============================
+
+// Always-Sunday week range
+function getWeekRangeSunday(isoDateStr) {
+  const d = isoDateStr ? new Date(isoDateStr) : new Date();
+  const day = d.getDay(); // 0=Sun
+  const start = new Date(d);
+  start.setDate(d.getDate() - day);         // back to Sunday
+  start.setHours(0,0,0,0);
+
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);         // through Saturday
+  end.setHours(23,59,59,999);
+
+  return { start, end };
+}
+
+// dd/mm/yy
+function fmtDDMMYY(dateLike) {
+  const d = new Date(dateLike);
+  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "2-digit" });
+}
+
 // --- Helpers for Inventory Usage ---
 function startOfDay(d){ const x=new Date(d); x.setHours(0,0,0,0); return x; }
 function endOfDay(d){ const x=new Date(d); x.setHours(23,59,59,999); return x; }
@@ -926,7 +949,6 @@ const [dayMeta, setDayMeta] = useState({
 const [workerProfiles, setWorkerProfiles] = useState(BASE_WORKER_PROFILES);
 const [showAddWorker, setShowAddWorker] = useState(false);
   const [usageFilter, setUsageFilter] = React.useState("week");      // "week" | "month"
-const [usageWeekStart, setUsageWeekStart] = React.useState("mon"); // "sun" | "mon"
 const [usageWeekDate, setUsageWeekDate] = React.useState(new Date().toISOString().slice(0,10)); // YYYY-MM-DD
 const [usageMonth, setUsageMonth] = React.useState(new Date().toISOString().slice(0,7));        // YYYY-MM
 
@@ -3231,6 +3253,23 @@ const generatePurchasesPDF = () => {
 };
 
 
+// Jump from Usage -> Purchases with matching period
+function openPurchasesForPeriod(start, end) {
+  // We only have DAY/MONTH/YEAR filters in Purchases, so default to MONTH
+  const y = start.getFullYear();
+  const m = String(start.getMonth() + 1).padStart(2, "0");
+
+  setActiveTab("admin");
+  setAdminSubTab("purchases");
+  setPurchaseFilter("month");
+  setPurchaseMonth(`${y}-${m}`);
+  // show everything
+  setPurchaseCatFilterId && setPurchaseCatFilterId("");
+  setShowAllCats && setShowAllCats(true);
+  // (Optional) clear the inline "Add purchase" form focus if you want
+}
+
+  
   /* --------------------------- UI --------------------------- */
 
   return (
@@ -4960,27 +4999,18 @@ const generatePurchasesPDF = () => {
                  background: usageFilter==="month" ? "#ffd54f" : (dark ? "#2c2c2c" : "#f1f1f1"), cursor:"pointer" }}
       >MONTH</button>
 
-      {usageFilter === "week" && (
-        <>
-          <label><b>Week starts:</b></label>
-          <select
-            value={usageWeekStart}
-            onChange={(e)=>setUsageWeekStart(e.target.value)}
-            style={{ padding:6, borderRadius:6, border:`1px solid ${btnBorder}` }}
-          >
-            <option value="sun">Sun</option>
-            <option value="mon">Mon</option>
-          </select>
+     {usageFilter === "week" && (
+  <>
+    <label><b>Pick a day:</b></label>
+    <input
+      type="date"
+      value={usageWeekDate}
+      onChange={(e)=>setUsageWeekDate(e.target.value)}
+      style={{ padding:6, borderRadius:6, border:`1px solid ${btnBorder}` }}
+    />
+  </>
+)}
 
-          <label><b>Pick a day:</b></label>
-          <input
-            type="date"
-            value={usageWeekDate}
-            onChange={(e)=>setUsageWeekDate(e.target.value)}
-            style={{ padding:6, borderRadius:6, border:`1px solid ${btnBorder}` }}
-          />
-        </>
-      )}
 
       {usageFilter === "month" && (
         <>
@@ -4994,14 +5024,15 @@ const generatePurchasesPDF = () => {
         </>
       )}
 
-      <div style={{ marginLeft:"auto", opacity:.8 }}>
-        {(() => {
-          const {start,end} = usageFilter==="week"
-            ? getWeekRange(usageWeekDate, usageWeekStart)
-            : getMonthRange(usageMonth);
-          return <>Period: {start.toLocaleDateString()} → {end.toLocaleDateString()}</>;
-        })()}
-      </div>
+   <div style={{ marginLeft:"auto", opacity:.8 }}>
+  {(() => {
+    const {start,end} = usageFilter==="week"
+      ? getWeekRangeSunday(usageWeekDate)
+      : getMonthRange(usageMonth);
+    return <>Period: {fmtDDMMYY(start)} → {fmtDDMMYY(end)}</>;
+  })()}
+</div>
+
     </div>
 
     {/* Summary */}
@@ -5010,8 +5041,9 @@ const generatePurchasesPDF = () => {
 
       {(() => {
         const {start,end} = usageFilter==="week"
-          ? getWeekRange(usageWeekDate, usageWeekStart)
-          : getMonthRange(usageMonth);
+  ? getWeekRangeSunday(usageWeekDate)
+  : getMonthRange(usageMonth);
+
 
       
         const menuById = mapById(menu || []);
@@ -5108,7 +5140,23 @@ const generatePurchasesPDF = () => {
                     <td style={{ padding:8 }}>{r.name}</td>
                     <td style={{ padding:8 }}>{r.unit}</td>
                     <td style={{ padding:8, textAlign:"right" }}>{Number(r.usedQty||0).toFixed(2)}</td>
-                    <td style={{ padding:8, textAlign:"right" }}>{Number(r.purchasedQty||0).toFixed(2)}</td>
+                   <td style={{ padding:8, textAlign:"right" }}>
+  <button
+    onClick={() => openPurchasesForPeriod(start, end)}
+    title="Open Purchases (same period)"
+    style={{
+      background:"none",
+      border:"none",
+      padding:0,
+      cursor:"pointer",
+      textDecoration:"underline",
+      color: "#1976d2"
+    }}
+  >
+    {Number(r.purchasedQty||0).toFixed(2)}
+  </button>
+</td>
+
                     <td style={{ padding:8, textAlign:"right" }}>{Number(r.net||0).toFixed(2)}</td>
                     <td style={{ padding:8, textAlign:"right" }}>{Number(r.endQty||0).toFixed(2)}</td>
                     <td style={{ padding:8, textAlign:"right", fontWeight:700 }}>E£{Number(r.usedCost||0).toFixed(2)}</td>
@@ -5122,6 +5170,82 @@ const generatePurchasesPDF = () => {
                 </tr>
               </tfoot>
             </table>
+                  {/* Mini chart: Used vs End Qty */}
+<div style={{ marginTop: 12 }}>
+  <h4 style={{ margin: "8px 0" }}>Used vs End Qty</h4>
+  {(() => {
+    if (!rows.length) return null;
+    const max = Math.max(
+      1,
+      ...rows.map(r => Math.max(Number(r.usedQty||0), Number(r.endQty||0)))
+    );
+
+    return (
+      <div style={{ display:"grid", gap:10 }}>
+        {rows.map(r => (
+          <div key={r.id}>
+            <div style={{ fontSize:12, opacity:0.8, marginBottom:4 }}>{r.name}</div>
+
+            {/* two horizontal bars, same scale */}
+            <div style={{ display:"grid", gap:4 }}>
+              {/* Used */}
+              <div style={{
+                height:10,
+                background: dark ? "#253238" : "#e3f2fd",
+                borderRadius:6,
+                position:"relative"
+              }}>
+                <div
+                  title={`Used: ${Number(r.usedQty||0).toFixed(2)} ${r.unit}`}
+                  style={{
+                    position:"absolute", left:0, top:0, bottom:0,
+                    width: `${(Number(r.usedQty||0) / max) * 100}%`,
+                    background: "#42a5f5",
+                    borderRadius:6
+                  }}
+                />
+              </div>
+
+              {/* End Qty */}
+              <div style={{
+                height:10,
+                background: dark ? "#1c2c1d" : "#e8f5e9",
+                borderRadius:6,
+                position:"relative"
+              }}>
+                <div
+                  title={`End: ${Number(r.endQty||0).toFixed(2)} ${r.unit}`}
+                  style={{
+                    position:"absolute", left:0, top:0, bottom:0,
+                    width: `${(Number(r.endQty||0) / max) * 100}%`,
+                    background: "#66bb6a",
+                    borderRadius:6
+                  }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginTop:4 }}>
+              <span>Used: {Number(r.usedQty||0).toFixed(2)} {r.unit}</span>
+              <span>End: {Number(r.endQty||0).toFixed(2)} {r.unit}</span>
+            </div>
+          </div>
+        ))}
+
+        {/* Legend */}
+        <div style={{ display:"flex", gap:16, fontSize:12, opacity:.85, marginTop:4 }}>
+          <span style={{ display:"inline-flex", alignItems:"center", gap:6 }}>
+            <span style={{ width:12, height:12, background:"#42a5f5", borderRadius:2 }} /> Used
+          </span>
+          <span style={{ display:"inline-flex", alignItems:"center", gap:6 }}>
+            <span style={{ width:12, height:12, background:"#66bb6a", borderRadius:2 }} /> End Qty
+          </span>
+        </div>
+      </div>
+    );
+  })()}
+</div>
+
           </div>
         );
       })()}
