@@ -5003,6 +5003,106 @@ const generatePurchasesPDF = () => {
         })()}
       </div>
     </div>
+{/* ── KPIs (Total Used, Estimated Cost, Items Tracked) ───────────────── */}
+{(() => {
+  const money = (v) => `E£${Number(v || 0).toFixed(2)}`;
+  const { start, end } = usageFilter === "week" ? getWeekRange(usageWeekDate) : getMonthRange(usageMonth);
+
+  // Build usage (same method as in Summary)
+  const menuById = mapById(menu || []);
+  const exById = mapById(extraList || []);
+  const add = (map, key, qty) => map.set(key, Number(map.get(key) || 0) + Number(qty || 0));
+
+  const ordersInPeriod = (orders || []).filter((o) => {
+    if (o?.voided) return false;
+    const d = o?.date ? new Date(o.date) : null;
+    return d && d >= start && d <= end;
+  });
+
+  const used = new Map(); // invId -> qty used
+  for (const o of ordersInPeriod) {
+    for (const line of o.cart || []) {
+      const lineQty = Number(line.qty || 1);
+      const defItem = findDefByLine(line, menu || []) || (line?.id != null ? menuById.get(line.id) : null);
+      if (defItem?.uses) {
+        for (const [invId, perUnit] of Object.entries(defItem.uses)) add(used, invId, Number(perUnit || 0) * lineQty);
+      }
+      for (const ex of line.extras || []) {
+        const defEx = findDefByLine(ex, extraList || []) || (ex?.id != null ? exById.get(ex.id) : null);
+        if (defEx?.uses) {
+          for (const [invId, perUnit] of Object.entries(defEx.uses)) add(used, invId, Number(perUnit || 0) * lineQty);
+        }
+      }
+    }
+  }
+
+  // Avg cost per unit from purchases in the same period (same helper as in Summary)
+  const norm = (s) => String(s || "").toLowerCase().replace(/\s+/g, " ").trim().replace(/[^a-z0-9]+/g, "");
+  const invById = mapById(inventory || []);
+  const invByNormName = new Map((inventory || []).map((it) => [norm(it.name), it]));
+  const endInc = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999);
+
+  const purchasesInPeriod = (purchases || []).filter((p) => {
+    const d = p?.date ? new Date(p.date) : null;
+    return d && d >= start && d <= endInc;
+  });
+
+  const numer = new Map(), denom = new Map();
+  for (const row of purchasesInPeriod) {
+    let inv = row.invId ? invById.get(row.invId) : null;
+    if (!inv) inv = invByNormName.get(norm(row.itemName));
+    if (!inv) continue;
+    const qty = Number(row.qty || 0);
+    if (!(qty > 0)) continue;
+    const inInvUnit = convertUnit(qty, row.unit, inv.unit);
+    if (!isFinite(inInvUnit) || !(inInvUnit > 0)) continue;
+    numer.set(inv.id, Number(numer.get(inv.id) || 0) + qty * Number(row.unitPrice || 0));
+    denom.set(inv.id, Number(denom.get(inv.id) || 0) + inInvUnit);
+  }
+  const avgCostByInvId = new Map(
+    (inventory || []).map((inv) => {
+      const d = Number(denom.get(inv.id) || 0);
+      return [inv.id, d > 0 ? Number(numer.get(inv.id) || 0) / d : Number(inv.costPerUnit || 0)];
+    })
+  );
+
+  // KPIs
+  const totalUsedQty = Array.from(used.values()).reduce((s, v) => s + Number(v || 0), 0);
+  const estimatedCost = (inventory || []).reduce((s, inv) => {
+    const qty = Number(used.get(inv.id) || 0);
+    const avg = Number((avgCostByInvId.get(inv.id) ?? inv.costPerUnit) || 0);
+    return s + qty * avg;
+  }, 0);
+  const itemsTracked = Array.from(used.entries()).filter(([, q]) => Number(q || 0) > 0).length;
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+        gap: 12,
+      }}
+    >
+      <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 12, padding: 12, background: dark ? "#151515" : "#fff" }}>
+        <div style={{ opacity: 0.8 }}>Total Used</div>
+        <div style={{ fontSize: 24, fontWeight: 900 }}>{Number(totalUsedQty || 0).toFixed(2)}</div>
+        <small style={{ opacity: 0.7 }}>Sum of theoretical usage across items (mixed units)</small>
+      </div>
+
+      <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 12, padding: 12, background: dark ? "#151515" : "#fff" }}>
+        <div style={{ opacity: 0.8 }}>Estimated Cost</div>
+        <div style={{ fontSize: 24, fontWeight: 900 }}>{money(estimatedCost)}</div>
+        <small style={{ opacity: 0.7 }}>Uses average cost per unit (purchases → period), fallback to Cost/Unit</small>
+      </div>
+
+      <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 12, padding: 12, background: dark ? "#151515" : "#fff" }}>
+        <div style={{ opacity: 0.8 }}>Items Tracked</div>
+        <div style={{ fontSize: 24, fontWeight: 900 }}>{itemsTracked}</div>
+        <small style={{ opacity: 0.7 }}>Unique inventory items with usage</small>
+      </div>
+    </div>
+  );
+})()}
 
     {/* Summary */}
     <div style={{ border:`1px solid ${cardBorder}`, borderRadius:12, padding:12, background: dark ? "#151515" : "#fafafa" }}>
@@ -5050,61 +5150,60 @@ const generatePurchasesPDF = () => {
     }
   }
 
-// 4) PURCHASES → Purchased (reads from Purchases tab)
-//    FIX: parse dates in LOCAL time & match inventory more robustly.
-const toLocalDate = (v) => {
-  if (!v) return null;
-  if (v instanceof Date) return v;
-  if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
-    const [y, m, d] = v.split("-").map(Number);
-    return new Date(y, m - 1, d); // local midnight
-  }
-  const d = new Date(v);
-  return isNaN(d) ? null : d;
-};
+ // 4) PURCHASES → Purchased (robust matching + avg cost map)
+const norm = (s) =>
+  String(s || "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[^a-z0-9]+/g, ""); // strip punctuation & spaces
+
+const invById = mapById(inventory || []);
+const invByNormName = new Map((inventory || []).map((it) => [norm(it.name), it]));
+
+// make end-of-day inclusive to catch YYYY-MM-DD purchases
 const endInc = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999);
 
 const purchasesInPeriod = (purchases || []).filter((p) => {
-  const d = toLocalDate(p?.date);
+  const d = p?.date ? new Date(p.date) : null;
   return d && d >= start && d <= endInc;
 });
 
-const purchased = new Map(); // invId -> qty purchased (converted to inventory unit)
-const normalize = (s) => String(s || "").trim().toLowerCase();
+const purchased = new Map();          // invId -> qty purchased (converted into inv.unit)
+const _avgCostNumer = new Map();      // invId -> total spend (E£)
+const _avgCostDenom = new Map();      // invId -> total qty (in inv.unit)
 
 for (const row of purchasesInPeriod) {
-  // Try by explicit id (if you ever store row.invId), then exact name, then a loose "includes" name match.
-  let inv =
-    (row.invId && (inventory || []).find((it) => it.id === row.invId)) ||
-    (inventory || []).find((it) => normalize(it.name) === normalize(row.itemName)) ||
-    (inventory || []).find((it) => {
-      const a = normalize(it.name);
-      const b = normalize(row.itemName);
-      return a.includes(b) || b.includes(a);
-    });
+  // Prefer explicit linkage if you ever add row.invId; else fallback to name
+  let inv = row.invId ? invById.get(row.invId) : null;
+  if (!inv) inv = invByNormName.get(norm(row.itemName));
+  if (!inv) continue; // couldn't match to an inventory item
 
-  if (!inv) continue;
-  const qtyInInvUnit = convertUnit(Number(row.qty || 0), row.unit, inv.unit);
+  const qty = Number(row.qty || 0);
+  if (!(qty > 0)) continue;
+
+  const qtyInInvUnit = convertUnit(qty, row.unit, inv.unit);
+  if (!isFinite(qtyInInvUnit) || !(qtyInInvUnit > 0)) continue;
+
+  // purchased quantity per inventory item
   add(purchased, inv.id, qtyInInvUnit);
+
+  // average cost per unit (period): spend / qtyInInvUnit
+  const unitPrice = Number(row.unitPrice || 0);
+  const spend = qty * unitPrice; // E£
+  _avgCostNumer.set(inv.id, Number(_avgCostNumer.get(inv.id) || 0) + spend);
+  _avgCostDenom.set(inv.id, Number(_avgCostDenom.get(inv.id) || 0) + qtyInInvUnit);
 }
 
-// Average cost per inventory item from purchases in period (falls back to inv.costPerUnit)
-const avgCostByInv = new Map();
+// Average cost per unit (by period purchases), fallback to inv.costPerUnit
+const avgCostByInvId = new Map();
 for (const inv of inventory || []) {
-  const rel = purchasesInPeriod.filter((r) => {
-    const a = normalize(inv.name);
-    const b = normalize(r.itemName);
-    return (r.invId && r.invId === inv.id) || a === b || a.includes(b) || b.includes(a);
-  });
-
-  let q = 0, cost = 0;
-  for (const r of rel) {
-    const qConv = convertUnit(Number(r.qty || 0), r.unit, inv.unit);
-    const unitPrice = Number(r.unitPrice || 0);
-    q += qConv;
-    cost += qConv * unitPrice;
+  const denom = Number(_avgCostDenom.get(inv.id) || 0);
+  if (denom > 0) {
+    avgCostByInvId.set(inv.id, Number(_avgCostNumer.get(inv.id) || 0) / denom);
+  } else {
+    avgCostByInvId.set(inv.id, Number(inv.costPerUnit || 0));
   }
-  if (q > 0) avgCostByInv.set(inv.id, cost / q);
 }
 
 
@@ -5114,7 +5213,9 @@ for (const inv of inventory || []) {
     const purchasedQty = Number(purchased.get(inv.id) || 0);
     const net          = purchasedQty - usedQty;
     const endQty       = Number(inv.qty || 0);
-    const usedCost     = usedQty * Number(inv.costPerUnit || 0);
+    const avgCost      = Number((avgCostByInvId.get(inv.id) ?? inv.costPerUnit) || 0);
+const usedCost     = usedQty * avgCost;
+
     return { id:inv.id, name:inv.name, unit:inv.unit, usedQty, purchasedQty, net, endQty, usedCost };
   });
 
@@ -5123,52 +5224,6 @@ for (const inv of inventory || []) {
   // 6) Render table + vertical chart
   return (
     <>
-    {/* KPI cards */}
-{(() => {
-  const money = (v) => `E£${Number(v || 0).toFixed(2)}`;
-
-  // already computed earlier:
-  // - rows (with usedQty per inv)
-  // - avgCostByInv (from the patch above)
-
-  const totalUsedQty = rows.reduce((s, r) => s + Number(r.usedQty || 0), 0);
-  const itemsTracked = rows.filter((r) => Number(r.usedQty || 0) > 0).length;
-
-  const estimatedUsedCost = rows.reduce((s, r) => {
-    const inv = (inventory || []).find((x) => x.id === r.id);
-    const fallback = Number(inv?.costPerUnit || 0);
-    const avg = avgCostByInv.get(r.id);
-    const cpu = avg != null ? avg : fallback;
-    return s + Number(r.usedQty || 0) * cpu;
-  }, 0);
-
-  return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-        gap: 12,
-        marginTop: 8,
-      }}
-    >
-      <div style={{ padding: 12, border: `1px solid ${cardBorder}`, borderRadius: 12, background: dark ? "#1e1e1e" : "#fff" }}>
-        <div style={{ fontSize: 12, opacity: 0.8 }}>Total Used</div>
-        <div style={{ fontSize: 22, fontWeight: 800 }}>{Number(totalUsedQty || 0).toFixed(2)}</div>
-      </div>
-      <div style={{ padding: 12, border: `1px solid ${cardBorder}`, borderRadius: 12, background: dark ? "#1e1e1e" : "#fff" }}>
-        <div style={{ fontSize: 12, opacity: 0.8 }}>Estimated Cost</div>
-        <div style={{ fontSize: 22, fontWeight: 800 }}>{money(estimatedUsedCost)}</div>
-        <div style={{ fontSize: 11, opacity: 0.65, marginTop: 4 }}>Uses average unit price from Purchases when available</div>
-      </div>
-      <div style={{ padding: 12, border: `1px solid ${cardBorder}`, borderRadius: 12, background: dark ? "#1e1e1e" : "#fff" }}>
-        <div style={{ fontSize: 12, opacity: 0.8 }}>Items Tracked</div>
-        <div style={{ fontSize: 22, fontWeight: 800 }}>{itemsTracked}</div>
-      </div>
-    </div>
-     </>
-  );
-})()}
-
       {/* Table */}
       <div style={{ overflowX:"auto", marginTop:8 }}>
         <table style={{ width:"100%", borderCollapse:"collapse" }}>
@@ -5207,7 +5262,7 @@ for (const inv of inventory || []) {
         </table>
       </div>
 
-{/* Bar chart with axes & grid */}
+     {/* Grid chart with axes: End Qty vs Used */}
 <div
   style={{
     marginTop: 14,
@@ -5219,135 +5274,105 @@ for (const inv of inventory || []) {
 >
   <div style={{ fontWeight: 700, marginBottom: 8 }}>End Qty vs Used</div>
 
-  <div style={{ overflowX: "auto" }}>
-    {(() => {
-      const max = Math.max(
-        1,
-        ...rows.map((r) => Math.max(Number(r.endQty || 0), Number(r.usedQty || 0)))
-      );
-      const tickCount = 5;
-      const tickMax = Math.ceil(max / tickCount) * tickCount;
-      const ticks = Array.from(
-        { length: tickCount + 1 },
-        (_, i) => (tickMax / tickCount) * i
-      );
+  {rows.length === 0 ? (
+    <div style={{ opacity: 0.7 }}>No inventory items.</div>
+  ) : (() => {
+    const maxVal = Math.max(1, ...rows.map((r) => Math.max(Number(r.endQty || 0), Number(r.usedQty || 0))));
+    const width = Math.max(480, rows.length * 48 + 100);
+    const height = 300;
+    const margin = { top: 10, right: 10, bottom: 60, left: 44 };
+    const chartW = width - margin.left - margin.right;
+    const chartH = height - margin.top - margin.bottom;
+    const groups = rows.length;
+    const groupW = chartW / groups;
+    const barW = Math.max(8, Math.min(22, groupW / 3));
+    const y = (v) => margin.top + chartH - (Number(v || 0) / maxVal) * chartH;
 
-      const margin = { top: 10, right: 20, bottom: 80, left: 50 };
-      const barWidth = 14;
-      const innerGap = 6;  // space between the 2 bars in a group
-      const groupGap = 20; // space between groups
-      const width =
-        margin.left +
-        margin.right +
-        rows.length * (barWidth * 2 + innerGap + groupGap);
-      const height = 280;
-      const chartH = height - margin.top - margin.bottom;
-      const chartW = Math.max(1, width - margin.left - margin.right);
+    const ticks = 5;
+    const tickVals = Array.from({ length: ticks + 1 }, (_, i) => (maxVal / ticks) * i);
 
-      const y = (v) => chartH - (Number(v || 0) / tickMax) * chartH;
+    const textColor = dark ? "#ddd" : "#333";
+    const gridColor = dark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.12)";
+    const endColor = dark ? "#81c784" : "#66bb6a";
+    const usedColor = dark ? "#64b5f6" : "#42a5f5";
 
-      return (
-        <svg width={Math.max(width, 640)} height={height}>
-          <g transform={`translate(${margin.left},${margin.top})`}>
-            {/* gridlines + Y ticks */}
-            {ticks.map((t, i) => (
-              <g key={`tick-${i}`}>
-                <line
-                  x1={0}
-                  x2={chartW}
-                  y1={y(t)}
-                  y2={y(t)}
-                  stroke={dark ? "#333" : "#eee"}
-                />
-                <text
-                  x={-8}
-                  y={y(t)}
-                  textAnchor="end"
-                  dominantBaseline="middle"
-                  fontSize="10"
-                  fill={dark ? "#bbb" : "#666"}
-                >
-                  {t.toFixed(0)}
-                </text>
-              </g>
-            ))}
+    return (
+      <svg width={width} height={height} style={{ maxWidth: "100%" }}>
+        {/* Y grid + ticks */}
+        {tickVals.map((tv, i) => {
+          const yy = y(tv);
+          return (
+            <g key={`grid-${i}`}>
+              <line x1={margin.left} x2={width - margin.right} y1={yy} y2={yy} stroke={gridColor} strokeDasharray="3,4" />
+              <text x={margin.left - 8} y={yy} fill={textColor} fontSize="10" textAnchor="end" dominantBaseline="middle">
+                {tv.toFixed(0)}
+              </text>
+            </g>
+          );
+        })}
 
-            {/* X axis */}
-            <line
-              x1={0}
-              x2={chartW}
-              y1={chartH}
-              y2={chartH}
-              stroke={dark ? "#999" : "#666"}
-            />
+        {/* Axes */}
+        <line
+          x1={margin.left}
+          x2={width - margin.right}
+          y1={margin.top + chartH}
+          y2={margin.top + chartH}
+          stroke={textColor}
+          strokeWidth="1"
+        />
+        <line x1={margin.left} x2={margin.left} y1={margin.top} y2={margin.top + chartH} stroke={textColor} strokeWidth="1" />
 
-            {/* Bars */}
-            {rows.map((r, idx) => {
-              const gx = idx * (barWidth * 2 + innerGap + groupGap);
-              const hEnd = (Number(r.endQty || 0) / tickMax) * chartH;
-              const hUsed = (Number(r.usedQty || 0) / tickMax) * chartH;
+        {/* Bars */}
+        {rows.map((r, i) => {
+          const gx = margin.left + i * groupW + (groupW - barW * 2 - 4) / 2;
+          const endH = chartH - (Number(r.endQty || 0) / maxVal) * chartH;
+          const usedH = chartH - (Number(r.usedQty || 0) / maxVal) * chartH;
 
-              return (
-                <g key={r.id} transform={`translate(${gx},0)`}>
-                  <rect
-                    x={0}
-                    y={chartH - hEnd}
-                    width={barWidth}
-                    height={hEnd}
-                    fill={dark ? "#4caf50" : "#81c784"}
-                  />
-                  <rect
-                    x={barWidth + innerGap}
-                    y={chartH - hUsed}
-                    width={barWidth}
-                    height={hUsed}
-                    fill={dark ? "#039be5" : "#64b5f6"}
-                  />
-                  {/* x labels */}
-                  <text
-                    transform={`translate(${barWidth},${chartH + 14}) rotate(45)`}
-                    textAnchor="start"
-                    fontSize="10"
-                    fill={dark ? "#bbb" : "#666"}
-                  >
-                    {r.name}
-                  </text>
-                </g>
-              );
-            })}
-          </g>
-        </svg>
-      );
-    })()}
-  </div>
+          return (
+            <g key={r.id}>
+              {/* End Qty */}
+              <rect
+                x={gx}
+                y={margin.top + chartH - (chartH - endH)}
+                width={barW}
+                height={chartH - endH}
+                fill={endColor}
+                rx="3"
+              />
+              {/* Used */}
+              <rect
+                x={gx + barW + 4}
+                y={margin.top + chartH - (chartH - usedH)}
+                width={barW}
+                height={chartH - usedH}
+                fill={usedColor}
+                rx="3"
+              />
 
-  <div
-    style={{
-      display: "flex",
-      gap: 12,
-      alignItems: "center",
-      marginTop: 8,
-    }}
-  >
-    <span
-      style={{
-        width: 12,
-        height: 12,
-        borderRadius: 3,
-        background: dark ? "#4caf50" : "#81c784",
-      }}
-    />
-    <small>End Qty</small>
-    <span
-      style={{
-        width: 12,
-        height: 12,
-        borderRadius: 3,
-        background: dark ? "#039be5" : "#64b5f6",
-      }}
-    />
-    <small>Used</small>
-  </div>
+              {/* X label */}
+              <text
+                x={margin.left + i * groupW + groupW / 2}
+                y={height - 6}
+                fill={textColor}
+                fontSize="10"
+                textAnchor="middle"
+              >
+                {r.name}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* Simple legend */}
+        <g>
+          <rect x={margin.left} y={margin.top} width="10" height="10" fill={endColor} rx="2" />
+          <text x={margin.left + 16} y={margin.top + 9} fill={textColor} fontSize="11">End Qty</text>
+          <rect x={margin.left + 70} y={margin.top} width="10" height="10" fill={usedColor} rx="2" />
+          <text x={margin.left + 86} y={margin.top + 9} fill={textColor} fontSize="11">Used</text>
+        </g>
+      </svg>
+    );
+  })()}
 </div>
 
 
@@ -7618,6 +7643,3 @@ for (const inv of inventory || []) {
     </div>
   );
 }
-
-
-
