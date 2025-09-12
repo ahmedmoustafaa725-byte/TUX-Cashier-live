@@ -5050,22 +5050,63 @@ const generatePurchasesPDF = () => {
     }
   }
 
-  // 4) PURCHASES → Purchased (reads from Purchases tab)
-  //    We match purchase.itemName to inventory.name (case-insensitive), then convert units.
-  const purchasesInPeriod = (purchases || []).filter(p => {
-    const d = p?.date ? new Date(p.date) : null; // "YYYY-MM-DD" in your Purchases tab
-    return d && d >= start && d <= end;
+// 4) PURCHASES → Purchased (reads from Purchases tab)
+//    FIX: parse dates in LOCAL time & match inventory more robustly.
+const toLocalDate = (v) => {
+  if (!v) return null;
+  if (v instanceof Date) return v;
+  if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
+    const [y, m, d] = v.split("-").map(Number);
+    return new Date(y, m - 1, d); // local midnight
+  }
+  const d = new Date(v);
+  return isNaN(d) ? null : d;
+};
+const endInc = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999);
+
+const purchasesInPeriod = (purchases || []).filter((p) => {
+  const d = toLocalDate(p?.date);
+  return d && d >= start && d <= endInc;
+});
+
+const purchased = new Map(); // invId -> qty purchased (converted to inventory unit)
+const normalize = (s) => String(s || "").trim().toLowerCase();
+
+for (const row of purchasesInPeriod) {
+  // Try by explicit id (if you ever store row.invId), then exact name, then a loose "includes" name match.
+  let inv =
+    (row.invId && (inventory || []).find((it) => it.id === row.invId)) ||
+    (inventory || []).find((it) => normalize(it.name) === normalize(row.itemName)) ||
+    (inventory || []).find((it) => {
+      const a = normalize(it.name);
+      const b = normalize(row.itemName);
+      return a.includes(b) || b.includes(a);
+    });
+
+  if (!inv) continue;
+  const qtyInInvUnit = convertUnit(Number(row.qty || 0), row.unit, inv.unit);
+  add(purchased, inv.id, qtyInInvUnit);
+}
+
+// Average cost per inventory item from purchases in period (falls back to inv.costPerUnit)
+const avgCostByInv = new Map();
+for (const inv of inventory || []) {
+  const rel = purchasesInPeriod.filter((r) => {
+    const a = normalize(inv.name);
+    const b = normalize(r.itemName);
+    return (r.invId && r.invId === inv.id) || a === b || a.includes(b) || b.includes(a);
   });
 
-  const purchased = new Map(); // invId -> qty purchased (converted to inventory unit)
-  for (const row of purchasesInPeriod) {
-    const inv = (inventory || []).find(
-      it => String(it.name).toLowerCase() === String(row.itemName || "").toLowerCase()
-    );
-    if (!inv) continue; // name didn't match an inventory item
-    const qtyInInvUnit = convertUnit(Number(row.qty || 0), row.unit, inv.unit);
-    add(purchased, inv.id, qtyInInvUnit);
+  let q = 0, cost = 0;
+  for (const r of rel) {
+    const qConv = convertUnit(Number(r.qty || 0), r.unit, inv.unit);
+    const unitPrice = Number(r.unitPrice || 0);
+    q += qConv;
+    cost += qConv * unitPrice;
   }
+  if (q > 0) avgCostByInv.set(inv.id, cost / q);
+}
+
 
   // 5) Build rows for all inventory items
   const rows = (inventory || []).map(inv => {
@@ -5082,6 +5123,51 @@ const generatePurchasesPDF = () => {
   // 6) Render table + vertical chart
   return (
     <>
+    {/* KPI cards */}
+{(() => {
+  const money = (v) => `E£${Number(v || 0).toFixed(2)}`;
+
+  // already computed earlier:
+  // - rows (with usedQty per inv)
+  // - avgCostByInv (from the patch above)
+
+  const totalUsedQty = rows.reduce((s, r) => s + Number(r.usedQty || 0), 0);
+  const itemsTracked = rows.filter((r) => Number(r.usedQty || 0) > 0).length;
+
+  const estimatedUsedCost = rows.reduce((s, r) => {
+    const inv = (inventory || []).find((x) => x.id === r.id);
+    const fallback = Number(inv?.costPerUnit || 0);
+    const avg = avgCostByInv.get(r.id);
+    const cpu = avg != null ? avg : fallback;
+    return s + Number(r.usedQty || 0) * cpu;
+  }, 0);
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+        gap: 12,
+        marginTop: 8,
+      }}
+    >
+      <div style={{ padding: 12, border: `1px solid ${cardBorder}`, borderRadius: 12, background: dark ? "#1e1e1e" : "#fff" }}>
+        <div style={{ fontSize: 12, opacity: 0.8 }}>Total Used</div>
+        <div style={{ fontSize: 22, fontWeight: 800 }}>{Number(totalUsedQty || 0).toFixed(2)}</div>
+      </div>
+      <div style={{ padding: 12, border: `1px solid ${cardBorder}`, borderRadius: 12, background: dark ? "#1e1e1e" : "#fff" }}>
+        <div style={{ fontSize: 12, opacity: 0.8 }}>Estimated Cost</div>
+        <div style={{ fontSize: 22, fontWeight: 800 }}>{money(estimatedUsedCost)}</div>
+        <div style={{ fontSize: 11, opacity: 0.65, marginTop: 4 }}>Uses average unit price from Purchases when available</div>
+      </div>
+      <div style={{ padding: 12, border: `1px solid ${cardBorder}`, borderRadius: 12, background: dark ? "#1e1e1e" : "#fff" }}>
+        <div style={{ fontSize: 12, opacity: 0.8 }}>Items Tracked</div>
+        <div style={{ fontSize: 22, fontWeight: 800 }}>{itemsTracked}</div>
+      </div>
+    </div>
+  );
+})()}
+
       {/* Table */}
       <div style={{ overflowX:"auto", marginTop:8 }}>
         <table style={{ width:"100%", borderCollapse:"collapse" }}>
@@ -5120,65 +5206,108 @@ const generatePurchasesPDF = () => {
         </table>
       </div>
 
-      {/* Vertical bar chart: End Qty vs Used */}
-      <div
-        style={{
-          marginTop: 14,
-          padding: 12,
-          border: `1px solid ${cardBorder}`,
-          borderRadius: 12,
-          background: dark ? "#101010" : "#fff",
-        }}
-      >
-        <div style={{ fontWeight: 700, marginBottom: 8 }}>End Qty vs Used</div>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-end",
-            gap: 12,
-            height: 200,
-            paddingBottom: 24,
-            borderBottom: `1px dashed ${cardBorder}`,
-            overflowX: "auto",
-          }}
-        >
-          {(() => {
-            const max = Math.max(1, ...rows.map(r => Math.max(r.endQty, r.usedQty)));
-            const barMax = 160; // px
-            return rows.map(r => {
-              const hEnd  = (Number(r.endQty)  / max) * barMax;
-              const hUsed = (Number(r.usedQty) / max) * barMax;
-              return (
-                <div key={r.id} style={{ width: 40, display: "grid", gridTemplateRows: "1fr auto", alignItems: "end" }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, alignItems: "end" }}>
-                    <div
-                      title={`End: ${Number(r.endQty||0).toFixed(2)} ${r.unit}`}
-                      style={{ height: hEnd, borderRadius: 4, background: dark ? "#4caf50" : "#81c784" }}
-                    />
-                    <div
-                      title={`Used: ${Number(r.usedQty||0).toFixed(2)} ${r.unit}`}
-                      style={{ height: hUsed, borderRadius: 4, background: dark ? "#039be5" : "#64b5f6" }}
-                    />
-                  </div>
-                  <div style={{ textAlign:"center", fontSize:10, marginTop:6, whiteSpace:"nowrap" }}>{r.name}</div>
-                </div>
-              );
-            });
-          })()}
-        </div>
-        <div style={{ display:"flex", gap:12, alignItems:"center", marginTop:8 }}>
-          <span style={{ width:12, height:12, borderRadius:3, background: dark ? "#4caf50" : "#81c784" }}></span>
-          <small>End Qty</small>
-          <span style={{ width:12, height:12, borderRadius:3, background: dark ? "#039be5" : "#64b5f6", marginLeft:12 }}></span>
-          <small>Used</small>
-        </div>
-      </div>
-    </>
-  );
-})()}
+{/* Bar chart with axes & grid */}
+<div
+  style={{
+    marginTop: 14,
+    padding: 12,
+    border: `1px solid ${cardBorder}`,
+    borderRadius: 12,
+    background: dark ? "#101010" : "#fff",
+  }}
+>
+  <div style={{ fontWeight: 700, marginBottom: 8 }}>End Qty vs Used</div>
 
-    </div>
+  <div style={{ overflowX: "auto" }}>
+    {(() => {
+      const max = Math.max(1, ...rows.map((r) => Math.max(Number(r.endQty || 0), Number(r.usedQty || 0))));
+      const tickCount = 5;
+      const tickMax = Math.ceil(max / tickCount) * tickCount;
+      const ticks = Array.from({ length: tickCount + 1 }, (_, i) => (tickMax / tickCount) * i);
+
+      const margin = { top: 10, right: 20, bottom: 80, left: 50 };
+      const barWidth = 14;
+      const innerGap = 6;     // space between the 2 bars in a group
+      const groupGap = 20;    // space between groups
+      const width = margin.left + margin.right + rows.length * (barWidth * 2 + innerGap + groupGap);
+      const height = 280;
+      const chartH = height - margin.top - margin.bottom;
+      const chartW = Math.max(1, width - margin.left - margin.right);
+
+      const y = (v) => chartH - (Number(v || 0) / tickMax) * chartH;
+
+      return (
+        <svg width={Math.max(width, 640)} height={height}>
+          <g transform={`translate(${margin.left},${margin.top})`}>
+            {/* gridlines + Y ticks */}
+            {ticks.map((t, i) => (
+              <g key={`tick-${i}`}>
+                <line x1={0} x2={chartW} y1={y(t)} y2={y(t)} stroke={dark ? "#333" : "#eee"} />
+                <text
+                  x={-8}
+                  y={y(t)}
+                  textAnchor="end"
+                  dominantBaseline="middle"
+                  fontSize="10"
+                  fill={dark ? "#bbb" : "#666"}
+                >
+                  {t.toFixed(0)}
+                </text>
+              </g>
+            ))}
+
+            {/* X axis */}
+            <line x1={0} x2={chartW} y1={chartH} y2={chartH} stroke={dark ? "#999" : "#666"} />
+
+            {/* Bars */}
+            {rows.map((r, idx) => {
+              const gx = idx * (barWidth * 2 + innerGap + groupGap);
+
+              const hEnd = (Number(r.endQty || 0) / tickMax) * chartH;
+              const hUsed = (Number(r.usedQty || 0) / tickMax) * chartH;
+
+              return (
+                <g key={r.id} transform={`translate(${gx},0)`}>
+                  <rect
+                    x={0}
+                    y={chartH - hEnd}
+                    width={barWidth}
+                    height={hEnd}
+                    fill={dark ? "#4caf50" : "#81c784"}
+                  />
+                  <rect
+                    x={barWidth + innerGap}
+                    y={chartH - hUsed}
+                    width={barWidth}
+                    height={hUsed}
+                    fill={dark ? "#039be5" : "#64b5f6"}
+                  />
+                  {/* x labels */}
+                  <text
+                    transform={`translate(${barWidth},${chartH + 14}) rotate(45)`}
+                    textAnchor="start"
+                    fontSize="10"
+                    fill={dark ? "#bbb" : "#666"}
+                  >
+                    {r.name}
+                  </text>
+                </g>
+              );
+            })}
+          </g>
+        </svg>
+      );
+    })()}
   </div>
+
+  <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 8 }}>
+    <span style={{ width: 12, height: 12, borderRadius: 3, background: dark ? "#4caf50" : "#81c784" }} />
+    <small>End Qty</small>
+    <span style={{ width: 12, height: 12, borderRadius: 3, background: dark ? "#039be5" : "#64b5f6" }} />
+    <small>Used</small>
+  </div>
+</div>
+
 )}
 
 
@@ -7448,4 +7577,5 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
