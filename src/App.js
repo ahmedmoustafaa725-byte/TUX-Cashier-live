@@ -5220,16 +5220,25 @@ for (const inv of inventory || []) {
 
   <div style={{ overflowX: "auto" }}>
     {(() => {
-      const max = Math.max(1, ...rows.map((r) => Math.max(Number(r.endQty || 0), Number(r.usedQty || 0))));
+      const max = Math.max(
+        1,
+        ...rows.map((r) => Math.max(Number(r.endQty || 0), Number(r.usedQty || 0)))
+      );
       const tickCount = 5;
       const tickMax = Math.ceil(max / tickCount) * tickCount;
-      const ticks = Array.from({ length: tickCount + 1 }, (_, i) => (tickMax / tickCount) * i);
+      const ticks = Array.from(
+        { length: tickCount + 1 },
+        (_, i) => (tickMax / tickCount) * i
+      );
 
       const margin = { top: 10, right: 20, bottom: 80, left: 50 };
       const barWidth = 14;
-      const innerGap = 6;     // space between the 2 bars in a group
-      const groupGap = 20;    // space between groups
-      const width = margin.left + margin.right + rows.length * (barWidth * 2 + innerGap + groupGap);
+      const innerGap = 6;  // space between the 2 bars in a group
+      const groupGap = 20; // space between groups
+      const width =
+        margin.left +
+        margin.right +
+        rows.length * (barWidth * 2 + innerGap + groupGap);
       const height = 280;
       const chartH = height - margin.top - margin.bottom;
       const chartW = Math.max(1, width - margin.left - margin.right);
@@ -5242,7 +5251,13 @@ for (const inv of inventory || []) {
             {/* gridlines + Y ticks */}
             {ticks.map((t, i) => (
               <g key={`tick-${i}`}>
-                <line x1={0} x2={chartW} y1={y(t)} y2={y(t)} stroke={dark ? "#333" : "#eee"} />
+                <line
+                  x1={0}
+                  x2={chartW}
+                  y1={y(t)}
+                  y2={y(t)}
+                  stroke={dark ? "#333" : "#eee"}
+                />
                 <text
                   x={-8}
                   y={y(t)}
@@ -5257,12 +5272,17 @@ for (const inv of inventory || []) {
             ))}
 
             {/* X axis */}
-            <line x1={0} x2={chartW} y1={chartH} y2={chartH} stroke={dark ? "#999" : "#666"} />
+            <line
+              x1={0}
+              x2={chartW}
+              y1={chartH}
+              y2={chartH}
+              stroke={dark ? "#999" : "#666"}
+            />
 
             {/* Bars */}
             {rows.map((r, idx) => {
               const gx = idx * (barWidth * 2 + innerGap + groupGap);
-
               const hEnd = (Number(r.endQty || 0) / tickMax) * chartH;
               const hUsed = (Number(r.usedQty || 0) / tickMax) * chartH;
 
@@ -5300,10 +5320,31 @@ for (const inv of inventory || []) {
     })()}
   </div>
 
-  <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 8 }}>
-    <span style={{ width: 12, height: 12, borderRadius: 3, background: dark ? "#4caf50" : "#81c784" }} />
+  <div
+    style={{
+      display: "flex",
+      gap: 12,
+      alignItems: "center",
+      marginTop: 8,
+    }}
+  >
+    <span
+      style={{
+        width: 12,
+        height: 12,
+        borderRadius: 3,
+        background: dark ? "#4caf50" : "#81c784",
+      }}
+    />
     <small>End Qty</small>
-    <span style={{ width: 12, height: 12, borderRadius: 3, background: dark ? "#039be5" : "#64b5f6" }} />
+    <span
+      style={{
+        width: 12,
+        height: 12,
+        borderRadius: 3,
+        background: dark ? "#039be5" : "#64b5f6",
+      }}
+    />
     <small>Used</small>
   </div>
 </div>
@@ -7576,4 +7617,5 @@ for (const inv of inventory || []) {
     </div>
   );
 }
+
 
