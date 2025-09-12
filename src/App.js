@@ -1,3 +1,4 @@
+PART 1
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -5003,51 +5004,67 @@ const generatePurchasesPDF = () => {
         })()}
       </div>
     </div>
-{/* KPI Cards */}
-<div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 12 }}>
-  {/* Total Used Card */}
-  <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 8, padding: 12, textAlign: "center" }}>
-    <div style={{ fontSize: 14, opacity: 0.8 }}>Total Used</div>
-    <div style={{ fontSize: 24, fontWeight: 800 }}>
-      {rows.reduce((sum, r) => sum + r.usedQty, 0).toFixed(2)}
-    </div>
-  </div>
-  
-  {/* Estimated Cost Card */}
-  <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 8, padding: 12, textAlign: "center" }}>
-    <div style={{ fontSize: 14, opacity: 0.8 }}>Estimated Cost</div>
-    <div style={{ fontSize: 24, fontWeight: 800 }}>
-      E£{rows.reduce((sum, r) => sum + r.usedCost, 0).toFixed(2)}
-    </div>
-  </div>
-  
-  {/* Items Tracked Card */}
-  <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 8, padding: 12, textAlign: "center" }}>
-    <div style={{ fontSize: 14, opacity: 0.8 }}>Items Tracked</div>
-    <div style={{ fontSize: 24, fontWeight: 800 }}>
-      {rows.filter(r => r.usedQty > 0).length}
-    </div>
-  </div>
-</div>
+
     {/* Summary */}
     <div style={{ border:`1px solid ${cardBorder}`, borderRadius:12, padding:12, background: dark ? "#151515" : "#fafafa" }}>
       <h3 style={{ marginTop:0 }}>Summary (by inventory item)</h3>
 
-    {(() => {
+{(() => {
   // 1) Period
-  const {start,end} = usageFilter==="week"
+  const { start, end } = (usageFilter === "week")
     ? getWeekRange(usageWeekDate)
     : getMonthRange(usageMonth);
 
-  // 2) Helpers
+  // 2) Helpers (local—won’t clash with your globals)
+  const normalize = (s) => String(s || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+  const invById = new Map((inventory || []).map(it => [it.id, it]));
+  const invByNorm = new Map((inventory || []).map(it => [normalize(it.name), it]));
+  const add = (map, key, qty) => map.set(key, Number(map.get(key) || 0) + Number(qty || 0));
+  const safeDate = (d) => {
+    if (!d) return null;
+    if (Object.prototype.toString.call(d) === "[object Date]") return d;
+    const s = String(d);
+    // Avoid TZ drift on YYYY-MM-DD by anchoring to midnight local
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return new Date(s + "T00:00:00");
+    return new Date(s);
+  };
+  const factor = (fromU, toU) => {
+    const f = Number(convertUnit ? convertUnit(1, fromU, toU) : 0);
+    if (!isFinite(f) || f <= 0) {
+      const A = String(fromU || "").toLowerCase().trim();
+      const B = String(toU || "").toLowerCase().trim();
+      if (A && A === B) return 1; // identical units ⇒ 1:1
+      return 0; // unknown conversion
+    }
+    return f;
+  };
+  const qtyToInv = (qty, fromU, invU) => {
+    const f = factor(fromU, invU);
+    return f > 0 ? Number(qty || 0) * f : 0;
+  };
+  const matchInv = (row) => {
+    if (!row) return null;
+    // 1) direct id if you ever set row.invId
+    if (row.invId && invById.get(row.invId)) return invById.get(row.invId);
+    // 2) normalized exact
+    const norm = normalize(row.itemName);
+    if (invByNorm.get(norm)) return invByNorm.get(norm);
+    // 3) partial (both directions)
+    return (inventory || []).find(it => {
+      const a = normalize(it.name);
+      return a.includes(norm) || norm.includes(a);
+    }) || null;
+  };
+  const money = (v) => `E£${Number(v || 0).toFixed(2)}`;
+
+  // 3) ORDERS → Used (same as before)
   const menuById = mapById(menu || []);
   const exById   = mapById(extraList || []);
-  const add = (map, key, qty) => map.set(key, Number(map.get(key) || 0) + Number(qty || 0));
-
-  // 3) ORDERS → Used (same logic as before)
   const ordersInPeriod = (orders || []).filter(o => {
     if (o?.voided) return false;
-    const d = o?.date ? new Date(o.date) : null;
+    const d = safeDate(o?.date);
     return d && d >= start && d <= end;
   });
 
@@ -5057,7 +5074,7 @@ const generatePurchasesPDF = () => {
       const lineQty = Number(line.qty || 1);
 
       // main item usage
-      const defItem = findDefByLine(line, menu || []) || (line?.id!=null ? menuById.get(line.id) : null);
+      const defItem = findDefByLine(line, menu || []) || (line?.id != null ? menuById.get(line.id) : null);
       if (defItem?.uses) {
         for (const [invId, perUnit] of Object.entries(defItem.uses)) {
           add(used, invId, Number(perUnit || 0) * lineQty);
@@ -5065,7 +5082,7 @@ const generatePurchasesPDF = () => {
       }
       // extras usage
       for (const ex of (line.extras || [])) {
-        const defEx = findDefByLine(ex, extraList || []) || (ex?.id!=null ? exById.get(ex.id) : null);
+        const defEx = findDefByLine(ex, extraList || []) || (ex?.id != null ? exById.get(ex.id) : null);
         if (defEx?.uses) {
           for (const [invId, perUnit] of Object.entries(defEx.uses)) {
             add(used, invId, Number(perUnit || 0) * lineQty);
@@ -5075,142 +5092,257 @@ const generatePurchasesPDF = () => {
     }
   }
 
- // 4) PURCHASES → Purchased (reads from Purchases tab)
-const purchasesInPeriod = (purchases || []).filter(p => {
-  const d = p?.date ? new Date(p.date) : null;
-  return d && d >= start && d <= end;
-});
+  // 4) PURCHASES → Purchased (safe dates + robust matching + unit cvt)
+  const purchasesInPeriod = (purchases || []).filter(p => {
+    const d = safeDate(p?.date);
+    return d && d >= start && d <= end;
+  });
 
-const purchased = new Map(); // invId -> qty purchased (converted to inventory unit)
-for (const row of purchasesInPeriod) {
-  // First try to match by ingredientId if available
-  if (row.ingredientId) {
-    const inv = inventory.find(it => it.id === row.ingredientId);
-    if (inv) {
-      const qtyInInvUnit = convertUnit(Number(row.qty || 0), row.unit, inv.unit);
-      add(purchased, inv.id, qtyInInvUnit);
-      continue;
-    }
+  const purchased = new Map();   // invId -> qty purchased in inventory units
+  const accum = new Map();       // invId -> { qtyInv, costTotal } for avg cost
+  for (const row of purchasesInPeriod) {
+    const inv = matchInv(row);
+    if (!inv) continue;
+    const qInv = qtyToInv(Number(row.qty || 0), row.unit, inv.unit);
+    if (!qInv) continue;
+
+    // record purchased qty
+    add(purchased, inv.id, qInv);
+
+    // price per inventory unit = unitPrice / factor(1 unit purchase → inv unit)
+    const f1 = factor(row.unit, inv.unit);
+    const pricePerInv = f1 > 0 ? Number(row.unitPrice || 0) / f1 : 0;
+
+    const prev = accum.get(inv.id) || { qtyInv: 0, costTotal: 0 };
+    prev.qtyInv += qInv;
+    prev.costTotal += qInv * pricePerInv;
+    accum.set(inv.id, prev);
   }
-  
-  // Fallback to name matching
-  const inv = (inventory || []).find(
-    it => String(it.name).toLowerCase() === String(row.itemName || "").toLowerCase()
-  );
-  if (!inv) continue;
-  
-  const qtyInInvUnit = convertUnit(Number(row.qty || 0), row.unit, inv.unit);
-  add(purchased, inv.id, qtyInInvUnit);
-}
 
-  // 5) Build rows for all inventory items
+  // avg cost map (period-weighted); fallback to inv.costPerUnit if no purchases
+  const avgCost = new Map();
+  for (const [invId, { qtyInv, costTotal }] of accum.entries()) {
+    avgCost.set(invId, qtyInv > 0 ? costTotal / qtyInv : 0);
+  }
+
+  // 5) Build table rows
   const rows = (inventory || []).map(inv => {
     const usedQty      = Number(used.get(inv.id) || 0);
     const purchasedQty = Number(purchased.get(inv.id) || 0);
     const net          = purchasedQty - usedQty;
     const endQty       = Number(inv.qty || 0);
-    const usedCost     = usedQty * Number(inv.costPerUnit || 0);
-    return { id:inv.id, name:inv.name, unit:inv.unit, usedQty, purchasedQty, net, endQty, usedCost };
+    const unitCost     = avgCost.has(inv.id)
+      ? Number(avgCost.get(inv.id) || 0)
+      : Number(inv.costPerUnit || 0);
+    const usedCost     = usedQty * unitCost;
+    return {
+      id: inv.id,
+      name: inv.name,
+      unit: inv.unit,
+      usedQty,
+      purchasedQty,
+      net,
+      endQty,
+      usedCost,
+    };
   });
 
-  const totalUsedCost = rows.reduce((s,r)=> s + r.usedCost, 0);
+  const totalUsedQty    = rows.reduce((s, r) => s + Number(r.usedQty || 0), 0);
+  const totalUsedCost   = rows.reduce((s, r) => s + Number(r.usedCost || 0), 0);
+  const itemsTracked    = rows.filter(r => (r.usedQty > 0) || (r.purchasedQty > 0)).length;
 
-  // 6) Render table + vertical chart
+  // 6) SVG Bar chart with axes/grid
+  const maxY = Math.max(1, ...rows.map(r => Math.max(r.endQty, r.usedQty)));
+  const margin = { top: 12, right: 18, bottom: 60, left: 46 };
+  const barW = 28;
+  const gap = 18;
+  const innerW = rows.length * (barW * 2 + gap); // two bars per item
+  const innerH = 220;
+  const W = innerW + margin.left + margin.right;
+  const H = innerH + margin.top + margin.bottom;
+  const yScale = (v) => innerH - (v / maxY) * innerH;
+  const ticks = 5;
+  const yTicks = Array.from({ length: ticks + 1 }, (_, i) => (i * maxY) / ticks);
+
   return (
     <>
+      {/* KPI cards */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gap: 10,
+          marginTop: 4,
+          marginBottom: 10,
+        }}
+      >
+        <div style={{ padding: 12, borderRadius: 10, border: `1px solid ${cardBorder}`, background: dark ? "#1e1e1e" : "#fff" }}>
+          <div style={{ fontSize: 12, opacity: .8 }}>Total Used (mixed units)</div>
+          <div style={{ fontSize: 22, fontWeight: 800 }}>{Number(totalUsedQty).toFixed(2)}</div>
+        </div>
+        <div style={{ padding: 12, borderRadius: 10, border: `1px solid ${cardBorder}`, background: dark ? "#1e1e1e" : "#fff" }}>
+          <div style={{ fontSize: 12, opacity: .8 }}>Estimated Cost (avg/unit)</div>
+          <div style={{ fontSize: 22, fontWeight: 800 }}>{money(totalUsedCost)}</div>
+        </div>
+        <div style={{ padding: 12, borderRadius: 10, border: `1px solid ${cardBorder}`, background: dark ? "#1e1e1e" : "#fff" }}>
+          <div style={{ fontSize: 12, opacity: .8 }}>Items Tracked</div>
+          <div style={{ fontSize: 22, fontWeight: 800 }}>{itemsTracked}</div>
+        </div>
+      </div>
+
       {/* Table */}
-      <div style={{ overflowX:"auto", marginTop:8 }}>
-        <table style={{ width:"100%", borderCollapse:"collapse" }}>
+      <div style={{ overflowX: "auto", marginTop: 8 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr>
-              <th style={{ textAlign:"left",  padding:8, borderBottom:`1px solid ${cardBorder}` }}>Item</th>
-              <th style={{ textAlign:"left",  padding:8, borderBottom:`1px solid ${cardBorder}` }}>Unit</th>
-              <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>Used</th>
-              <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>Purchased</th>
-              <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>Net (P−U)</th>
-              <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>End Qty</th>
-              <th style={{ textAlign:"right", padding:8, borderBottom:`1px solid ${cardBorder}` }}>Used Cost (E£)</th>
+              <th style={{ textAlign: "left",  padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Item</th>
+              <th style={{ textAlign: "left",  padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Unit</th>
+              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Used</th>
+              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Purchased</th>
+              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Net (P−U)</th>
+              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>End Qty</th>
+              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Used Cost (E£)</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={7} style={{ padding:8, opacity:.7 }}>No inventory items.</td></tr>
+              <tr><td colSpan={7} style={{ padding: 8, opacity: .7 }}>No inventory items.</td></tr>
             ) : rows.map(r => (
               <tr key={r.id}>
-                <td style={{ padding:8 }}>{r.name}</td>
-                <td style={{ padding:8 }}>{r.unit}</td>
-                <td style={{ padding:8, textAlign:"right" }}>{Number(r.usedQty||0).toFixed(2)}</td>
-                <td style={{ padding:8, textAlign:"right" }}>{Number(r.purchasedQty||0).toFixed(2)}</td>
-                <td style={{ padding:8, textAlign:"right" }}>{Number(r.net||0).toFixed(2)}</td>
-                <td style={{ padding:8, textAlign:"right" }}>{Number(r.endQty||0).toFixed(2)}</td>
-                <td style={{ padding:8, textAlign:"right", fontWeight:700 }}>E£{Number(r.usedCost||0).toFixed(2)}</td>
+                <td style={{ padding: 8 }}>{r.name}</td>
+                <td style={{ padding: 8 }}>{r.unit}</td>
+                <td style={{ padding: 8, textAlign: "right" }}>{Number(r.usedQty || 0).toFixed(2)}</td>
+                <td style={{ padding: 8, textAlign: "right" }}>{Number(r.purchasedQty || 0).toFixed(2)}</td>
+                <td style={{ padding: 8, textAlign: "right" }}>{Number(r.net || 0).toFixed(2)}</td>
+                <td style={{ padding: 8, textAlign: "right" }}>{Number(r.endQty || 0).toFixed(2)}</td>
+                <td style={{ padding: 8, textAlign: "right", fontWeight: 700 }}>{money(r.usedCost)}</td>
               </tr>
             ))}
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={6} style={{ padding:8, textAlign:"right", fontWeight:900 }}>Total Used Cost</td>
-              <td style={{ padding:8, textAlign:"right", fontWeight:900 }}>E£{Number(totalUsedCost||0).toFixed(2)}</td>
+              <td colSpan={6} style={{ padding: 8, textAlign: "right", fontWeight: 900 }}>Total Used Cost</td>
+              <td style={{ padding: 8, textAlign: "right", fontWeight: 900 }}>{money(totalUsedCost)}</td>
             </tr>
           </tfoot>
         </table>
       </div>
 
-{/* Grid Chart */}
-<div
-  style={{
-    marginTop: 14,
-    padding: 12,
-    border: `1px solid ${cardBorder}`,
-    borderRadius: 12,
-    background: dark ? "#101010" : "#fff",
-  }}
->
-  <div style={{ fontWeight: 700, marginBottom: 8 }}>Usage Grid</div>
-  <div style={{ overflowX: "auto" }}>
-    <table style={{ width: "100%", borderCollapse: "collapse" }}>
-      <thead>
-        <tr>
-          <th style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Item</th>
-          <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Used</th>
-          <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Purchased</th>
-          <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Net</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map(r => (
-          <tr key={r.id}>
-            <td style={{ padding: 8 }}>{r.name}</td>
-            <td style={{ padding: 8, textAlign: "right" }}>
-              {Number(r.usedQty || 0).toFixed(2)} {r.unit}
-            </td>
-            <td style={{ padding: 8, textAlign: "right" }}>
-              {Number(r.purchasedQty || 0).toFixed(2)} {r.unit}
-            </td>
-            <td
-              style={{
-                padding: 8,
-                textAlign: "right",
-                color: r.net >= 0 ? (dark ? "#4caf50" : "#2e7d32") : (dark ? "#f44336" : "#c62828"),
-              }}
-            >
-              {r.net >= 0 ? "+" : ""}
-              {Number(r.net || 0).toFixed(2)} {r.unit}
-            </td>
-          </tr>
-        ))}
-        {rows.length === 0 && (
-          <tr>
-            <td colSpan={4} style={{ padding: 8, opacity: 0.7, textAlign: "center" }}>
-              No data available
-            </td>
-          </tr>
-        )}
-      </tbody>
-    </table>
-  </div>
-</div>
+      {/* SVG Grid Chart with axes */}
+      <div
+        style={{
+          marginTop: 14,
+          padding: 12,
+          border: `1px solid ${cardBorder}`,
+          borderRadius: 12,
+          background: dark ? "#101010" : "#fff",
+          overflowX: "auto",
+        }}
+      >
+        <div style={{ fontWeight: 700, marginBottom: 8 }}>End Qty vs Used (with axes)</div>
+        <svg width={W} height={H} role="img" aria-label="Inventory end vs used">
+          {/* background */}
+          <rect x="0" y="0" width={W} height={H} fill={dark ? "#101010" : "#ffffff"} />
+          <g transform={`translate(${margin.left},${margin.top})`}>
+            {/* Y grid + ticks */}
+            {yTicks.map((t, i) => {
+              const y = yScale(t);
+              return (
+                <g key={`grid-${i}`}>
+                  <line
+                    x1={0} y1={y} x2={innerW} y2={y}
+                    stroke={dark ? "#333" : "#e5e5e5"}
+                    strokeDasharray="4 4"
+                  />
+                  <text x={-8} y={y} textAnchor="end" dominantBaseline="middle" style={{ fontSize: 10, fill: dark ? "#bbb" : "#666" }}>
+                    {Number(t).toFixed(0)}
+                  </text>
+                </g>
+              );
+            })}
 
+            {/* X axis line */}
+            <line x1={0} y1={innerH} x2={innerW} y2={innerH} stroke={dark ? "#555" : "#888"} />
+
+            {/* Bars */}
+            {rows.map((r, i) => {
+              const groupX = i * (barW * 2 + gap);
+              const endH = innerH - yScale(r.endQty);
+              const usedH = innerH - yScale(r.usedQty);
+              return (
+                <g key={r.id} transform={`translate(${groupX},0)`}>
+                  <rect
+                    x={0}
+                    y={yScale(r.endQty)}
+                    width={barW}
+                    height={endH}
+                    rx={4}
+                    fill={dark ? "#4caf50" : "#81c784"}
+                  />
+                  <rect
+                    x={barW + 6}
+                    y={yScale(r.usedQty)}
+                    width={barW}
+                    height={usedH}
+                    rx={4}
+                    fill={dark ? "#039be5" : "#64b5f6"}
+                  />
+                  <text
+                    x={barW / 2}
+                    y={innerH + 14}
+                    textAnchor="middle"
+                    style={{ fontSize: 9, fill: dark ? "#bbb" : "#666" }}
+                    transform={`translate(0,0)`}
+                  >
+                    {i + 1}
+                  </text>
+                </g>
+              );
+            })}
+
+            {/* X labels index guide below axis */}
+            {rows.map((r, i) => {
+              const groupX = i * (barW * 2 + gap);
+              return (
+                <text
+                  key={`lbl-${r.id}`}
+                  x={groupX + barW}
+                  y={innerH + 36}
+                  textAnchor="middle"
+                  style={{ fontSize: 9, fill: dark ? "#bbb" : "#666" }}
+                >
+                  {r.name}
+                </text>
+              );
+            })}
+          </g>
+
+          {/* Axis titles */}
+          <text
+            x={margin.left / 2}
+            y={margin.top - 4}
+            textAnchor="middle"
+            style={{ fontSize: 10, fill: dark ? "#bbb" : "#666" }}
+          >
+            Qty
+          </text>
+        </svg>
+
+        {/* Legend */}
+        <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 8 }}>
+          <span style={{ width: 12, height: 12, borderRadius: 3, background: dark ? "#4caf50" : "#81c784", display: "inline-block" }} />
+          <small>End Qty</small>
+          <span style={{ width: 12, height: 12, borderRadius: 3, background: dark ? "#039be5" : "#64b5f6", display: "inline-block", marginLeft: 12 }} />
+          <small>Used</small>
+        </div>
+      </div>
+    </>
+  );
+})()}
+
+
+    </div>
+  </div>
 )}
 
 
@@ -7480,3 +7612,4 @@ for (const row of purchasesInPeriod) {
     </div>
   );
 }
+
