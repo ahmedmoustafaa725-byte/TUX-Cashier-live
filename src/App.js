@@ -7577,5 +7577,3 @@ for (const inv of inventory || []) {
     </div>
   );
 }
-
-
