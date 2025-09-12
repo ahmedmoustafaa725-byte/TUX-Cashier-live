@@ -5308,7 +5308,6 @@ for (const inv of inventory || []) {
   </div>
 </div>
 
-)}
 
 
 {/* ───────────────────────── Reconcile TAB ───────────────────────── */}
@@ -7577,3 +7576,4 @@ for (const inv of inventory || []) {
     </div>
   );
 }
+
