@@ -5165,6 +5165,7 @@ for (const inv of inventory || []) {
         <div style={{ fontSize: 22, fontWeight: 800 }}>{itemsTracked}</div>
       </div>
     </div>
+     </>
   );
 })()}
 
@@ -7617,5 +7618,6 @@ for (const inv of inventory || []) {
     </div>
   );
 }
+
 
 
