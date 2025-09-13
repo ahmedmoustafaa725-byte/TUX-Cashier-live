@@ -2844,6 +2844,7 @@ if (targetItem) {
     unitPrice: Math.max(0, Number(unitPrice || 0)),
     date: date ? new Date(date) : new Date(),
     ingredientId: targetInvId,
+    invId: newPurchase.invId || "",
   };
   setPurchases((arr) => [row, ...arr]);
   setNewPurchase({
@@ -2854,6 +2855,7 @@ if (targetItem) {
     unitPrice: 0,
     date: new Date().toISOString().slice(0, 10),
     ingredientId: "",
+    invId: "",
   });
 };
   const addPurchaseCategory = () => {
@@ -5270,22 +5272,28 @@ const generatePurchasesPDF = () => {
               const usedH = innerH - yScale(r.usedQty);
               return (
                 <g key={r.id} transform={`translate(${groupX},0)`}>
-                  <rect
-                    x={0}
-                    y={yScale(r.endQty)}
-                    width={barW}
-                    height={endH}
-                    rx={4}
-                    fill={dark ? "#4caf50" : "#81c784"}
-                  />
-                  <rect
-                    x={barW + 6}
-                    y={yScale(r.usedQty)}
-                    width={barW}
-                    height={usedH}
-                    rx={4}
-                    fill={dark ? "#039be5" : "#64b5f6"}
-                  />
+                 <rect
+  x={0}
+  y={yScale(r.endQty)}
+  width={barW}
+  height={endH}
+  rx={4}
+  fill={dark ? "#4caf50" : "#81c784"}
+>
+  <title>{`${r.name} — End Qty: ${Number(r.endQty || 0).toFixed(2)} ${r.unit}`}</title>
+</rect>
+
+<rect
+  x={barW + 6}
+  y={yScale(r.usedQty)}
+  width={barW}
+  height={usedH}
+  rx={4}
+  fill={dark ? "#039be5" : "#64b5f6"}
+>
+  <title>{`${r.name} — Used: ${Number(r.usedQty || 0).toFixed(2)} ${r.unit}`}</title>
+</rect>
+
                   <text
                     x={barW / 2}
                     y={innerH + 14}
@@ -5888,14 +5896,35 @@ const generatePurchasesPDF = () => {
   }}
 >
   {/* Category */}
-  <select
-    value={newPurchase.categoryId}
-    onChange={(e) => setNewPurchase(p => ({ ...p, categoryId: e.target.value }))}
-    style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 180 }}
-  >
-    <option value="">Select category</option>
-    {categoriesForGrid.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-  </select>
+<select
+  value={newPurchase.categoryId}
+  onChange={(e) => {
+    const cid = e.target.value;
+    const cat = (categoriesForGrid || []).find(c => c.id === cid);
+
+    // Try to link a purchase to an inventory item via the chosen category.
+    // 1) If your category objects already have cat.invId, use it.
+    // 2) Otherwise, try matching category name to inventory name (normalized).
+    const normalize = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+    let linkInvId = "";
+    if (cat) {
+      if (cat.invId) {
+        linkInvId = cat.invId;
+      } else {
+        const match = (inventory || []).find(it => normalize(it.name) === normalize(cat.name));
+        if (match) linkInvId = match.id;
+      }
+    }
+
+    setNewPurchase(p => ({ ...p, categoryId: cid, invId: linkInvId }));
+  }}
+  style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, minWidth: 180 }}
+>
+  <option value="">Select category</option>
+  {categoriesForGrid.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+</select>
+
+
 
   {/* Item name */}
   <input
