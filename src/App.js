@@ -5022,6 +5022,13 @@ const generatePurchasesPDF = () => {
     .replace(/[^a-z0-9]+/g, "");
   const invById = new Map((inventory || []).map(it => [it.id, it]));
   const invByNorm = new Map((inventory || []).map(it => [normalize(it.name), it]));
+  // NEW: categories index for matching via selected category
+const cats =
+  (typeof categoriesForGrid !== "undefined" && Array.isArray(categoriesForGrid))
+    ? categoriesForGrid
+    : [];
+const catById = new Map(cats.map(c => [c.id, c]));
+
   const add = (map, key, qty) => map.set(key, Number(map.get(key) || 0) + Number(qty || 0));
   const safeDate = (d) => {
     if (!d) return null;
@@ -5045,19 +5052,35 @@ const generatePurchasesPDF = () => {
     const f = factor(fromU, invU);
     return f > 0 ? Number(qty || 0) * f : 0;
   };
-  const matchInv = (row) => {
-    if (!row) return null;
-    // 1) direct id if you ever set row.invId
-    if (row.invId && invById.get(row.invId)) return invById.get(row.invId);
-    // 2) normalized exact
-    const norm = normalize(row.itemName);
-    if (invByNorm.get(norm)) return invByNorm.get(norm);
-    // 3) partial (both directions)
-    return (inventory || []).find(it => {
-      const a = normalize(it.name);
-      return a.includes(norm) || norm.includes(a);
-    }) || null;
-  };
+const matchInv = (row) => {
+  if (!row) return null;
+
+  // 0) explicit link on the row (kept working if you ever set it)
+  if (row.invId && invById.get(row.invId)) return invById.get(row.invId);
+
+  // 1) use the chosen Category FIRST (this makes itemName irrelevant)
+  if (row.categoryId && catById.has(row.categoryId)) {
+    const cat = catById.get(row.categoryId);
+
+    // 1a) if category is explicitly linked to an inventory item
+    if (cat && cat.invId && invById.get(cat.invId)) return invById.get(cat.invId);
+
+    // 1b) otherwise, try by category name
+    const byCatName = invByNorm.get(normalize(cat.name));
+    if (byCatName) return byCatName;
+  }
+
+  // 2) fallback: try the typed itemName (unchanged behavior)
+  const norm = normalize(row.itemName);
+  if (invByNorm.get(norm)) return invByNorm.get(norm);
+
+  // 3) final fallback: loose partial match
+  return (inventory || []).find(it => {
+    const a = normalize(it.name);
+    return a.includes(norm) || norm.includes(a);
+  }) || null;
+};
+
   const money = (v) => `E£${Number(v || 0).toFixed(2)}`;
 
   // 3) ORDERS → Used (same as before)
@@ -7640,5 +7663,6 @@ const generatePurchasesPDF = () => {
     </div>
   );
 }
+
 
 
