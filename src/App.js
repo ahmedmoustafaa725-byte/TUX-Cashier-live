@@ -934,10 +934,19 @@ const [dayMeta, setDayMeta] = useState({
 });
 const [workerProfiles, setWorkerProfiles] = useState(BASE_WORKER_PROFILES);
 const [showAddWorker, setShowAddWorker] = useState(false);
-  const [usageFilter, setUsageFilter] = React.useState("week");      // "week" | "month"
+  const [usageFilter, setUsageFilter] = useState(() => {
+  const l = loadLocal();
+  return l?.usageFilter || "week";
+});
+const [usageWeekDate, setUsageWeekDate] = useState(() => {
+  const l = loadLocal();
+  return l?.usageWeekDate || new Date().toISOString().slice(0, 10);
+});
+const [usageMonth, setUsageMonth] = useState(() => {
+  const l = loadLocal();
+  return l?.usageMonth || new Date().toISOString().slice(0, 7);
+});
 
-const [usageWeekDate, setUsageWeekDate] = React.useState(new Date().toISOString().slice(0,10)); // YYYY-MM-DD
-const [usageMonth, setUsageMonth] = React.useState(new Date().toISOString().slice(0,7));        // YYYY-MM
 
 const [newWName, setNewWName] = useState("");
 const [newWPin, setNewWPin] = useState("");
@@ -1406,6 +1415,7 @@ useEffect(() => {
     }))
   });
 }, [workerSessions]);
+  
   useEffect(() => { saveLocalPartial({ adminSubTab }); }, [adminSubTab]);
 useEffect(() => {
   const l = loadLocal();
@@ -1415,7 +1425,10 @@ useEffect(() => { saveLocalPartial({ reconHistory }); }, [reconHistory]);
 useEffect(() => { saveLocalPartial({ reconCounts }); }, [reconCounts]);
 useEffect(() => { saveLocalPartial({ reconSavedBy }); }, [reconSavedBy]);
 useEffect(() => { saveLocalPartial({ purchaseCategories }); }, [purchaseCategories]); // ⬅️ NEW
-useEffect(() => { saveLocalPartial({ purchaseFilter }); }, [purchaseFilter]);        // ⬅️ NEW
+useEffect(() => { saveLocalPartial({ purchaseFilter }); }, [purchaseFilter]);  
+useEffect(() => {
+  saveLocalPartial({ usageFilter, usageWeekDate, usageMonth });
+}, [usageFilter, usageWeekDate, usageMonth]);
 useEffect(() => { saveLocalPartial({ customers }); }, [customers]);                  // ⬅️ NEW
 useEffect(() => { saveLocalPartial({ deliveryZones }); }, [deliveryZones]);          // ⬅️ NEW
 useEffect(() => { saveLocalPartial({ extraList }); }, [extraList]);
@@ -2080,6 +2093,18 @@ const workerMonthlyTotalPay = useMemo(
       alert("Please enter a number from 1 to 6.");
       return null;
     }
+    const resetUsageViewAdmin = () => {
+  const okAdmin = !!promptAdminAndPin();
+  if (!okAdmin) return;
+
+  // Reset the Usage tab view back to default
+  setUsageFilter("week");
+  setUsageWeekDate(new Date().toISOString().slice(0, 10));
+  setUsageMonth(new Date().toISOString().slice(0, 7));
+
+  alert("Inventory Usage view has been reset.");
+};
+
     const entered = window.prompt(`Enter PIN for Admin ${n}:`, "");
     if (entered == null) return null;
 
@@ -4956,7 +4981,23 @@ const generatePurchasesPDF = () => {
 {activeTab === "usage" && (
   <div style={{ display:"grid", gap:14 }}>
     <h2>Inventory Usage</h2>
-
+ <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <button
+        onClick={resetUsageViewAdmin}
+        style={{
+          background: "#ef5350",
+          color: "#fff",
+          border: "none",
+          borderRadius: 6,
+          padding: "6px 10px",
+          cursor: "pointer",
+          fontWeight: 700,
+        }}
+        title="Admin PIN required"
+      >
+        Reset Usage
+      </button>
+    </div>
     {/* Filter row */}
     <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
       <button
