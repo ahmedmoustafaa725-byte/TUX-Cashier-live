@@ -946,7 +946,17 @@ const [usageMonth, setUsageMonth] = useState(() => {
   const l = loadLocal();
   return l?.usageMonth || new Date().toISOString().slice(0, 7);
 });
+    const resetUsageViewAdmin = () => {
+  const okAdmin = !!promptAdminAndPin();
+  if (!okAdmin) return;
 
+  // Reset the Usage tab view back to default
+  setUsageFilter("week");
+  setUsageWeekDate(new Date().toISOString().slice(0, 10));
+  setUsageMonth(new Date().toISOString().slice(0, 7));
+
+  alert("Inventory Usage view has been reset.");
+};
 
 const [newWName, setNewWName] = useState("");
 const [newWPin, setNewWPin] = useState("");
@@ -2093,17 +2103,7 @@ const workerMonthlyTotalPay = useMemo(
       alert("Please enter a number from 1 to 6.");
       return null;
     }
-    const resetUsageViewAdmin = () => {
-  const okAdmin = !!promptAdminAndPin();
-  if (!okAdmin) return;
 
-  // Reset the Usage tab view back to default
-  setUsageFilter("week");
-  setUsageWeekDate(new Date().toISOString().slice(0, 10));
-  setUsageMonth(new Date().toISOString().slice(0, 7));
-
-  alert("Inventory Usage view has been reset.");
-};
 
     const entered = window.prompt(`Enter PIN for Admin ${n}:`, "");
     if (entered == null) return null;
@@ -7704,6 +7704,7 @@ const matchInv = (row) => {
     </div>
   );
 }
+
 
 
 
