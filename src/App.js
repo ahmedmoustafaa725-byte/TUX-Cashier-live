@@ -882,6 +882,18 @@ const [targetMarginPct, setTargetMarginPct] = useState(() => {
   const v = Number(l?.targetMarginPct);
   return isFinite(v) ? v : 0.5; // default 50% like your screenshot
 });
+  const [historicalOrders, setHistoricalOrders] = useState(() => {
+  const l = loadLocal();
+  return l.historicalOrders || [];
+});
+const [historicalExpenses, setHistoricalExpenses] = useState(() => {
+  const l = loadLocal();
+  return l.historicalExpenses || [];
+});
+const [historicalPurchases, setHistoricalPurchases] = useState(() => {
+  const l = loadLocal();
+  return l.historicalPurchases || [];
+});
   const [bankFilter, setBankFilter] = useState("day");
 const [bankDay, setBankDay] = useState(new Date().toISOString().slice(0, 10));
 const [bankMonth, setBankMonth] = useState(() => {
@@ -912,9 +924,21 @@ const [newItemColor, setNewItemColor] = useState("#ffffff");
 const [inventory, setInventory] = useState(DEFAULT_INVENTORY);
 const [inventoryLocked, setInventoryLocked] = useState(false);
 const [inventorySnapshot, setInventorySnapshot] = useState([]);
-  const [historicalOrders, setHistoricalOrders] = useState([]);
-const [historicalExpenses, setHistoricalExpenses] = useState([]);
-const [historicalPurchases, setHistoricalPurchases] = useState([]);
+
+const updateHistoricalOrders = (newOrders) => {
+  setHistoricalOrders(newOrders);
+  saveLocalPartial({ historicalOrders: newOrders });
+};
+
+const updateHistoricalExpenses = (newExpenses) => {
+  setHistoricalExpenses(newExpenses);
+  saveLocalPartial({ historicalExpenses: newExpenses });
+};
+
+const updateHistoricalPurchases = (newPurchases) => {
+  setHistoricalPurchases(newPurchases);
+  saveLocalPartial({ historicalPurchases: newPurchases });
+};
 const [inventoryLockedAt, setInventoryLockedAt] = useState(null);
 const [showLowStock, setShowLowStock] = useState(false);
 const lowStockItems = useMemo(() => {
@@ -950,7 +974,7 @@ const [usageMonth, setUsageMonth] = useState(() => {
   const l = loadLocal();
   return l?.usageMonth || new Date().toISOString().slice(0, 7);
 });
-    const resetUsageViewAdmin = () => {
+const resetUsageViewAdmin = () => {
   const okAdmin = !!promptAdminAndPin();
   if (!okAdmin) return;
 
@@ -958,6 +982,13 @@ const [usageMonth, setUsageMonth] = useState(() => {
   setHistoricalOrders([]);
   setHistoricalExpenses([]);
   setHistoricalPurchases([]);
+  
+  // Save empty arrays to localStorage
+  saveLocalPartial({
+    historicalOrders: [],
+    historicalExpenses: [],
+    historicalPurchases: []
+  });
   
   // Reset the Usage tab view back to default
   setUsageFilter("week");
@@ -1425,6 +1456,13 @@ saveLocalPartial({
 });
 }, [purchases]);
   useEffect(() => { saveLocalPartial({ workerProfiles }); }, [workerProfiles]);
+  const saveHistoricalData = () => {
+  saveLocalPartial({
+    historicalOrders,
+    historicalExpenses,
+    historicalPurchases
+  });
+};
 useEffect(() => {
   saveLocalPartial({
     workerSessions: (workerSessions || []).map(s => ({
@@ -2243,11 +2281,17 @@ if (margin > 0) {
 }
 if (txs.length) setBankTx((arr) => [...txs, ...arr]);
 lastLockedRef.current = [];  
-    // PRESERVE historical data before resetting
-  setHistoricalOrders([...historicalOrders, ...orders]);
-  setHistoricalExpenses([...historicalExpenses, ...expenses]);
-  setHistoricalPurchases([...historicalPurchases, ...purchases]);
-    setPurchases([]);
+  const newHistoricalOrders = [...historicalOrders, ...orders];
+  const newHistoricalExpenses = [...historicalExpenses, ...expenses];
+  const newHistoricalPurchases = [...historicalPurchases, ...purchases];
+  setHistoricalOrders(newHistoricalOrders);
+  setHistoricalExpenses(newHistoricalExpenses);
+  setHistoricalPurchases(newHistoricalPurchases);
+  saveLocalPartial({
+    historicalOrders: newHistoricalOrders,
+    historicalExpenses: newHistoricalExpenses,
+    historicalPurchases: newHistoricalPurchases
+  });
 setExpenses([]);              
 closeOpenSessionsAt(endTime);
       setOrders([]);
@@ -5139,6 +5183,7 @@ const matchInv = (row) => {
   // 3) ORDERS → Used (same as before)
   const menuById = mapById(menu || []);
   const exById   = mapById(extraList || []);
+  const allExpenses = [...historicalExpenses, ...expenses];
   const allOrders = [...historicalOrders, ...orders];
 const ordersInPeriod = (allOrders || []).filter(o => {
     if (o?.voided) return false;
@@ -7717,6 +7762,7 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
     </div>
   );
 }
+
 
 
 
