@@ -2236,7 +2236,7 @@ if (txs.length) setBankTx((arr) => [...txs, ...arr]);
 lastLockedRef.current = [];  
 setExpenses([]);              
 closeOpenSessionsAt(endTime);
-    setOrders([]);
+    
     setNextOrderNo(1);
     setInventoryLocked(false);
     setInventoryLockedAt(null);
@@ -7704,6 +7704,7 @@ const matchInv = (row) => {
     </div>
   );
 }
+
 
 
 
