@@ -2247,6 +2247,7 @@ lastLockedRef.current = [];
   setHistoricalOrders([...historicalOrders, ...orders]);
   setHistoricalExpenses([...historicalExpenses, ...expenses]);
   setHistoricalPurchases([...historicalPurchases, ...purchases]);
+    setPurchases([]);
 setExpenses([]);              
 closeOpenSessionsAt(endTime);
       setOrders([]);
@@ -7716,6 +7717,7 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
     </div>
   );
 }
+
 
 
 
