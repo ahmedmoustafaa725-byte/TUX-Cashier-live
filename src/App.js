@@ -873,6 +873,7 @@ export default function App() {
 const [adminSubTab, setAdminSubTab] = useState("inventory"); 
   const [dark, setDark] = useState(false);
   const [workers, setWorkers] = useState(BASE_WORKERS);
+  
 const [newWorker, setNewWorker] = useState("");
 const [paymentMethods, setPaymentMethods] = useState(DEFAULT_PAYMENT_METHODS);
 const [newPayment, setNewPayment] = useState("");
@@ -911,6 +912,9 @@ const [newItemColor, setNewItemColor] = useState("#ffffff");
 const [inventory, setInventory] = useState(DEFAULT_INVENTORY);
 const [inventoryLocked, setInventoryLocked] = useState(false);
 const [inventorySnapshot, setInventorySnapshot] = useState([]);
+  const [historicalOrders, setHistoricalOrders] = useState([]);
+const [historicalExpenses, setHistoricalExpenses] = useState([]);
+const [historicalPurchases, setHistoricalPurchases] = useState([]);
 const [inventoryLockedAt, setInventoryLockedAt] = useState(null);
 const [showLowStock, setShowLowStock] = useState(false);
 const lowStockItems = useMemo(() => {
@@ -950,12 +954,17 @@ const [usageMonth, setUsageMonth] = useState(() => {
   const okAdmin = !!promptAdminAndPin();
   if (!okAdmin) return;
 
+  // Reset historical data
+  setHistoricalOrders([]);
+  setHistoricalExpenses([]);
+  setHistoricalPurchases([]);
+  
   // Reset the Usage tab view back to default
   setUsageFilter("week");
   setUsageWeekDate(new Date().toISOString().slice(0, 10));
   setUsageMonth(new Date().toISOString().slice(0, 7));
 
-  alert("Inventory Usage view has been reset.");
+  alert("Inventory Usage data has been reset.");
 };
 
 const [newWName, setNewWName] = useState("");
@@ -2234,6 +2243,10 @@ if (margin > 0) {
 }
 if (txs.length) setBankTx((arr) => [...txs, ...arr]);
 lastLockedRef.current = [];  
+    // PRESERVE historical data before resetting
+  setHistoricalOrders([...historicalOrders, ...orders]);
+  setHistoricalExpenses([...historicalExpenses, ...expenses]);
+  setHistoricalPurchases([...historicalPurchases, ...purchases]);
 setExpenses([]);              
 closeOpenSessionsAt(endTime);
       setOrders([]);
@@ -5125,7 +5138,8 @@ const matchInv = (row) => {
   // 3) ORDERS → Used (same as before)
   const menuById = mapById(menu || []);
   const exById   = mapById(extraList || []);
-  const ordersInPeriod = (orders || []).filter(o => {
+  const allOrders = [...historicalOrders, ...orders];
+const ordersInPeriod = (allOrders || []).filter(o => {
     if (o?.voided) return false;
     const d = safeDate(o?.date);
     return d && d >= start && d <= end;
@@ -5155,8 +5169,8 @@ const matchInv = (row) => {
     }
   }
 
-  // 4) PURCHASES → Purchased (safe dates + robust matching + unit cvt)
-  const purchasesInPeriod = (purchases || []).filter(p => {
+const allPurchases = [...historicalPurchases, ...purchases];
+const purchasesInPeriod = (allPurchases || []).filter(p => {
     const d = safeDate(p?.date);
     return d && d >= start && d <= end;
   });
@@ -7702,6 +7716,7 @@ const matchInv = (row) => {
     </div>
   );
 }
+
 
 
 
