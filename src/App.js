@@ -5162,7 +5162,6 @@ const matchInv = (row) => {
   // 3) ORDERS → Used (same as before)
   const menuById = mapById(menu || []);
   const exById   = mapById(extraList || []);
-  const allExpenses = [...historicalExpenses, ...expenses];
   const allOrders = [...historicalOrders, ...orders];
 const ordersInPeriod = (allOrders || []).filter(o => {
     if (o?.voided) return false;
@@ -7741,6 +7740,7 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
     </div>
   );
 }
+
 
 
 
