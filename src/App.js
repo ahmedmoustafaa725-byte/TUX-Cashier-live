@@ -924,21 +924,6 @@ const [newItemColor, setNewItemColor] = useState("#ffffff");
 const [inventory, setInventory] = useState(DEFAULT_INVENTORY);
 const [inventoryLocked, setInventoryLocked] = useState(false);
 const [inventorySnapshot, setInventorySnapshot] = useState([]);
-
-const updateHistoricalOrders = (newOrders) => {
-  setHistoricalOrders(newOrders);
-  saveLocalPartial({ historicalOrders: newOrders });
-};
-
-const updateHistoricalExpenses = (newExpenses) => {
-  setHistoricalExpenses(newExpenses);
-  saveLocalPartial({ historicalExpenses: newExpenses });
-};
-
-const updateHistoricalPurchases = (newPurchases) => {
-  setHistoricalPurchases(newPurchases);
-  saveLocalPartial({ historicalPurchases: newPurchases });
-};
 const [inventoryLockedAt, setInventoryLockedAt] = useState(null);
 const [showLowStock, setShowLowStock] = useState(false);
 const lowStockItems = useMemo(() => {
@@ -1456,13 +1441,7 @@ saveLocalPartial({
 });
 }, [purchases]);
   useEffect(() => { saveLocalPartial({ workerProfiles }); }, [workerProfiles]);
-  const saveHistoricalData = () => {
-  saveLocalPartial({
-    historicalOrders,
-    historicalExpenses,
-    historicalPurchases
-  });
-};
+
 useEffect(() => {
   saveLocalPartial({
     workerSessions: (workerSessions || []).map(s => ({
@@ -7762,6 +7741,7 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
     </div>
   );
 }
+
 
 
 
