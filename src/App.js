@@ -7164,78 +7164,60 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
             </div>
           </div>
           {/* Totals overview */}
-          <div
-            style={{
-              marginBottom: 12,
-              padding: 10,
-              borderRadius: 6,
-              background: dark ? "#1b2631" : "#e3f2fd",
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-              gap: 10,
-            }}
-          >
-            <div><b>Revenue (items only):</b><br/>E£{totals.revenueTotal.toFixed(2)}</div>
-            <div><b>Delivery Fees:</b><br/>E£{totals.deliveryFeesTotal.toFixed(2)}</div>
-            <div><b>Expenses:</b><br/>E£{totals.expensesTotal.toFixed(2)}</div>
-            <div><b>Margin:</b><br/>E£{totals.margin.toFixed(2)}</div>
-          </div>
-          {/* Items summary (old style: name, unit price (avg), qty, total) */}
-          <h3>Items Sold</h3>
-            <div><b>Delivery Fees:</b><br/>E£{totals.deliveryFeesTotal.toFixed(2)}</div>
-            <div><b>Expenses:</b><br/>E£{totals.expensesTotal.toFixed(2)}</div>
-            <div><b>Margin:</b><br/>E£{totals.margin.toFixed(2)}</div>
-          </div>
-          <div style={{ marginBottom: 16 }}>
-            <h3 style={{ marginTop: 0 }}>Profit Timeline</h3>
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr>
-                    <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Date</th>
-                    <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Revenue (E£)</th>
-                    <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Purchases (E£)</th>
-                    <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Expenses (E£)</th>
-                    <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Net (E£)</th>
-                    <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Margin %</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {profitTimeline.map((row) => (
-                    <tr key={row.date}>
-                      <td style={{ padding: 6 }}>{row.date}</td>
-                      <td style={{ padding: 6, textAlign: "right" }}>{row.revenue.toFixed(2)}</td>
-                      <td style={{ padding: 6, textAlign: "right" }}>{row.purchasesCost.toFixed(2)}</td>
-                      <td style={{ padding: 6, textAlign: "right" }}>{row.expenseCost.toFixed(2)}</td>
-                      <td style={{ padding: 6, textAlign: "right" }}>{row.net.toFixed(2)}</td>
-                      <td style={{ padding: 6, textAlign: "right" }}>{row.marginPct.toFixed(2)}%</td>
-                    </tr>
-                  ))}
-                  {!profitTimeline.length && (
-                    <tr>
-                      <td colSpan={6} style={{ padding: 8, opacity: 0.8 }}>
-                        No data for the selected period.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+          <>
+            <div
+              style={{
+                marginBottom: 12,
+                padding: 10,
+                borderRadius: 6,
+                background: dark ? "#1b2631" : "#e3f2fd",
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                gap: 10,
+              }}
+            >
+              <div><b>Revenue (items only):</b><br/>E£{totals.revenueTotal.toFixed(2)}</div>
+              <div><b>Delivery Fees:</b><br/>E£{totals.deliveryFeesTotal.toFixed(2)}</div>
+              <div><b>Expenses:</b><br/>E£{totals.expensesTotal.toFixed(2)}</div>
+              <div><b>Margin:</b><br/>E£{totals.margin.toFixed(2)}</div>
             </div>
-          </div>
-          {/* Items summary (old style: name, unit price (avg), qty, total) */}
-          <h3>Items Sold</h3>
-              borderRadius: 6,
-              background: dark ? "#1b2631" : "#e3f2fd",
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-              gap: 10,
-            }}
-          >
-            <div><b>Revenue (items only):</b><br/>E£{totals.revenueTotal.toFixed(2)}</div>
-            <div><b>Delivery Fees:</b><br/>E£{totals.deliveryFeesTotal.toFixed(2)}</div>
-            <div><b>Expenses:</b><br/>E£{totals.expensesTotal.toFixed(2)}</div>
-            <div><b>Margin:</b><br/>E£{totals.margin.toFixed(2)}</div>
-          </div>
+            <div style={{ marginBottom: 16 }}>
+              <h3 style={{ marginTop: 0 }}>Profit Timeline</h3>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Date</th>
+                      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Revenue (E£)</th>
+                      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Purchases (E£)</th>
+                      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Expenses (E£)</th>
+                      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Net (E£)</th>
+                      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Margin %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {profitTimeline.map((row) => (
+                      <tr key={row.date}>
+                        <td style={{ padding: 6 }}>{row.date}</td>
+                        <td style={{ padding: 6, textAlign: "right" }}>{row.revenue.toFixed(2)}</td>
+                        <td style={{ padding: 6, textAlign: "right" }}>{row.purchasesCost.toFixed(2)}</td>
+                        <td style={{ padding: 6, textAlign: "right" }}>{row.expenseCost.toFixed(2)}</td>
+                        <td style={{ padding: 6, textAlign: "right" }}>{row.net.toFixed(2)}</td>
+                        <td style={{ padding: 6, textAlign: "right" }}>{row.marginPct.toFixed(2)}%</td>
+                      </tr>
+                    ))}
+                    {!profitTimeline.length && (
+                      <tr>
+                        <td colSpan={6} style={{ padding: 8, opacity: 0.8 }}>
+                          No data for the selected period.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
           {/* Items summary (old style: name, unit price (avg), qty, total) */}
           <h3>Items Sold</h3>
           <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 16 }}>
@@ -8198,6 +8180,7 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
     </div>
   );
 }
+
 
 
 
