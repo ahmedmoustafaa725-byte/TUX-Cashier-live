@@ -94,7 +94,14 @@ const purchases = Array.isArray(state.purchases)
  const purchaseCategories = Array.isArray(state.purchaseCategories)
     ? state.purchaseCategories
     : [];
-  const customers = Array.isArray(state.customers) ? state.customers : [];
+ const customers = Array.isArray(state.customers)
+    ? state.customers.map((c) => ({
+        ...c,
+        lastOrderAt: toIso(c.lastOrderAt),
+        firstOrderAt: toIso(c.firstOrderAt),
+        updatedAt: toIso(c.updatedAt),
+      }))
+    : [];
   const deliveryZones = Array.isArray(state.deliveryZones)
     ? state.deliveryZones
     : [];
@@ -846,20 +853,158 @@ function printReceiptHTML(order, widthMm = 80, copy = "Customer", images) {
 const normalizePhone = (s) => String(s || "").replace(/\D/g, "").slice(0, 11);
 const upsertCustomer = (list, rec) => {
   const phone = normalizePhone(rec.phone);
-  const without = (list || []).filter(c => normalizePhone(c.phone) !== phone);
-  return [{ ...rec, phone }, ...without];
+  const existing = (list || []).find((c) => normalizePhone(c.phone) === phone) || {};
+  const without = (list || []).filter((c) => normalizePhone(c.phone) !== phone);
+  return [{ ...existing, ...rec, phone }, ...without];
+};
+const parseDateMaybe = (value) => {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  const d = new Date(value);
+  return Number.isNaN(+d) ? null : d;
 };
 function dedupeCustomers(list = []) {
   const seen = new Set();
   const out = [];
   for (const c of list || []) {
     const p = normalizePhone(c.phone);
-    if (seen.has(p)) continue;  
+    if (seen.has(p)) continue;
     seen.add(p);
-    out.push({ ...c, phone: p });
+    out.push({
+      ...c,
+      phone: p,
+      lastOrderAt: parseDateMaybe(c.lastOrderAt),
+      firstOrderAt: parseDateMaybe(c.firstOrderAt),
+      updatedAt: parseDateMaybe(c.updatedAt),
+    });
   }
   return out;
 }
+const calculateCustomerLifetimeSpend = (phone, orders = []) => {
+  const target = normalizePhone(phone);
+  if (!target) return 0;
+  const total = (orders || []).reduce((sum, order) => {
+    if (!order || order.voided) return sum;
+    const orderPhone = normalizePhone(order.deliveryPhone);
+    if (!orderPhone || orderPhone !== target) return sum;
+    const amount = Number(order.total || 0);
+    return Number.isFinite(amount) ? sum + amount : sum;
+  }, 0);
+  return Number(total.toFixed(2));
+};
+const categorizeCustomerActivity = (contact = {}, now = new Date()) => {
+  const last = parseDateMaybe(contact.lastOrderAt || contact.lastOrderDate);
+  const count = Number(contact.orderCount || contact.ordersCount || 0);
+  if (!count) {
+    return last ? "dormant" : "new";
+  }
+  if (!last) return "dormant";
+  const diffDays = Math.floor((now - last) / (1000 * 60 * 60 * 24));
+  if (count <= 1) {
+    return diffDays <= 30 ? "new" : "dormant";
+  }
+  if (diffDays <= 45) return "regular";
+  if (count >= 4 && diffDays <= 90) return "regular";
+  return "dormant";
+};
+const buildCustomerContactRows = (
+  contacts = [],
+  liveOrders = [],
+  historicalOrders = [],
+  deliveryZones = []
+) => {
+  const zoneMap = new Map((deliveryZones || []).map((z) => [z.id, z]));
+  const allOrders = [...(historicalOrders || []), ...(liveOrders || [])];
+  return (contacts || [])
+    .map((contact, idx) => {
+      const phone = normalizePhone(contact.phone);
+      const ordersForContact = allOrders.filter(
+        (order) => normalizePhone(order?.deliveryPhone) === phone && !order?.voided
+      );
+      const latestOrder = ordersForContact.reduce(
+        (acc, order) => {
+          const when = parseDateMaybe(order?.date);
+          if (!when) return acc;
+          if (!acc || when > acc.when) return { when, order };
+          return acc;
+        },
+        null
+      );
+      const firstOrder = ordersForContact.reduce(
+        (acc, order) => {
+          const when = parseDateMaybe(order?.date);
+          if (!when) return acc;
+          if (!acc || when < acc) return when;
+          return acc;
+        },
+        parseDateMaybe(contact.firstOrderAt)
+      );
+      const totalSpend =
+        contact.totalSpend != null
+          ? Number(contact.totalSpend || 0)
+          : calculateCustomerLifetimeSpend(phone, allOrders);
+      const orderCount =
+        contact.orderCount != null
+          ? Number(contact.orderCount || 0)
+          : ordersForContact.length;
+      const lastOrderAt =
+        parseDateMaybe(contact.lastOrderAt) || latestOrder?.when || null;
+      const zoneId = contact.zoneId || latestOrder?.order?.deliveryZoneId || "";
+      const zoneName = zoneId ? zoneMap.get(zoneId)?.name || zoneId : "";
+      const tags = Array.isArray(contact.tags) ? contact.tags.map(String) : [];
+      const activity = categorizeCustomerActivity(
+        { ...contact, orderCount, lastOrderAt },
+        new Date()
+      );
+      if (activity) {
+        const label = activity.charAt(0).toUpperCase() + activity.slice(1);
+        if (!tags.includes(label)) tags.push(label);
+      }
+      return {
+        id: phone || contact.id || `contact_${idx}`,
+        displayName:
+          contact.name || latestOrder?.order?.deliveryName || "Unknown customer",
+        phone,
+        address: contact.address || latestOrder?.order?.deliveryAddress || "",
+        zoneId,
+        zoneName,
+        tags,
+        lastOrderAt,
+        lastOrderTotal:
+          latestOrder?.order?.total != null
+            ? Number(latestOrder.order.total || 0)
+            : contact.lastOrderTotal != null
+            ? Number(contact.lastOrderTotal || 0)
+            : 0,
+        lastOrderNo:
+          latestOrder?.order?.orderNo ?? contact.lastOrderNo ?? null,
+        totalSpend: Number(totalSpend.toFixed(2)),
+        orderCount,
+        firstOrderAt: firstOrder,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.totalSpend - a.totalSpend || (b.lastOrderAt || 0) - (a.lastOrderAt || 0));
+};
+const searchCustomersByQuery = (rows = [], query = "") => {
+  const q = String(query || "").trim();
+  if (!q) return rows;
+  const lowered = q.toLowerCase();
+  const digits = q.replace(/\D/g, "");
+  return rows.filter((row) => {
+    const haystacks = [row.displayName, row.address, row.zoneName]
+      .filter(Boolean)
+      .map((v) => String(v).toLowerCase());
+    const tagMatch = (row.tags || [])
+      .map((t) => String(t).toLowerCase())
+      .some((t) => t.includes(lowered));
+    const phoneMatch = digits
+      ? String(row.phone || "").includes(digits)
+      : String(row.phone || "").includes(lowered);
+    const textMatch = haystacks.some((text) => text.includes(lowered));
+    return phoneMatch || textMatch || tagMatch;
+  });
+};
 const isExpenseLocked = (e) =>
   !!(e?.locked || e?.source === "order_return" || e?.orderNo != null);
 const isBankLocked = (t) =>
@@ -1257,7 +1402,8 @@ const [deliveryPhone, setDeliveryPhone] = useState("");
 const [deliveryAddress, setDeliveryAddress] = useState("");
 const [deliveryZoneId, setDeliveryZoneId] = useState("");               
 const [customers, setCustomers] = useState([]);                         
-const [deliveryZones, setDeliveryZones] = useState(DEFAULT_ZONES);    
+const [deliveryZones, setDeliveryZones] = useState(DEFAULT_ZONES);
+const [customerSearch, setCustomerSearch] = useState("");
 const [newZoneName, setNewZoneName] = useState("");
 const [newZoneFee, setNewZoneFee] = useState(0);
 const addZone = () => {
@@ -2476,7 +2622,7 @@ const multiplyUses = (uses = {}, factor = 1) => {
     })
   );
 
-  const setQty = (i, v) =>
+ const setQty = (i, v) =>
   setCart((c) =>
     c.map((line, idx) => {
       if (idx !== i) return line;
@@ -2490,7 +2636,61 @@ const multiplyUses = (uses = {}, factor = 1) => {
       };
     })
   );
- const checkout = async () => {
+const recordCustomerFromOrder = (order) => {
+  if (!order) return;
+  const phone = normalizePhone(order.deliveryPhone);
+  if (!phone) return;
+  const allOrders = [
+    ...(historicalOrders || []),
+    ...(orders || []),
+    order,
+  ];
+  const related = allOrders.filter(
+    (o) => normalizePhone(o?.deliveryPhone) === phone && !o?.voided
+  );
+  if (!related.length) return;
+  const summary = related.reduce(
+    (acc, cur) => {
+      const total = Number(cur.total || 0);
+      const when = parseDateMaybe(cur.date);
+      if (Number.isFinite(total)) acc.total += total;
+      acc.count += 1;
+      if (when) {
+        if (!acc.latest || when > acc.latest.when) {
+          acc.latest = { when, order: cur };
+        }
+        if (!acc.earliest || when < acc.earliest) {
+          acc.earliest = when;
+        }
+      }
+      return acc;
+    },
+    { total: 0, count: 0, latest: null, earliest: null }
+  );
+  setCustomers((prev) => {
+    const existing = prev.find((c) => normalizePhone(c.phone) === phone) || {};
+    const updated = {
+      ...existing,
+      phone,
+      name: order.deliveryName || existing.name || "",
+      address: order.deliveryAddress || existing.address || "",
+      zoneId: order.deliveryZoneId || existing.zoneId || "",
+      lastOrderAt: summary.latest ? summary.latest.when : existing.lastOrderAt,
+      lastOrderNo:
+        (summary.latest && summary.latest.order?.orderNo) || existing.lastOrderNo || null,
+      lastOrderTotal:
+        summary.latest && summary.latest.order
+          ? Number(summary.latest.order.total || 0)
+          : existing.lastOrderTotal || Number(order.total || 0),
+      orderCount: summary.count,
+      totalSpend: Number(summary.total.toFixed(2)),
+      firstOrderAt: summary.earliest || existing.firstOrderAt || order.date,
+      updatedAt: new Date(),
+    };
+    return upsertCustomer(prev, updated);
+  });
+};
+const checkout = async () => {
   if (isCheckingOut) return;
   setIsCheckingOut(true);
   try {
@@ -2606,16 +2806,8 @@ deliveryAddress: (orderType === "Delivery" ? String(deliveryAddress || "").trim(
       idemKey: `idk_${fbUser ? fbUser.uid : "anon"}_${Date.now()}_${Math.random()
         .toString(36)
         .slice(2)}`,
-    };
-if (orderType === "Delivery") {
-  const rec = {
-    phone: order.deliveryPhone,
-    name: order.deliveryName,
-    address: order.deliveryAddress,
-    zoneId: deliveryZoneId || "",
-  };
-   setCustomers(prev => upsertCustomer(prev, rec));
-}
+ };
+    recordCustomerFromOrder(order);
     if (autoPrintOnCheckout) {
       printReceiptHTML(order, Number(preferredPaperWidthMm) || 80, "Customer");
     }
@@ -3058,6 +3250,39 @@ const filteredPurchases = useMemo(() => {
     ? withinPeriod.filter((p) => p.categoryId === purchaseCatFilterId)
     : withinPeriod;
 }, [purchases, pStart, pEnd, purchaseCatFilterId]);
+const customerRows = useMemo(
+  () => buildCustomerContactRows(customers, orders, historicalOrders, deliveryZones),
+  [customers, orders, historicalOrders, deliveryZones]
+);
+const filteredCustomerRows = useMemo(
+  () => searchCustomersByQuery(customerRows, customerSearch),
+  [customerRows, customerSearch]
+);
+const customerZoneSummary = useMemo(() => {
+  const map = new Map();
+  for (const row of customerRows) {
+    const key = row.zoneName || "Unassigned";
+    const prev = map.get(key) || { zoneName: key, count: 0, totalSpend: 0 };
+    prev.count += 1;
+    prev.totalSpend += Number(row.totalSpend || 0);
+    map.set(key, prev);
+  }
+  return Array.from(map.values()).sort(
+    (a, b) => b.totalSpend - a.totalSpend || b.count - a.count
+  );
+}, [customerRows]);
+const topSpenders = useMemo(
+  () => customerRows.slice(0, 5),
+  [customerRows]
+);
+const totalContactSpend = useMemo(
+  () => customerRows.reduce((sum, row) => sum + Number(row.totalSpend || 0), 0),
+  [customerRows]
+);
+const totalTrackedOrders = useMemo(
+  () => customerRows.reduce((sum, row) => sum + Number(row.orderCount || 0), 0),
+  [customerRows]
+);
   const byCategory = useMemo(() => {
   const m = new Map();
   for (const p of filteredPurchases) {
@@ -3834,6 +4059,7 @@ const generatePurchasesPDF = () => {
     ["expenses", "Expenses"],
     ["usage", "Inventory Usage"],
      ["reconcile","Reconcile"],
+    ["contacts","Customer Contacts"],
     ["admin", "Admin"], // <-- new consolidated tab
   ].map(([key, label]) => (
     <button
@@ -5747,6 +5973,253 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
 )}
 
 
+{/* ───────────────────────── Customer Contacts TAB ───────────────────────── */}
+{activeTab === "contacts" && (
+  <div style={{ display: "grid", gap: 16 }}>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+        gap: 12,
+      }}
+    >
+      <div
+        style={{
+          padding: 16,
+          borderRadius: 12,
+          border: `1px solid ${cardBorder}`,
+          background: dark ? "#1f1f1f" : "#fff",
+        }}
+      >
+        <div style={{ fontWeight: 600, opacity: 0.85 }}>Tracked Contacts</div>
+        <div style={{ fontSize: 28, fontWeight: 800, marginTop: 6 }}>
+          {customerRows.length}
+        </div>
+        <div style={{ opacity: 0.75, marginTop: 4 }}>
+          {totalTrackedOrders} total orders
+        </div>
+      </div>
+      <div
+        style={{
+          padding: 16,
+          borderRadius: 12,
+          border: `1px solid ${cardBorder}`,
+          background: dark ? "#1f1f1f" : "#fff",
+        }}
+      >
+        <div style={{ fontWeight: 600, opacity: 0.85 }}>Lifetime Spend</div>
+        <div style={{ fontSize: 28, fontWeight: 800, marginTop: 6 }}>
+          {currency(totalContactSpend)}
+        </div>
+        <div style={{ opacity: 0.75, marginTop: 4 }}>
+          Across all recorded delivery orders
+        </div>
+      </div>
+      <div
+        style={{
+          padding: 16,
+          borderRadius: 12,
+          border: `1px solid ${cardBorder}`,
+          background: dark ? "#1f1f1f" : "#fff",
+        }}
+      >
+        <div style={{ fontWeight: 600, opacity: 0.85 }}>Top Contact</div>
+        {topSpenders.length ? (
+          <>
+            <div style={{ fontSize: 22, fontWeight: 800, marginTop: 6 }}>
+              {topSpenders[0].displayName}
+            </div>
+            <div style={{ opacity: 0.75 }}>
+              {currency(topSpenders[0].totalSpend)} • {topSpenders[0].orderCount} order(s)
+            </div>
+            <div style={{ marginTop: 8, opacity: 0.65 }}>
+              Zone: {topSpenders[0].zoneName || "—"}
+            </div>
+          </>
+        ) : (
+          <div style={{ opacity: 0.65, marginTop: 10 }}>No contacts yet.</div>
+        )}
+      </div>
+      <div
+        style={{
+          padding: 16,
+          borderRadius: 12,
+          border: `1px solid ${cardBorder}`,
+          background: dark ? "#1f1f1f" : "#fff",
+        }}
+      >
+        <div style={{ fontWeight: 600, opacity: 0.85 }}>Top 5 Customers</div>
+        {topSpenders.length ? (
+          <ol style={{ margin: "8px 0 0", paddingLeft: 18, lineHeight: 1.5 }}>
+            {topSpenders.map((row) => (
+              <li key={row.id} style={{ marginBottom: 4 }}>
+                <span style={{ fontWeight: 600 }}>{row.displayName}</span>{" "}
+                <span style={{ opacity: 0.75 }}>{currency(row.totalSpend)}</span>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <div style={{ opacity: 0.65, marginTop: 10 }}>Waiting for first order.</div>
+        )}
+      </div>
+    </div>
+
+    <div
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        gap: 12,
+        alignItems: "center",
+      }}
+    >
+      <input
+        type="search"
+        value={customerSearch}
+        onChange={(e) => setCustomerSearch(e.target.value)}
+        placeholder="Search by name, phone, address, or zone"
+        style={{
+          flex: "1 1 260px",
+          minWidth: 200,
+          padding: "8px 10px",
+          borderRadius: 8,
+          border: `1px solid ${btnBorder}`,
+          background: dark ? "#111" : "#fff",
+          color: dark ? "#eee" : "#000",
+        }}
+      />
+      <div style={{ fontWeight: 600, opacity: 0.75 }}>
+        Showing {filteredCustomerRows.length} contact(s)
+      </div>
+    </div>
+
+    <div
+      style={{
+        border: `1px solid ${cardBorder}`,
+        borderRadius: 12,
+        background: dark ? "#1a1a1a" : "#fff",
+        padding: 16,
+      }}
+    >
+      <div style={{ fontWeight: 700, marginBottom: 8 }}>Contacts by Zone</div>
+      {customerZoneSummary.length ? (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 320 }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>
+                  Zone
+                </th>
+                <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>
+                  Contacts
+                </th>
+                <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>
+                  Lifetime Spend
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {customerZoneSummary.map((row) => (
+                <tr key={row.zoneName}>
+                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>
+                    {row.zoneName}
+                  </td>
+                  <td style={{ padding: 8, textAlign: "right", borderBottom: `1px solid ${cardBorder}` }}>
+                    {row.count}
+                  </td>
+                  <td style={{ padding: 8, textAlign: "right", borderBottom: `1px solid ${cardBorder}` }}>
+                    {currency(row.totalSpend)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div style={{ opacity: 0.7 }}>No contacts recorded yet.</div>
+      )}
+    </div>
+
+    <div
+      style={{
+        border: `1px solid ${cardBorder}`,
+        borderRadius: 12,
+        background: dark ? "#1a1a1a" : "#fff",
+        padding: 16,
+      }}
+    >
+      <div style={{ fontWeight: 700, marginBottom: 8 }}>Customer Directory</div>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 720 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Name</th>
+              <th style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Phone</th>
+              <th style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Zone</th>
+              <th style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Tags</th>
+              <th style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Last Order</th>
+              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Total Spend</th>
+              <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Orders</th>
+              <th style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Address</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredCustomerRows.length ? (
+              filteredCustomerRows.map((row) => (
+                <tr key={row.id}>
+                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>
+                    <div style={{ fontWeight: 600 }}>{row.displayName}</div>
+                    {row.firstOrderAt && (
+                      <div style={{ fontSize: 12, opacity: 0.65 }}>
+                        First order: {fmtDate(row.firstOrderAt)}
+                      </div>
+                    )}
+                  </td>
+                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>
+                    {row.phone || "—"}
+                  </td>
+                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>
+                    {row.zoneName || "—"}
+                  </td>
+                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>
+                    {row.tags && row.tags.length ? row.tags.join(", ") : "—"}
+                  </td>
+                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>
+                    {row.lastOrderAt ? (
+                      <div>
+                        <div>{fmtDateTime(row.lastOrderAt)}</div>
+                        <div style={{ fontSize: 12, opacity: 0.7 }}>
+                          {row.lastOrderNo ? `#${row.lastOrderNo}` : ""}{" "}
+                          {currency(row.lastOrderTotal)}
+                        </div>
+                      </div>
+                    ) : (
+                      <span style={{ opacity: 0.6 }}>—</span>
+                    )}
+                  </td>
+                  <td style={{ padding: 8, textAlign: "right", borderBottom: `1px solid ${cardBorder}` }}>
+                    {currency(row.totalSpend)}
+                  </td>
+                  <td style={{ padding: 8, textAlign: "right", borderBottom: `1px solid ${cardBorder}` }}>
+                    {row.orderCount}
+                  </td>
+                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>
+                    {row.address || "—"}
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={8} style={{ padding: 16, textAlign: "center", opacity: 0.7 }}>
+                  No contacts match the current search.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+)}
 {/* ───────────────────────── Reconcile TAB ───────────────────────── */}
 {activeTab === "reconcile" && (
   <div style={{ display: "grid", gap: 14 }}>
@@ -8180,6 +8653,7 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
     </div>
   );
 }
+
 
 
 
