@@ -1,8 +1,21 @@
 import { render, screen } from '@testing-library/react';
-import App from './App';
+jest.mock("jspdf", () => {
+  return jest.fn().mockImplementation(() => ({
+    addImage: jest.fn(),
+    addFileToVFS: jest.fn(),
+    addFont: jest.fn(),
+    setFont: jest.fn(),
+    setFontSize: jest.fn(),
+    text: jest.fn(),
+    save: jest.fn(),
+  }));
+});
+jest.mock("jspdf-autotable", () => jest.fn());
 
-test('renders learn react link', () => {
+const App = require("./App").default;
+
+test("renders POS header", () => {
   render(<App />);
-  const linkElement = screen.getByText(/learn react/i);
-  expect(linkElement).toBeInTheDocument();
+    expect(screen.getByText(/burger truck pos/i)).toBeInTheDocument();
+
 });
