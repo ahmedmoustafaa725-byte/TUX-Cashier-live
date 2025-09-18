@@ -2466,6 +2466,20 @@ const workerMonthlyTotalPay = useMemo(
     return n;
   };
 
+  const resetAllCustomerContacts = () => {
+    const adminNum = promptAdminAndPin();
+    if (!adminNum) return;
+    if (
+      !window.confirm(
+        `Admin ${adminNum}: Delete ALL customer contacts? This cannot be undone.`
+      )
+    )
+      return;
+    setCustomers([]);
+    saveLocalPartial({ customers: [] });
+    alert("All customer contacts cleared.");
+  };
+
   const lockInventoryForDay = () => {
     if (inventoryLocked) return;
     if (inventory.length === 0) return alert("Add at least one inventory item first.");
@@ -6129,7 +6143,7 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
       </div>
     </div>
 
-    <div
+ <div
       style={{
         display: "flex",
         flexWrap: "wrap",
@@ -6155,6 +6169,21 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
       <div style={{ fontWeight: 600, opacity: 0.75 }}>
         Showing {filteredCustomerRows.length} contact(s)
       </div>
+      <button
+        onClick={resetAllCustomerContacts}
+        title="Delete all saved customer contacts"
+        style={{
+          padding: "8px 12px",
+          borderRadius: 8,
+          border: `1px solid ${btnBorder}`,
+          background: dark ? "#5c1f1f" : "#d32f2f",
+          color: "#fff",
+          fontWeight: 600,
+          cursor: "pointer",
+        }}
+      >
+        Delete All Contacts
+      </button>
     </div>
 
     <div
@@ -8718,6 +8747,7 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
     </div>
   );
 }
+
 
 
 
