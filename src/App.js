@@ -926,6 +926,29 @@ const [inventoryLocked, setInventoryLocked] = useState(false);
 const [inventorySnapshot, setInventorySnapshot] = useState([]);
 const [inventoryLockedAt, setInventoryLockedAt] = useState(null);
 const [showLowStock, setShowLowStock] = useState(false);
+const [purchaseCategories, setPurchaseCategories] = useState(() =>
+  normalizePurchaseCategories(loadLocal().purchaseCategories || [])
+);
+const [purchases, setPurchases] = useState([]);
+const [purchaseFilter, setPurchaseFilter] = useState("day");
+const [purchaseCatFilterId, setPurchaseCatFilterId] = useState("");
+const [purchaseDay, setPurchaseDay] = useState(
+  new Date().toISOString().slice(0, 10)
+);
+const [purchaseMonth, setPurchaseMonth] = useState(() => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+});
+const [showAllCats, setShowAllCats] = useState(true);
+const [newPurchase, setNewPurchase] = useState({
+  categoryId: "",
+  itemName: "",
+  unit: "piece",
+  qty: 1,
+  unitPrice: "",
+  date: new Date().toISOString().slice(0, 10),
+  ingredientId: "",
+});
 const lowStockItems = useMemo(() => {
   return (inventory || []).filter(it => {
     const min = Number(it.minQty || 0);
@@ -1226,29 +1249,6 @@ const [deliveryFee, setDeliveryFee] = useState(0);
 const [deliveryName, setDeliveryName] = useState("");
 const [deliveryPhone, setDeliveryPhone] = useState("");
 const [deliveryAddress, setDeliveryAddress] = useState("");
- const [purchaseCategories, setPurchaseCategories] = useState(() =>
-   normalizePurchaseCategories(loadLocal().purchaseCategories || [])
- );
-const [purchases, setPurchases] = useState([]);
-const [purchaseFilter, setPurchaseFilter] = useState("day");
-const [purchaseCatFilterId, setPurchaseCatFilterId] = useState("");
-const [purchaseDay, setPurchaseDay] = useState(
-  new Date().toISOString().slice(0, 10) 
-);
-const [purchaseMonth, setPurchaseMonth] = useState(() => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-});
-const [showAllCats, setShowAllCats] = useState(true);
-const [newPurchase, setNewPurchase] = useState({
-  categoryId: "",
-  itemName: "",
-  unit: "piece",
-  qty: 1,
-  unitPrice: "",
-  date: new Date().toISOString().slice(0, 10),
-  ingredientId: "", 
-});
 const [deliveryZoneId, setDeliveryZoneId] = useState("");               
 const [customers, setCustomers] = useState([]);                         
 const [deliveryZones, setDeliveryZones] = useState(DEFAULT_ZONES);    
@@ -7877,6 +7877,7 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
     </div>
   );
 }
+
 
 
 
