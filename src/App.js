@@ -1027,6 +1027,10 @@ const [targetMarginPct, setTargetMarginPct] = useState(() => {
   const v = Number(l?.targetMarginPct);
   return isFinite(v) ? v : 0.5; // default 50% like your screenshot
 });
+const [showLowMarginOnly, setShowLowMarginOnly] = useState(() => {
+  const l = loadLocal();
+  return Boolean(l?.showLowMarginOnly);
+});
   const [historicalOrders, setHistoricalOrders] = useState(() => {
   const l = loadLocal();
   return l.historicalOrders || [];
@@ -1755,6 +1759,7 @@ useEffect(() => { saveLocalPartial({ inventory }); }, [inventory]);
 useEffect(() => { saveLocalPartial({ adminPins }); }, [adminPins]);
 useEffect(() => { saveLocalPartial({ dark }); }, [dark]);  
 useEffect(() => { saveLocalPartial({ targetMarginPct }); }, [targetMarginPct]);
+useEffect(() => { saveLocalPartial({ showLowMarginOnly }); }, [showLowMarginOnly]);
 useEffect(() => {
   if (orderType !== "Delivery") return;
   const p = String(deliveryPhone || "").trim();
@@ -2161,11 +2166,11 @@ useEffect(() => {
     );
   };
 
-  const invById = useMemo(() => {
-    const map = {};
-    for (const item of inventory) map[item.id] = item;
-    return map;
-  }, [inventory]);
+const invById = useMemo(() => {
+  const map = {};
+  for (const item of inventory) map[item.id] = item;
+  return map;
+}, [inventory]);
 function computeCOGSForItemDef(def, invMap) {
   const uses = def?.uses || {};
   let sum = 0;
@@ -2176,6 +2181,33 @@ function computeCOGSForItemDef(def, invMap) {
   }
   return Number(sum.toFixed(2));
 }
+const cogsMarginData = useMemo(() => {
+  const allRows = [
+    ...menu.map((d) => ({ ...d, _k: `m-${d.id}` })),
+    ...extraList.map((d) => ({ ...d, _k: `e-${d.id}` })),
+  ].map((def) => {
+    const price = Number(def.price || 0);
+    const cogs = computeCOGSForItemDef(def, invById);
+    const marginPct = price > 0 ? ((price - cogs) / price) * 100 : 0;
+    return {
+      ...def,
+      _price: price,
+      _cogs: cogs,
+      _marginPct: marginPct,
+    };
+  });
+  const threshold = targetMarginPct * 100;
+  const below = allRows.filter((row) => row._marginPct < threshold);
+  return { all: allRows, below, threshold };
+}, [menu, extraList, invById, targetMarginPct]);
+const cogsRowsToDisplay = showLowMarginOnly ? cogsMarginData.below : cogsMarginData.all;
+const lowMarginCount = cogsMarginData.below.length;
+const totalMarginRows = cogsMarginData.all.length;
+const marginSummary = totalMarginRows
+  ? (showLowMarginOnly
+      ? `Showing ${cogsRowsToDisplay.length} item${cogsRowsToDisplay.length === 1 ? "" : "s"} below the target margin.`
+      : `${lowMarginCount} of ${totalMarginRows} item${totalMarginRows === 1 ? "" : "s"} are below the target margin.`)
+  : "No menu or extra items available yet.";
    function isWithin(d, start, end) {
   const t = +new Date(d);
   return t >= +start && t <= +end;
@@ -4306,7 +4338,35 @@ const generatePurchasesPDF = () => {
       </div>
 
       {/* Single items list (Menu + Extras) under helper */}
-      <div style={{ marginTop: 18, overflowX: "auto" }}>
+ <div style={{ marginTop: 18, overflowX: "auto" }}>
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            marginBottom: 8,
+          }}
+        >
+          <div style={{ fontSize: 13, opacity: 0.75 }}>{marginSummary}</div>
+          <label
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              fontSize: 13,
+              cursor: "pointer",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={showLowMarginOnly}
+              onChange={(e) => setShowLowMarginOnly(e.target.checked)}
+            />
+            Show items below target margin
+          </label>
+        </div>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr>
@@ -4317,21 +4377,26 @@ const generatePurchasesPDF = () => {
             </tr>
           </thead>
           <tbody>
-            {[...menu.map(d => ({ ...d, _k:`m-${d.id}` })), ...extraList.map(d => ({ ...d, _k:`e-${d.id}` }))]
-              .map((def) => {
-                const price = Number(def.price || 0);
-                const cogs = computeCOGSForItemDef(def, invById);
-                const pct  = price > 0 ? ((price - cogs) / price) * 100 : 0;
-                const money = (v) => `E£${Number(v || 0).toFixed(2)}`;
-                return (
-                  <tr key={def._k}>
-                    <td style={{ padding: 10, borderBottom: `1px solid ${cardBorder}` }}>{def.name}</td>
-                    <td style={{ padding: 10, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{money(cogs)}</td>
-                    <td style={{ padding: 10, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{money(price)}</td>
-                    <td style={{ padding: 10, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{pct.toFixed(1)}%</td>
-                  </tr>
-                );
-              })}
+            {cogsRowsToDisplay.map((def) => {
+              const warn = def._marginPct < cogsMarginData.threshold;
+              const warnStyles = warn
+                ? {
+                    background: dark ? "rgba(220,38,38,0.24)" : "rgba(220,38,38,0.12)",
+                    color: dark ? "#ffb4ab" : "#b91c1c",
+                    fontWeight: 600,
+                  }
+                : {};
+              const money = (v) => `E£${Number(v || 0).toFixed(2)}`;
+              const baseCellStyle = { padding: 10, borderBottom: `1px solid ${cardBorder}` };
+              return (
+                <tr key={def._k}>
+                  <td style={{ ...baseCellStyle, ...warnStyles }}>{def.name}</td>
+                  <td style={{ ...baseCellStyle, textAlign: "right", ...warnStyles }}>{money(def._cogs)}</td>
+                  <td style={{ ...baseCellStyle, textAlign: "right", ...warnStyles }}>{money(def._price)}</td>
+                  <td style={{ ...baseCellStyle, textAlign: "right", ...warnStyles }}>{def._marginPct.toFixed(1)}%</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -8653,6 +8718,7 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
     </div>
   );
 }
+
 
 
 
