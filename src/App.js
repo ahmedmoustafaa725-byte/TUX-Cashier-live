@@ -319,38 +319,38 @@ function dedupeOrders(list) {
   );
 }
 const BASE_MENU = [
-  { id: 1, name: "Single Smashed Patty", price: 95, uses: {} },
-  { id: 2, name: "Double Smashed Patty", price: 140, uses: {} },
-  { id: 3, name: "Triple Smashed Patty", price: 160, uses: {} },
-  { id: 4, name: "Tux Quatro Smashed Patty", price: 190, uses: {} },
-  { id: 14, name: "TUXIFY Single", price: 120, uses: {} },
-  { id: 15, name: "TUXIFY Double", price: 160, uses: {} },
-  { id: 16, name: "TUXIFY Triple", price: 200, uses: {} },
-  { id: 17, name: "TUXIFY Quatro", price: 240, uses: {} },
-  { id: 5, name: "Classic Fries", price: 25, uses: {} },
-  { id: 6, name: "Cheese Fries", price: 40, uses: {} },
-  { id: 7, name: "Chili Fries", price: 50, uses: {} },
-  { id: 8, name: "Tux Fries", price: 75, uses: {} },
-  { id: 9, name: "Doppy Fries", price: 95, uses: {} },
-  { id: 10, name: "Classic Hawawshi", price: 80, uses: {} },
-  { id: 11, name: "Tux Hawawshi", price: 100, uses: {} },
-  { id: 12, name: "Soda", price: 20, uses: {} },
-  { id: 13, name: "Water", price: 10, uses: {} },
+  { id: 1, name: "Single Smashed Patty", price: 95, uses: {}, targetMarginPctOverride: null },
+  { id: 2, name: "Double Smashed Patty", price: 140, uses: {}, targetMarginPctOverride: null },
+  { id: 3, name: "Triple Smashed Patty", price: 160, uses: {}, targetMarginPctOverride: null },
+  { id: 4, name: "Tux Quatro Smashed Patty", price: 190, uses: {}, targetMarginPctOverride: null },
+  { id: 14, name: "TUXIFY Single", price: 120, uses: {}, targetMarginPctOverride: null },
+  { id: 15, name: "TUXIFY Double", price: 160, uses: {}, targetMarginPctOverride: null },
+  { id: 16, name: "TUXIFY Triple", price: 200, uses: {}, targetMarginPctOverride: null },
+  { id: 17, name: "TUXIFY Quatro", price: 240, uses: {}, targetMarginPctOverride: null },
+  { id: 5, name: "Classic Fries", price: 25, uses: {}, targetMarginPctOverride: null },
+  { id: 6, name: "Cheese Fries", price: 40, uses: {}, targetMarginPctOverride: null },
+  { id: 7, name: "Chili Fries", price: 50, uses: {}, targetMarginPctOverride: null },
+  { id: 8, name: "Tux Fries", price: 75, uses: {}, targetMarginPctOverride: null },
+  { id: 9, name: "Doppy Fries", price: 95, uses: {}, targetMarginPctOverride: null },
+  { id: 10, name: "Classic Hawawshi", price: 80, uses: {}, targetMarginPctOverride: null },
+  { id: 11, name: "Tux Hawawshi", price: 100, uses: {}, targetMarginPctOverride: null },
+  { id: 12, name: "Soda", price: 20, uses: {}, targetMarginPctOverride: null },
+  { id: 13, name: "Water", price: 10, uses: {}, targetMarginPctOverride: null },
 ];
 const BASE_EXTRAS = [
-  { id: 101, name: "Extra Smashed Patty", price: 40, uses: {} },
-  { id: 102, name: "Bacon", price: 20, uses: {} },
-  { id: 103, name: "Cheese", price: 15, uses: {} },
-  { id: 104, name: "Ranch", price: 15, uses: {} },
-  { id: 105, name: "Mushroom", price: 15, uses: {} },
-  { id: 106, name: "Caramelized Onion", price: 10, uses: {} },
-  { id: 107, name: "Jalapeno", price: 10, uses: {} },
-  { id: 108, name: "Tux Sauce", price: 10, uses: {} },
-  { id: 109, name: "Extra Bun", price: 10, uses: {} },
-  { id: 110, name: "Pickle", price: 5, uses: {} },
-  { id: 111, name: "BBQ / Ketchup / Sweet Chili / Hot Sauce", price: 5, uses: {} },
-  { id: 112, name: "Mozzarella Cheese", price: 20, uses: {} },
-  { id: 113, name: "Tux Hawawshi Sauce", price: 10, uses: {} },
+  { id: 101, name: "Extra Smashed Patty", price: 40, uses: {}, targetMarginPctOverride: null },
+  { id: 102, name: "Bacon", price: 20, uses: {}, targetMarginPctOverride: null },
+  { id: 103, name: "Cheese", price: 15, uses: {}, targetMarginPctOverride: null },
+  { id: 104, name: "Ranch", price: 15, uses: {}, targetMarginPctOverride: null },
+  { id: 105, name: "Mushroom", price: 15, uses: {}, targetMarginPctOverride: null },
+  { id: 106, name: "Caramelized Onion", price: 10, uses: {}, targetMarginPctOverride: null },
+  { id: 107, name: "Jalapeno", price: 10, uses: {}, targetMarginPctOverride: null },
+  { id: 108, name: "Tux Sauce", price: 10, uses: {}, targetMarginPctOverride: null },
+  { id: 109, name: "Extra Bun", price: 10, uses: {}, targetMarginPctOverride: null },
+  { id: 110, name: "Pickle", price: 5, uses: {}, targetMarginPctOverride: null },
+  { id: 111, name: "BBQ / Ketchup / Sweet Chili / Hot Sauce", price: 5, uses: {}, targetMarginPctOverride: null },
+  { id: 112, name: "Mozzarella Cheese", price: 20, uses: {}, targetMarginPctOverride: null },
+  { id: 113, name: "Tux Hawawshi Sauce", price: 10, uses: {}, targetMarginPctOverride: null },
 ];
 const DEFAULT_INVENTORY = [
   { id: "meat",   name: "Meat",   unit: "g",     qty: 0, costPerUnit: 0, minQty: 0 },
@@ -1031,6 +1031,10 @@ const [showLowMarginOnly, setShowLowMarginOnly] = useState(() => {
   const l = loadLocal();
   return Boolean(l?.showLowMarginOnly);
 });
+const [cogsTypeFilter, setCogsTypeFilter] = useState("all");
+const [cogsSearch, setCogsSearch] = useState("");
+const [cogsSort, setCogsSort] = useState({ key: "margin", dir: "asc" });
+const [inlinePriceDrafts, setInlinePriceDrafts] = useState({});
   const [historicalOrders, setHistoricalOrders] = useState(() => {
   const l = loadLocal();
   return l.historicalOrders || [];
@@ -2182,32 +2186,330 @@ function computeCOGSForItemDef(def, invMap) {
   return Number(sum.toFixed(2));
 }
 const cogsMarginData = useMemo(() => {
-  const allRows = [
-    ...menu.map((d) => ({ ...d, _k: `m-${d.id}` })),
-    ...extraList.map((d) => ({ ...d, _k: `e-${d.id}` })),
+  const rows = [
+    ...menu.map((d) => ({ ...d, _k: `m-${d.id}`, _type: "menu" })),
+    ...extraList.map((d) => ({ ...d, _k: `e-${d.id}`, _type: "extra" })),
   ].map((def) => {
     const price = Number(def.price || 0);
     const cogs = computeCOGSForItemDef(def, invById);
     const marginPct = price > 0 ? ((price - cogs) / price) * 100 : 0;
+    const override = def.targetMarginPctOverride;
+    const rowTargetPct = Number(((override ?? targetMarginPct) * 100).toFixed(2));
+    const marginGap = rowTargetPct - marginPct;
+    const usesEntries = Object.entries(def.uses || {});
+    const hasMissingCosts =
+      usesEntries.length > 0 &&
+      usesEntries.some(([invId]) => !Number(invById[invId]?.costPerUnit));
     return {
       ...def,
       _price: price,
       _cogs: cogs,
       _marginPct: marginPct,
+      _targetMarginPct: rowTargetPct,
+      _marginGap: marginGap,
+      _hasMissingCosts: hasMissingCosts,
     };
   });
   const threshold = targetMarginPct * 100;
-  const below = allRows.filter((row) => row._marginPct < threshold);
-  return { all: allRows, below, threshold };
+  const below = rows.filter((row) => row._marginPct + 0.0001 < row._targetMarginPct);
+  const missingCostKeys = rows.filter((row) => row._hasMissingCosts).map((row) => row._k);
+  return { all: rows, below, threshold, missingCostKeys };
 }, [menu, extraList, invById, targetMarginPct]);
-const cogsRowsToDisplay = showLowMarginOnly ? cogsMarginData.below : cogsMarginData.all;
+const filteredCogsRows = useMemo(() => {
+  let rows = showLowMarginOnly ? cogsMarginData.below : cogsMarginData.all;
+  if (cogsTypeFilter === "menu") rows = rows.filter((row) => row._type === "menu");
+  if (cogsTypeFilter === "extra") rows = rows.filter((row) => row._type === "extra");
+  const q = String(cogsSearch || "").trim().toLowerCase();
+  if (q) {
+    rows = rows.filter((row) => String(row.name || "").toLowerCase().includes(q));
+  }
+  return rows;
+}, [showLowMarginOnly, cogsMarginData, cogsTypeFilter, cogsSearch]);
+const sortedCogsRows = useMemo(() => {
+  const rows = [...filteredCogsRows];
+  const dir = cogsSort.dir === "desc" ? -1 : 1;
+  rows.sort((a, b) => {
+    const safeCompare = (va, vb) => (va > vb ? 1 : va < vb ? -1 : 0) * dir;
+    switch (cogsSort.key) {
+      case "name":
+        return safeCompare(String(a.name || "").toLowerCase(), String(b.name || "").toLowerCase());
+      case "price":
+        return safeCompare(a._price, b._price);
+      case "cogs":
+        return safeCompare(a._cogs, b._cogs);
+      case "gap":
+        return safeCompare(a._marginGap, b._marginGap);
+      case "margin":
+      default:
+        return safeCompare(a._marginPct, b._marginPct);
+    }
+  });
+  return rows;
+}, [filteredCogsRows, cogsSort]);
 const lowMarginCount = cogsMarginData.below.length;
 const totalMarginRows = cogsMarginData.all.length;
+const { cogsSummaryMetrics, revenueAtRisk } = useMemo(() => {
+  if (!filteredCogsRows.length) return { cogsSummaryMetrics: [], revenueAtRisk: 0 };
+  const avgMargin =
+    filteredCogsRows.reduce((sum, row) => sum + Number(row._marginPct || 0), 0) /
+    filteredCogsRows.length;
+  const belowRows = filteredCogsRows.filter((row) => row._marginGap > 0);
+  const revenueAtRisk = belowRows.reduce((sum, row) => sum + Number(row._price || 0), 0);
+  const missingCount = filteredCogsRows.filter((row) => row._hasMissingCosts).length;
+  const metrics = [
+    { label: "Average margin", value: `${avgMargin.toFixed(1)}%` },
+    {
+      label: "Low-margin items",
+      value: `${belowRows.length}`,
+      hint: belowRows.length ? `Revenue at risk: E£${revenueAtRisk.toFixed(2)}` : undefined,
+    },
+    {
+      label: "Missing ingredient costs",
+      value: `${missingCount}`,
+    },
+  ];
+  return { cogsSummaryMetrics: metrics, revenueAtRisk };
+}, [filteredCogsRows]);
+const missingCostRows = useMemo(
+  () => cogsMarginData.all.filter((row) => row._hasMissingCosts),
+  [cogsMarginData]
+);
 const marginSummary = totalMarginRows
-  ? (showLowMarginOnly
-      ? `Showing ${cogsRowsToDisplay.length} item${cogsRowsToDisplay.length === 1 ? "" : "s"} below the target margin.`
-      : `${lowMarginCount} of ${totalMarginRows} item${totalMarginRows === 1 ? "" : "s"} are below the target margin.`)
+  ? ((showLowMarginOnly
+      ? `Showing ${sortedCogsRows.length} item${sortedCogsRows.length === 1 ? "" : "s"} below the target margin.`
+      : `${lowMarginCount} of ${totalMarginRows} item${totalMarginRows === 1 ? "" : "s"} are below the target margin.`) +
+      (revenueAtRisk > 0 ? ` Low-margin revenue at risk: E£${revenueAtRisk.toFixed(2)}.` : ""))
   : "No menu or extra items available yet.";
+const handleApplyTargetMarginToLowItems = () => {
+  const rows = cogsMarginData.below || [];
+  if (!rows.length) return;
+  const menuUpdates = [];
+  const extraUpdates = [];
+  for (const row of rows) {
+    const safeTarget = Math.min(
+      row.targetMarginPctOverride ?? targetMarginPct,
+      0.95
+    );
+    const suggested = safeTarget >= 1
+      ? row._price
+      : Math.max(0, Math.round(row._cogs / (1 - safeTarget)));
+    if (!Number.isFinite(suggested)) continue;
+    if (Math.abs(suggested - Number(row._price || 0)) < 0.001) continue;
+    if (row._type === "extra") {
+      extraUpdates.push({ id: row.id, price: suggested });
+    } else {
+      menuUpdates.push({ id: row.id, price: suggested });
+    }
+  }
+  const menuCount = menuUpdates.length;
+  const extraCount = extraUpdates.length;
+  if (!menuCount && !extraCount) {
+    alert("All below-target items already match their suggested prices.");
+    return;
+  }
+  const total = menuCount + extraCount;
+  const confirmMsg =
+    `Apply target-margin pricing to ${total} item${total === 1 ? "" : "s"}?\n` +
+    (menuCount ? `• Menu: ${menuCount}\n` : "") +
+    (extraCount ? `• Extras: ${extraCount}` : "");
+  if (!window.confirm(confirmMsg.trim())) return;
+  if (menuCount) {
+    setMenu((arr) =>
+      arr.map((it) => {
+        const upd = menuUpdates.find((u) => u.id === it.id);
+        return upd ? { ...it, price: upd.price } : it;
+      })
+    );
+  }
+  if (extraCount) {
+    setExtraList((arr) =>
+      arr.map((it) => {
+        const upd = extraUpdates.find((u) => u.id === it.id);
+        return upd ? { ...it, price: upd.price } : it;
+      })
+    );
+  }
+  alert(`Updated ${total} item${total === 1 ? "" : "s"} to the target margin.`);
+};
+const handleExportCogsCsv = () => {
+  const rows = sortedCogsRows;
+  if (!rows.length) {
+    alert("No COGS data to export.");
+    return;
+  }
+  const header = ["Item", "Type", "COGS", "Price", "Margin %", "Target %", "Gap to Target"];
+  const body = rows.map((row) => [
+    row.name,
+    row._type,
+    Number(row._cogs || 0).toFixed(2),
+    Number(row._price || 0).toFixed(2),
+    Number(row._marginPct || 0).toFixed(2),
+    Number(row._targetMarginPct || 0).toFixed(2),
+    Number(row._marginGap || 0).toFixed(2),
+  ]);
+  const lines = [header, ...body]
+    .map((cols) =>
+      cols
+        .map((col) => {
+          const text = String(col ?? "");
+          return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+        })
+        .join(",")
+    )
+    .join("\n");
+  const blob = new Blob([lines], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const stamp = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 16);
+  const name = `tux_cogs_${showLowMarginOnly ? "below-target" : "all"}_${stamp}.csv`;
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${name}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+const updateRowPrice = (row, newPrice, { confirm = false } = {}) => {
+  if (!row) return;
+  const sanitized = Math.max(0, Number(newPrice || 0));
+  if (!Number.isFinite(sanitized)) return;
+  const current = Number(row._price ?? row.price ?? 0);
+  if (Math.abs(sanitized - current) < 0.001) return;
+  const [kind, idStr] = String(row._k || "").split("-");
+  const id = Number(idStr);
+  if (!id) return;
+  const label = row.name || "item";
+  if (confirm && !window.confirm(`Set "${label}" price to E£${sanitized.toFixed(2)}?`)) return;
+  if (kind === "e") {
+    setExtraList((arr) =>
+      arr.map((it) => (it.id === id ? { ...it, price: sanitized } : it))
+    );
+  } else {
+    setMenu((arr) =>
+      arr.map((it) => (it.id === id ? { ...it, price: sanitized } : it))
+    );
+  }
+};
+const handleInlinePriceCommit = (row, value) => {
+  updateRowPrice(row, value);
+  setInlinePriceDrafts((prev) => {
+    const next = { ...prev };
+    delete next[row._k];
+    return next;
+  });
+};
+const handleOverrideChange = (row, value) => {
+  if (!row) return;
+  const cleaned = value === "" ? "" : Math.max(0, Math.min(95, Number(value || 0)));
+  const normalized = cleaned === "" ? null : Number((cleaned / 100).toFixed(4));
+  const [kind, idStr] = String(row._k || "").split("-");
+  const id = Number(idStr);
+  if (!id) return;
+  if (kind === "e") {
+    setExtraList((arr) =>
+      arr.map((it) =>
+        it.id === id ? { ...it, targetMarginPctOverride: normalized } : it
+      )
+    );
+  } else {
+    setMenu((arr) =>
+      arr.map((it) =>
+        it.id === id ? { ...it, targetMarginPctOverride: normalized } : it
+      )
+    );
+  }
+};
+const selectedCogsRow = useMemo(
+  () => cogsMarginData.all.find((row) => row._k === cogsKey) || null,
+  [cogsMarginData, cogsKey]
+);
+const marginTrend = useMemo(() => {
+  if (!selectedCogsRow) return [];
+  const id = selectedCogsRow.id;
+  const type = selectedCogsRow._type;
+  if (!id) return [];
+  const unitCogs = computeCOGSForItemDef(selectedCogsRow, invById);
+  const map = new Map();
+  for (const order of orders || []) {
+    const lines = order?.cart || [];
+    if (!Array.isArray(lines) || !lines.length) continue;
+    const date = order?.date instanceof Date ? order.date : new Date(order?.date);
+    if (!date || Number.isNaN(+date)) continue;
+    const dayKey = date.toISOString().slice(0, 10);
+    let revenue = 0;
+    let cogs = 0;
+    if (type === "menu") {
+      for (const line of lines) {
+        if (Number(line?.id) !== id) continue;
+        const qty = Math.max(1, Number(line?.qty || 1));
+        const price = Number(line?.price || 0);
+        revenue += price * qty;
+        cogs += unitCogs * qty;
+      }
+    } else {
+      for (const line of lines) {
+        const qty = Math.max(1, Number(line?.qty || 1));
+        for (const extra of line?.extras || []) {
+          if (Number(extra?.id) !== id) continue;
+          const extraQty = Math.max(1, Number(extra?.qty || 1));
+          const price = Number(extra?.price || 0);
+          const units = qty * extraQty;
+          revenue += price * units;
+          cogs += unitCogs * units;
+        }
+      }
+    }
+    if (!revenue && !cogs) continue;
+    const bucket = map.get(dayKey) || { revenue: 0, cogs: 0 };
+    bucket.revenue += revenue;
+    bucket.cogs += cogs;
+    map.set(dayKey, bucket);
+  }
+  return Array.from(map.entries())
+    .map(([day, bucket]) => {
+      const marginPct = bucket.revenue > 0 ? ((bucket.revenue - bucket.cogs) / bucket.revenue) * 100 : 0;
+      return {
+        day,
+        marginPct,
+        revenue: bucket.revenue,
+        cogs: bucket.cogs,
+      };
+    })
+    .sort((a, b) => a.day.localeCompare(b.day))
+    .slice(-10);
+}, [selectedCogsRow, orders, invById]);
+const priceScenarios = useMemo(() => {
+  if (!selectedCogsRow) return [];
+  const basePrice = Number(selectedCogsRow.price ?? selectedCogsRow._price ?? 0);
+  const unitCogs = computeCOGSForItemDef(selectedCogsRow, invById);
+  const targetRatio = Math.min(
+    selectedCogsRow.targetMarginPctOverride ?? targetMarginPct,
+    0.95
+  );
+  const targetPct = Number(selectedCogsRow._targetMarginPct || targetRatio * 100);
+  const deltas = [-20, -10, -5, -2, 0, 2, 5, 10, 20];
+  const seen = new Set();
+  const scenarios = [];
+  for (const delta of deltas) {
+    const price = Math.max(0, Math.round((basePrice + delta) * 100) / 100);
+    if (seen.has(price)) continue;
+    seen.add(price);
+    const marginPct = price > 0 ? ((price - unitCogs) / price) * 100 : 0;
+    scenarios.push({ price, marginPct, deltaVsTarget: marginPct - targetPct });
+  }
+  if (targetRatio < 1) {
+    const suggested = Math.max(0, Math.round(unitCogs / (1 - targetRatio)));
+    if (!seen.has(suggested)) {
+      const marginPct = suggested > 0 ? ((suggested - unitCogs) / suggested) * 100 : 0;
+      scenarios.push({ price: suggested, marginPct, deltaVsTarget: marginPct - targetPct });
+    }
+  }
+  return scenarios.sort((a, b) => a.price - b.price);
+}, [selectedCogsRow, invById, targetMarginPct]);
+const handleScenarioApply = (price) => {
+  if (!selectedCogsRow) return;
+  updateRowPrice(selectedCogsRow, price, { confirm: true });
+};
    function isWithin(d, start, end) {
   const t = +new Date(d);
   return t >= +start && t <= +end;
@@ -4224,20 +4526,26 @@ const generatePurchasesPDF = () => {
           </select>
 
           {/* Current stats for selection */}
-          {(() => {
-            if (!cogsKey) return null;
-            const [kind, idStr] = cogsKey.split("-");
-            const id = Number(idStr);
-            const row = kind === "e"
-              ? extraList.find(e => e.id === id)
-              : menu.find(m => m.id === id);
-            if (!row) return null;
-
-            const price = Number(row.price || 0);
-            const cogs = computeCOGSForItemDef(row, invById);
-            const marginPct = price > 0 ? ((price - cogs) / price) * 100 : 0;
+          {selectedCogsRow && (() => {
+            const price = Number(selectedCogsRow._price ?? selectedCogsRow.price ?? 0);
+            const cogs = Number(selectedCogsRow._cogs ?? computeCOGSForItemDef(selectedCogsRow, invById));
+            const marginPct = selectedCogsRow._marginPct ?? (price > 0 ? ((price - cogs) / price) * 100 : 0);
+            const targetPct = Number(selectedCogsRow._targetMarginPct || targetMarginPct * 100);
             const money = (v) => `E£${Number(v || 0).toFixed(2)}`;
-
+            const ingredients = Object.entries(selectedCogsRow.uses || {}).map(([invId, qty]) => {
+              const inv = invById[invId] || {};
+              const unitCost = Number(inv.costPerUnit || 0);
+              const quantity = Number(qty || 0);
+              return {
+                id: invId,
+                name: inv.name || invId,
+                quantity,
+                unit: inv.unit || "",
+                unitCost,
+                totalCost: unitCost * quantity,
+              };
+            });
+            const chartPoints = marginTrend;
             return (
               <div
                 style={{
@@ -4245,11 +4553,84 @@ const generatePurchasesPDF = () => {
                   padding: 12,
                   borderRadius: 10,
                   background: dark ? "rgba(255,255,255,0.06)" : "#f0f0f0",
+                  display: "grid",
+                  gap: 12,
                 }}
               >
-                <div>Current price: <b>{money(price)}</b></div>
-                <div>COGS: <b>{money(cogs)}</b></div>
-                <div>Current margin: <b>{marginPct.toFixed(1)}%</b></div>
+                <div style={{ display: "grid", gap: 4 }}>
+                  <div>Current price: <b>{money(price)}</b></div>
+                  <div>COGS: <b>{money(cogs)}</b></div>
+                  <div>Current margin: <b>{marginPct.toFixed(1)}%</b> (target {targetPct.toFixed(1)}%)</div>
+                </div>
+
+                <div>
+                  <div style={{ fontWeight: 600, marginBottom: 6 }}>Ingredient cost breakdown</div>
+                  {ingredients.length ? (
+                    <div style={{ overflowX: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                        <thead>
+                          <tr>
+                            <th style={{ textAlign: "left", padding: 4, borderBottom: `1px solid ${cardBorder}` }}>Ingredient</th>
+                            <th style={{ textAlign: "right", padding: 4, borderBottom: `1px solid ${cardBorder}` }}>Qty</th>
+                            <th style={{ textAlign: "left", padding: 4, borderBottom: `1px solid ${cardBorder}` }}>Unit</th>
+                            <th style={{ textAlign: "right", padding: 4, borderBottom: `1px solid ${cardBorder}` }}>Cost/unit</th>
+                            <th style={{ textAlign: "right", padding: 4, borderBottom: `1px solid ${cardBorder}` }}>Total cost</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {ingredients.map((ing) => (
+                            <tr key={ing.id}>
+                              <td style={{ padding: 4, borderBottom: `1px solid ${cardBorder}` }}>{ing.name}</td>
+                              <td style={{ padding: 4, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{ing.quantity.toFixed(2)}</td>
+                              <td style={{ padding: 4, borderBottom: `1px solid ${cardBorder}` }}>{ing.unit}</td>
+                              <td style={{ padding: 4, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{money(ing.unitCost)}</td>
+                              <td style={{ padding: 4, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{money(ing.totalCost)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 12, opacity: 0.7 }}>No ingredients linked yet. Build the recipe in Inventory to see the breakdown.</div>
+                  )}
+                </div>
+
+                <div>
+                  <div style={{ fontWeight: 600, marginBottom: 6 }}>Margin trend (last {chartPoints.length} day{chartPoints.length === 1 ? "" : "s"})</div>
+                  {chartPoints.length ? (
+                    <div style={{ display: "flex", alignItems: "flex-end", gap: 8, minHeight: 120 }}>
+                      {chartPoints.map((point) => {
+                        const height = Math.max(4, Math.min(100, Math.round(Math.abs(point.marginPct))));
+                        const barColor = point.marginPct + 0.0001 >= targetPct ? "#2e7d32" : "#c62828";
+                        const label = (() => {
+                          const d = new Date(point.day);
+                          return Number.isNaN(+d)
+                            ? point.day
+                            : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+                        })();
+                        return (
+                          <div key={point.day} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                            <div style={{ height: 100, width: 18, display: "flex", alignItems: "flex-end" }}>
+                              <div
+                                style={{
+                                  width: "100%",
+                                  height: `${height}%`,
+                                  background: barColor,
+                                  borderRadius: 4,
+                                }}
+                                title={`${label}: ${point.marginPct.toFixed(1)}%`}
+                              />
+                            </div>
+                            <div style={{ fontSize: 11 }}>{label}</div>
+                            <div style={{ fontSize: 10, opacity: 0.7 }}>{point.marginPct.toFixed(0)}%</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 12, opacity: 0.7 }}>No orders yet for this item.</div>
+                  )}
+                </div>
               </div>
             );
           })()}
@@ -4293,58 +4674,126 @@ const generatePurchasesPDF = () => {
             <div style={{ opacity: 0.7, textAlign: "left" }}>%</div>
           </div>
 
-          {/* Suggested + Apply */}
-          {(() => {
-            if (!cogsKey) return null;
-            const [kind, idStr] = cogsKey.split("-");
-            const id = Number(idStr);
-            const row = kind === "e"
-              ? extraList.find(e => e.id === id)
-              : menu.find(m => m.id === id);
-            if (!row) return null;
-
-            const cogs = computeCOGSForItemDef(row, invById);
-            const safeM = Math.min(targetMarginPct, 0.95);
-            const suggested = Math.max(0, Math.round(cogs / (1 - safeM)));
+          {selectedCogsRow && (() => {
+            const cogs = Number(selectedCogsRow._cogs ?? computeCOGSForItemDef(selectedCogsRow, invById));
+            const safeM = Math.min(selectedCogsRow.targetMarginPctOverride ?? targetMarginPct, 0.95);
+            const suggested = safeM >= 1
+              ? Number(selectedCogsRow._price || selectedCogsRow.price || 0)
+              : Math.max(0, Math.round(cogs / (1 - safeM)));
+            const targetLabel = Math.round((selectedCogsRow.targetMarginPctOverride ?? targetMarginPct) * 100);
             const money = (v) => `E£${Number(v || 0).toFixed(2)}`;
-
-            const applyToItem = () => {
-              if (!window.confirm(`Set "${row.name}" price to ${money(suggested)}?`)) return;
-              if (kind === "e") {
-                setExtraList((arr) => arr.map((it) => (it.id === row.id ? { ...it, price: suggested } : it)));
-              } else {
-                setMenu((arr) => arr.map((it) => (it.id === row.id ? { ...it, price: suggested } : it)));
-              }
-            };
-
+            const overrideValue =
+              selectedCogsRow.targetMarginPctOverride != null
+                ? Math.round(selectedCogsRow.targetMarginPctOverride * 100)
+                : "";
             return (
               <>
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ fontWeight: 600, marginBottom: 6 }}>Per-item target override</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input
+                      type="number"
+                      min={0}
+                      max={95}
+                      step={1}
+                      value={overrideValue}
+                      onChange={(e) => handleOverrideChange(selectedCogsRow, e.target.value === "" ? "" : Number(e.target.value))}
+                      placeholder="Use global target"
+                      style={{
+                        width: 120,
+                        padding: "8px 10px",
+                        borderRadius: 8,
+                        border: `1px solid ${btnBorder}`,
+                        background: dark ? "#1f1f1f" : "#fff",
+                        color: dark ? "#eee" : "#000",
+                      }}
+                    />
+                    {selectedCogsRow.targetMarginPctOverride != null && (
+                      <button
+                        onClick={() => handleOverrideChange(selectedCogsRow, "")}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 6,
+                          border: `1px solid ${btnBorder}`,
+                          background: dark ? "#2c2c2c" : "#f1f1f1",
+                          color: dark ? "#fff" : "#000",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>Leave blank to inherit the global target margin.</div>
+                </div>
+
                 <div
                   style={{
-                    marginTop: 12,
+                    marginTop: 16,
                     padding: 12,
                     borderRadius: 10,
-                    border: "1px solid rgba(16,185,129,.25)",
-                    background: "rgba(16,185,129,.08)",
+                    background: dark ? "rgba(255,255,255,0.06)" : "#f0f0f0",
+                    display: "grid",
+                    gap: 6,
                   }}
                 >
-                  <b>Suggested price:</b> {money(suggested)}
+                  <div>Suggested price (target {targetLabel}% margin): <b>{money(suggested)}</b></div>
+                  <button
+                    onClick={() => updateRowPrice(selectedCogsRow, suggested, { confirm: true })}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      border: "none",
+                      background: "#2e7d32",
+                      color: "#fff",
+                      cursor: "pointer",
+                      fontWeight: 700,
+                    }}
+                  >
+                    Apply to item
+                  </button>
                 </div>
-                <button
-                  onClick={applyToItem}
-                  style={{
-                    marginTop: 12,
-                    padding: "10px 16px",
-                    borderRadius: 12,
-                    border: "none",
-                    background: "#00966a",
-                    color: "#fff",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  Apply to menu
-                </button>
+
+                {priceScenarios.length > 0 && (
+                  <div style={{ marginTop: 16 }}>
+                    <div style={{ fontWeight: 600, marginBottom: 6 }}>Price vs margin scenarios</div>
+                    <div style={{ overflowX: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                        <thead>
+                          <tr>
+                            <th style={{ textAlign: "right", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>Price</th>
+                            <th style={{ textAlign: "right", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>Margin %</th>
+                            <th style={{ textAlign: "right", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>Δ vs target</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {priceScenarios.map((scenario) => {
+                            const deltaStyle =
+                              scenario.deltaVsTarget >= 0
+                                ? { color: "#2e7d32", fontWeight: 600 }
+                                : { color: "#c62828", fontWeight: 600 };
+                            return (
+                              <tr
+                                key={scenario.price}
+                                onClick={() => handleScenarioApply(scenario.price)}
+                                style={{ cursor: "pointer" }}
+                                title="Click to apply this price"
+                              >
+                                <td style={{ padding: 6, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{money(scenario.price)}</td>
+                                <td style={{ padding: 6, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{scenario.marginPct.toFixed(1)}%</td>
+                                <td style={{ padding: 6, borderBottom: `1px solid ${cardBorder}`, textAlign: "right", ...deltaStyle }}>
+                                  {scenario.deltaVsTarget >= 0 ? "+" : ""}
+                                  {scenario.deltaVsTarget.toFixed(1)} pts
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>Click a row to apply that price instantly.</div>
+                  </div>
+                )}
               </>
             );
           })()}
@@ -4352,7 +4801,66 @@ const generatePurchasesPDF = () => {
       </div>
 
       {/* Single items list (Menu + Extras) under helper */}
- <div style={{ marginTop: 18, overflowX: "auto" }}>
+      <div style={{ marginTop: 18, display: "grid", gap: 12 }}>
+        {cogsSummaryMetrics.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+            {cogsSummaryMetrics.map((metric) => (
+              <div
+                key={metric.label}
+                style={{
+                  flex: "1 1 160px",
+                  minWidth: 160,
+                  border: `1px solid ${cardBorder}`,
+                  borderRadius: 10,
+                  padding: 12,
+                  background: dark ? "rgba(255,255,255,0.04)" : "#fff",
+                }}
+              >
+                <div style={{ fontSize: 12, opacity: 0.7 }}>{metric.label}</div>
+                <div style={{ fontSize: 20, fontWeight: 700 }}>{metric.value}</div>
+                {metric.hint && <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>{metric.hint}</div>}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {missingCostRows.length > 0 && (
+          <div
+            style={{
+              border: `1px solid ${dark ? "rgba(255,193,7,0.4)" : "#ffecb3"}`,
+              background: dark ? "rgba(255,193,7,0.1)" : "#fff8e1",
+              color: dark ? "#ffecb3" : "#8d6e63",
+              padding: 12,
+              borderRadius: 10,
+              display: "flex",
+              gap: 12,
+              flexWrap: "wrap",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <div>
+              ⚠️ {missingCostRows.length} item{missingCostRows.length === 1 ? "" : "s"} have ingredients without cost/unit values. Update inventory costs to unlock accurate margins.
+            </div>
+            <button
+              onClick={() => {
+                const el = document.getElementById("inventory-costs-section");
+                if (el) el.scrollIntoView({ behavior: "smooth" });
+              }}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 6,
+                border: `1px solid ${btnBorder}`,
+                background: dark ? "#2c2c2c" : "#fff",
+                color: dark ? "#fff" : "#000",
+                cursor: "pointer",
+              }}
+            >
+              Go to Inventory Costs
+            </button>
+          </div>
+        )}
+
         <div
           style={{
             display: "flex",
@@ -4360,64 +4868,206 @@ const generatePurchasesPDF = () => {
             alignItems: "center",
             justifyContent: "space-between",
             gap: 12,
-            marginBottom: 8,
           }}
         >
-          <div style={{ fontSize: 13, opacity: 0.75 }}>{marginSummary}</div>
-          <label
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              fontSize: 13,
-              cursor: "pointer",
-            }}
-          >
+          <div style={{ fontSize: 13, opacity: 0.75, flex: "1 1 240px", minWidth: 200 }}>{marginSummary}</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", justifyContent: "flex-end" }}>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={showLowMarginOnly}
+                onChange={(e) => setShowLowMarginOnly(e.target.checked)}
+              />
+              Below target
+            </label>
+            <select
+              value={cogsTypeFilter}
+              onChange={(e) => setCogsTypeFilter(e.target.value)}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 8,
+                border: `1px solid ${btnBorder}`,
+                background: dark ? "#1f1f1f" : "#fff",
+                color: dark ? "#eee" : "#000",
+              }}
+            >
+              <option value="all">All items</option>
+              <option value="menu">Menu only</option>
+              <option value="extra">Extras only</option>
+            </select>
             <input
-              type="checkbox"
-              checked={showLowMarginOnly}
-              onChange={(e) => setShowLowMarginOnly(e.target.checked)}
+              type="search"
+              value={cogsSearch}
+              onChange={(e) => setCogsSearch(e.target.value)}
+              placeholder="Search name"
+              style={{
+                padding: "6px 10px",
+                borderRadius: 8,
+                border: `1px solid ${btnBorder}`,
+                background: dark ? "#1f1f1f" : "#fff",
+                color: dark ? "#eee" : "#000",
+                minWidth: 160,
+              }}
             />
-            Show items below target margin
-          </label>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <select
+                value={cogsSort.key}
+                onChange={(e) => setCogsSort((prev) => ({ ...prev, key: e.target.value }))}
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: 8,
+                  border: `1px solid ${btnBorder}`,
+                  background: dark ? "#1f1f1f" : "#fff",
+                  color: dark ? "#eee" : "#000",
+                }}
+              >
+                <option value="margin">Sort by margin</option>
+                <option value="gap">Sort by gap</option>
+                <option value="price">Sort by price</option>
+                <option value="cogs">Sort by COGS</option>
+                <option value="name">Sort by name</option>
+              </select>
+              <button
+                onClick={() => setCogsSort((prev) => ({ ...prev, dir: prev.dir === "asc" ? "desc" : "asc" }))}
+                style={{
+                  padding: "6px 8px",
+                  borderRadius: 6,
+                  border: `1px solid ${btnBorder}`,
+                  background: dark ? "#2c2c2c" : "#f1f1f1",
+                  color: dark ? "#fff" : "#000",
+                  cursor: "pointer",
+                }}
+                title="Toggle sort direction"
+              >
+                {cogsSort.dir === "asc" ? "↑" : "↓"}
+              </button>
+            </div>
+            <button
+              onClick={handleExportCogsCsv}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 8,
+                border: `1px solid ${btnBorder}`,
+                background: dark ? "#2c2c2c" : "#f1f1f1",
+                color: dark ? "#fff" : "#000",
+                cursor: "pointer",
+              }}
+            >
+              Export CSV
+            </button>
+            <button
+              onClick={handleApplyTargetMarginToLowItems}
+              disabled={!cogsMarginData.below.length}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 8,
+                border: "none",
+                background: cogsMarginData.below.length ? "#ef5350" : dark ? "#3a3a3a" : "#d0d0d0",
+                color: cogsMarginData.below.length ? "#fff" : dark ? "#777" : "#777",
+                cursor: cogsMarginData.below.length ? "pointer" : "not-allowed",
+                fontWeight: 600,
+              }}
+            >
+              Fix low-margin prices
+            </button>
+          </div>
         </div>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: "left",  padding: 10, borderBottom: `1px solid ${cardBorder}` }}>Item</th>
-              <th style={{ textAlign: "right", padding: 10, borderBottom: `1px solid ${cardBorder}` }}>COGS</th>
-              <th style={{ textAlign: "right", padding: 10, borderBottom: `1px solid ${cardBorder}` }}>Price</th>
-              <th style={{ textAlign: "right", padding: 10, borderBottom: `1px solid ${cardBorder}` }}>Margin %</th>
-            </tr>
-          </thead>
-          <tbody>
-            {cogsRowsToDisplay.map((def) => {
-              const warn = def._marginPct < cogsMarginData.threshold;
-              const warnStyles = warn
-                ? {
-                    background: dark ? "rgba(220,38,38,0.24)" : "rgba(220,38,38,0.12)",
-                    color: dark ? "#ffb4ab" : "#b91c1c",
-                    fontWeight: 600,
-                  }
-                : {};
-              const money = (v) => `E£${Number(v || 0).toFixed(2)}`;
-              const baseCellStyle = { padding: 10, borderBottom: `1px solid ${cardBorder}` };
-              return (
-                <tr key={def._k}>
-                  <td style={{ ...baseCellStyle, ...warnStyles }}>{def.name}</td>
-                  <td style={{ ...baseCellStyle, textAlign: "right", ...warnStyles }}>{money(def._cogs)}</td>
-                  <td style={{ ...baseCellStyle, textAlign: "right", ...warnStyles }}>{money(def._price)}</td>
-                  <td style={{ ...baseCellStyle, textAlign: "right", ...warnStyles }}>{def._marginPct.toFixed(1)}%</td>
+
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left", padding: 10, borderBottom: `1px solid ${cardBorder}` }}>Item</th>
+                <th style={{ textAlign: "right", padding: 10, borderBottom: `1px solid ${cardBorder}` }}>COGS</th>
+                <th style={{ textAlign: "right", padding: 10, borderBottom: `1px solid ${cardBorder}` }}>Price</th>
+                <th style={{ textAlign: "right", padding: 10, borderBottom: `1px solid ${cardBorder}` }}>Margin %</th>
+                <th style={{ textAlign: "right", padding: 10, borderBottom: `1px solid ${cardBorder}` }}>Gap to Target</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedCogsRows.map((def) => {
+                const warn = def._marginPct + 0.0001 < def._targetMarginPct;
+                const warnStyles = warn
+                  ? {
+                      background: dark ? "rgba(220,38,38,0.24)" : "rgba(220,38,38,0.12)",
+                      color: dark ? "#ffb4ab" : "#b91c1c",
+                      fontWeight: 600,
+                    }
+                  : {};
+                const money = (v) => `E£${Number(v || 0).toFixed(2)}`;
+                const baseCellStyle = { padding: 10, borderBottom: `1px solid ${cardBorder}` };
+                const gap = Number(def._marginGap || 0);
+                const gapStyles = gap > 0
+                  ? { color: dark ? "#ffb4ab" : "#c62828", fontWeight: 600 }
+                  : gap < 0
+                  ? { color: dark ? "#a5d6a7" : "#2e7d32", fontWeight: 600 }
+                  : {};
+                const draft = inlinePriceDrafts[def._k];
+                return (
+                  <tr key={def._k}>
+                    <td style={{ ...baseCellStyle, ...warnStyles }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span>{def.name}</span>
+                        {def._hasMissingCosts && (
+                          <span title="Some ingredients are missing cost/unit" style={{ fontSize: 14 }}>⚠️</span>
+                        )}
+                      </div>
+                    </td>
+                    <td style={{ ...baseCellStyle, textAlign: "right", ...warnStyles }}>{money(def._cogs)}</td>
+                    <td style={{ ...baseCellStyle, textAlign: "right", ...warnStyles }}>
+                      <input
+                        type="number"
+                        value={draft ?? def._price}
+                        onChange={(e) =>
+                          setInlinePriceDrafts((prev) => ({ ...prev, [def._k]: e.target.value }))
+                        }
+                        onBlur={(e) => handleInlinePriceCommit(def, e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleInlinePriceCommit(def, e.currentTarget.value);
+                          } else if (e.key === "Escape") {
+                            e.preventDefault();
+                            setInlinePriceDrafts((prev) => {
+                              const next = { ...prev };
+                              delete next[def._k];
+                              return next;
+                            });
+                            e.currentTarget.value = def._price;
+                          }
+                        }}
+                        style={{
+                          width: 90,
+                          padding: "4px 6px",
+                          borderRadius: 6,
+                          border: `1px solid ${btnBorder}`,
+                          background: dark ? "#1f1f1f" : "#fff",
+                          color: dark ? "#eee" : "#000",
+                          textAlign: "right",
+                        }}
+                      />
+                    </td>
+                    <td style={{ ...baseCellStyle, textAlign: "right", ...warnStyles }}>{def._marginPct.toFixed(1)}%</td>
+                    <td style={{ ...baseCellStyle, textAlign: "right", ...gapStyles }}>{gap.toFixed(1)} pts</td>
+                  </tr>
+                );
+              })}
+              {sortedCogsRows.length === 0 && (
+                <tr>
+                  <td colSpan={5} style={{ padding: 12, textAlign: "center", opacity: 0.7 }}>
+                    No items match the current filters.
+                  </td>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
 
     {/* ── Inventory Costs (edit Cost/Unit, with auto-sync toggle) ───────── */}
     <div
+      id="inventory-costs-section"
       style={{
         border: `1px solid ${cardBorder}`,
         borderRadius: 10,
@@ -8747,20 +9397,3 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
