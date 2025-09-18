@@ -22,7 +22,7 @@ import {
   runTransaction, // <-- atomic counter
 } from "firebase/firestore";
 
-const toIso = (v) => {
+export const toIso = (v) => {
   if (!v) return null;
   if (v instanceof Date) return v.toISOString();
   if (v instanceof Timestamp) return v.toDate().toISOString();
@@ -30,7 +30,7 @@ const toIso = (v) => {
   return isNaN(d) ? null : d.toISOString();
 };
 const FIRESTORE_SENTINEL_KEY = "_methodName";
-function sanitizeForFirestore(value) {
+export function sanitizeForFirestore(value) {
   if (value === undefined) return undefined;
   if (value === null) return null;
   if (typeof value === "number") {
@@ -90,7 +90,7 @@ function formatDateDDMMYY(date) {
   const year = String(d.getFullYear()).slice(-2);
   return `${day}/${month}/${year}`;
 }
-function packStateForCloud(state) {
+export function packStateForCloud(state) {
   const {
     menu,
     extraList,
@@ -98,6 +98,7 @@ function packStateForCloud(state) {
     inventory,
     nextOrderNo,
     workerProfiles,
+    workerSessions,
     dark,
     workers,
     paymentMethods,
@@ -111,6 +112,7 @@ function packStateForCloud(state) {
     dayMeta,
     bankTx,
     reconHistory,
+    realtimeOrders,
   } = state;
   const purchases = Array.isArray(state.purchases)
     ? state.purchases.map((p) => ({
@@ -133,12 +135,13 @@ function packStateForCloud(state) {
     ? state.deliveryZones
     : [];
   const payload = {
-    workerProfiles,
-    workerSessions: (state.workerSessions || []).map((session) => ({
+ workerProfiles,
+    workerSessions: (workerSessions || []).map((session) => ({
       ...session,
       signInAt: toIso(session.signInAt),
       signOutAt: toIso(session.signOutAt),
     })),
+    realtimeOrders: typeof realtimeOrders === "boolean" ? realtimeOrders : undefined,
     version: 1,
     updatedAt: serverTimestamp(),
     menu,
@@ -194,7 +197,7 @@ function packStateForCloud(state) {
   };
   return sanitizeForFirestore(payload);
 }
-function unpackStateFromCloud(data, fallbackDayMeta = {}) {
+export function unpackStateFromCloud(data, fallbackDayMeta = {}) {
   const out = {};
   if (Array.isArray(data.orders)) {
     out.orders = data.orders.map((o) => ({
@@ -262,16 +265,17 @@ function unpackStateFromCloud(data, fallbackDayMeta = {}) {
   if (Array.isArray(data.inventorySnapshot)) out.inventorySnapshot = data.inventorySnapshot;
   if (data.adminPins) out.adminPins = data.adminPins;
   if (Array.isArray(data.orderTypes)) out.orderTypes = data.orderTypes;
-  if (typeof data.defaultDeliveryFee === "number")
+if (typeof data.defaultDeliveryFee === "number")
     out.defaultDeliveryFee = data.defaultDeliveryFee;
-    if (Array.isArray(data.workerProfiles)) out.workerProfiles = data.workerProfiles;
-if (Array.isArray(data.workerSessions)) {
-    out.workerSessions = data.workerSessions.map(s => ({
+  if (Array.isArray(data.workerProfiles)) out.workerProfiles = data.workerProfiles;
+  if (Array.isArray(data.workerSessions)) {
+    out.workerSessions = data.workerSessions.map((s) => ({
       ...s,
       signInAt: s.signInAt ? new Date(s.signInAt) : null,
       signOutAt: s.signOutAt ? new Date(s.signOutAt) : null,
     }));
   }
+  if (typeof data.realtimeOrders === "boolean") out.realtimeOrders = data.realtimeOrders;
   return out;
 }
 
@@ -2053,7 +2057,7 @@ if (unpacked.workerSessions) setWorkerSessions(unpacked.workerSessions);
       nextOrderNo,
        reconHistory,
         workerProfiles,
- workerSessions, 
+ workerSessions,
       dark,
       workers,
       paymentMethods,
@@ -2070,6 +2074,7 @@ if (unpacked.workerSessions) setWorkerSessions(unpacked.workerSessions);
       deliveryZones,
       dayMeta,
       bankTx,
+      realtimeOrders,
     });
     writeSeqRef.current += 1;
     const body = {
@@ -2080,8 +2085,9 @@ if (unpacked.workerSessions) setWorkerSessions(unpacked.workerSessions);
     };
     await setDoc(stateDocRef, body, { merge: true });
     const now = Date.now();
-    setLastLocalEditAt(now);
+   setLastLocalEditAt(now);
     setLastAppliedCloudAt(now);
+    setCloudStatus((s) => ({ ...s, lastSaveAt: new Date(), error: null }));
 
     alert("Synced to cloud ✔");
   } catch (e) {
@@ -9287,4 +9293,5 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
     </div>
   );
 }
+
 
