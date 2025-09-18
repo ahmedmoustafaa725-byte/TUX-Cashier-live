@@ -933,6 +933,133 @@ const lowStockItems = useMemo(() => {
     return Number(it.qty || 0) <= min; // at or below threshold
   });
 }, [inventory]);
+const inventoryReportRows = useMemo(() => {
+  if (!inventorySnapshot || inventorySnapshot.length === 0) return [];
+  const snapMap = {};
+  for (const s of inventorySnapshot) snapMap[s.id] = s;
+  return inventory.map((it) => {
+    const s = snapMap[it.id];
+    const start = s ? s.qtyAtLock : 0;
+    const now = it.qty;
+    const used = Math.max(0, start - now);
+    return { name: it.name, unit: it.unit, start, now, used };
+  });
+}, [inventory, inventorySnapshot]);
+const reorderSuggestions = useMemo(() => {
+  if (!Array.isArray(inventory) || !inventory.length) return [];
+
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const now = new Date();
+  const lockDate =
+    inventoryLockedAt instanceof Date
+      ? inventoryLockedAt
+      : inventoryLockedAt
+      ? new Date(inventoryLockedAt)
+      : null;
+  const windowDays = lockDate ? Math.max(1, (now - lockDate) / msPerDay) : 7;
+  const windowStart = lockDate
+    ? lockDate
+    : new Date(now.getTime() - windowDays * msPerDay);
+
+  const invById = new Map((inventory || []).map((it) => [it.id, it]));
+  const snapshotById = new Map(
+    (inventorySnapshot || []).map((s) => [s.id, s])
+  );
+  const reportByName = new Map(
+    (inventoryReportRows || []).map((row) => [row.name, row])
+  );
+
+  const purchaseTotals = new Map();
+  const lastPurchaseAt = new Map();
+  const allPurchases = [...(historicalPurchases || []), ...(purchases || [])];
+  for (const p of allPurchases) {
+    const inv = p?.ingredientId ? invById.get(p.ingredientId) : null;
+    if (!inv) continue;
+    const when = p?.date instanceof Date ? p.date : p?.date ? new Date(p.date) : null;
+    if (!when || Number.isNaN(+when) || when < windowStart) continue;
+    const qtyConv = convertToInventoryUnit(
+      Number(p.qty || 0),
+      p.unit,
+      inv.unit
+    );
+    const qty = qtyConv != null ? Number(qtyConv) : Number(p.qty || 0);
+    if (!Number.isFinite(qty)) continue;
+    purchaseTotals.set(inv.id, (purchaseTotals.get(inv.id) || 0) + qty);
+    const prev = lastPurchaseAt.get(inv.id);
+    if (!prev || when > prev) lastPurchaseAt.set(inv.id, when);
+  }
+
+  const suggestions = [];
+  const targetDays = 7;
+
+  for (const item of inventory || []) {
+    const min = Number(item?.minQty || 0);
+    if (!(min > 0)) continue;
+
+    const currentQty = Number(item?.qty || 0);
+    const snap = snapshotById.get(item.id);
+    const reportRow = reportByName.get(item.name);
+    const startQty = snap && snap.qtyAtLock != null ? Number(snap.qtyAtLock) : null;
+    const usedSinceLock =
+      reportRow && reportRow.used != null
+        ? Number(reportRow.used || 0)
+        : startQty != null
+        ? Math.max(0, Number(startQty) - currentQty)
+        : 0;
+    const usagePerDay = usedSinceLock > 0 ? usedSinceLock / windowDays : 0;
+    const baselineUsage = usagePerDay > 0 ? usagePerDay : min / targetDays;
+    const desiredStock = baselineUsage * targetDays;
+    const recentPurchases = Number(purchaseTotals.get(item.id) || 0);
+    const recommendedRaw = desiredStock - currentQty - recentPurchases;
+    const recommendedQty = recommendedRaw > 0 ? recommendedRaw : 0;
+    const daysRemaining = baselineUsage > 0 ? currentQty / baselineUsage : null;
+
+    const reasonParts = [];
+    if (usagePerDay > 0)
+      reasonParts.push(`≈${usagePerDay.toFixed(2)} ${item.unit || ""}/day used`);
+    else reasonParts.push("usage based on min threshold");
+    reasonParts.push(`target ${targetDays}-day stock`);
+    if (recentPurchases > 0)
+      reasonParts.push(
+        `${recentPurchases.toFixed(1)} ${item.unit || ""} bought recently`
+      );
+    if (daysRemaining != null)
+      reasonParts.push(`${daysRemaining.toFixed(1)}d on hand`);
+    if (lastPurchaseAt.has(item.id))
+      reasonParts.push(
+        `last buy ${formatDateDDMMYY(lastPurchaseAt.get(item.id))}`
+      );
+
+    suggestions.push({
+      id: item.id,
+      name: item.name,
+      unit: item.unit,
+      currentQty,
+      minQty: min,
+      usagePerDay,
+      baselineUsage,
+      daysRemaining,
+      recentPurchases,
+      recommendedQty,
+      rationale: reasonParts.join(" · "),
+    });
+  }
+
+  suggestions.sort((a, b) => b.recommendedQty - a.recommendedQty);
+  return suggestions;
+}, [
+  inventory,
+  inventorySnapshot,
+  inventoryLockedAt,
+  inventoryReportRows,
+  purchases,
+  historicalPurchases,
+]);
+const reorderSuggestionById = useMemo(() => {
+  const map = new Map();
+  for (const s of reorderSuggestions) map.set(s.id, s);
+  return map;
+}, [reorderSuggestions]);
 const lowStockCount = lowStockItems.length;
 const [dayMeta, setDayMeta] = useState({
   startedBy: "",
@@ -2779,18 +2906,7 @@ const filteredBankTx = useMemo(() => {
     return d >= start && d <= end;
   });
 }, [bankTx, bankFilter, bankDay, bankMonth, dayMeta]);
-  const inventoryReportRows = useMemo(() => {
-    if (!inventorySnapshot || inventorySnapshot.length === 0) return [];
-    const snapMap = {};
-    for (const s of inventorySnapshot) snapMap[s.id] = s;
-    return inventory.map((it) => {
-      const s = snapMap[it.id];
-      const start = s ? s.qtyAtLock : 0;
-      const now = it.qty;
-      const used = Math.max(0, start - now);
-      return { name: it.name, unit: it.unit, start, now, used };
-    });
-  }, [inventory, inventorySnapshot]);
+
 const [pStart, pEnd] = useMemo(
   () => getPeriodRange(purchaseFilter, dayMeta, purchaseDay, purchaseMonth),
   [purchaseFilter, dayMeta, purchaseDay, purchaseMonth]
@@ -3504,27 +3620,48 @@ const generatePurchasesPDF = () => {
     {lowStockCount > 0 && (
       <div style={{ overflowX: "auto", marginTop: 8 }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
+ <thead>
             <tr>
               <th style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Item</th>
               <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Qty</th>
               <th style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Unit</th>
               <th style={{ textAlign: "right", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Min</th>
+              <th style={{ textAlign: "left", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>Recommended Order</th>
             </tr>
           </thead>
           <tbody>
-            {lowStockItems.map(it => (
-              <tr key={it.id}>
-                <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{it.name}</td>
-                <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
-                  {Number(it.qty || 0)}
-                </td>
-                <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{it.unit}</td>
-                <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
-                  {Number(it.minQty || 0)}
-                </td>
-              </tr>
-            ))}
+            {lowStockItems.map(it => {
+              const suggestion = reorderSuggestionById.get(it.id);
+              const recQty = suggestion ? Number(suggestion.recommendedQty || 0) : 0;
+              return (
+                <tr key={it.id}>
+                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{it.name}</td>
+                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
+                    {Number(it.qty || 0)}
+                  </td>
+                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{it.unit}</td>
+                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
+                    {Number(it.minQty || 0)}
+                  </td>
+                  <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>
+                    {suggestion ? (
+                      <div>
+                        <div style={{ fontWeight: 600 }}>
+                          {recQty > 0
+                            ? `${recQty.toFixed(1)} ${it.unit || ""}`
+                            : "Monitor"}
+                        </div>
+                        <div style={{ fontSize: 12, opacity: 0.7 }}>
+                          {suggestion.rationale}
+                        </div>
+                      </div>
+                    ) : (
+                      <span style={{ opacity: 0.7 }}>—</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -7740,6 +7877,7 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
     </div>
   );
 }
+
 
 
 
