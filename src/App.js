@@ -4091,7 +4091,6 @@ const generatePurchasesPDF = () => {
     ["expenses", "Expenses"],
     ["usage", "Inventory Usage"],
      ["reconcile","Reconcile"],
-    ["contacts","Customer Contacts"],
     ["admin", "Admin"], // <-- new consolidated tab
   ].map(([key, label]) => (
     <button
@@ -4118,6 +4117,7 @@ const generatePurchasesPDF = () => {
       ["cogs", "COGS"],
       ["bank", "Bank"],
       ["workerlog", "Worker Log"],
+      ["contacts", "Customer Contacts"],
       ["reports", "Reports"],
       ["edit", "Edit"],
       ["settings", "Settings"],
@@ -6039,7 +6039,7 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
 
 
 {/* ───────────────────────── Customer Contacts TAB ───────────────────────── */}
-{activeTab === "contacts" && (
+{activeTab === "admin" && adminSubTab === "contacts" && (
   <div style={{ display: "grid", gap: 16 }}>
     <div
       style={{
@@ -8718,6 +8718,7 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
     </div>
   );
 }
+
 
 
 
