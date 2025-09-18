@@ -2398,27 +2398,6 @@ const handleInlinePriceCommit = (row, value) => {
     return next;
   });
 };
-const handleOverrideChange = (row, value) => {
-  if (!row) return;
-  const cleaned = value === "" ? "" : Math.max(0, Math.min(95, Number(value || 0)));
-  const normalized = cleaned === "" ? null : Number((cleaned / 100).toFixed(4));
-  const [kind, idStr] = String(row._k || "").split("-");
-  const id = Number(idStr);
-  if (!id) return;
-  if (kind === "e") {
-    setExtraList((arr) =>
-      arr.map((it) =>
-        it.id === id ? { ...it, targetMarginPctOverride: normalized } : it
-      )
-    );
-  } else {
-    setMenu((arr) =>
-      arr.map((it) =>
-        it.id === id ? { ...it, targetMarginPctOverride: normalized } : it
-      )
-    );
-  }
-};
 const selectedCogsRow = useMemo(
   () => cogsMarginData.all.find((row) => row._k === cogsKey) || null,
   [cogsMarginData, cogsKey]
@@ -2478,38 +2457,7 @@ const marginTrend = useMemo(() => {
     .sort((a, b) => a.day.localeCompare(b.day))
     .slice(-10);
 }, [selectedCogsRow, orders, invById]);
-const priceScenarios = useMemo(() => {
-  if (!selectedCogsRow) return [];
-  const basePrice = Number(selectedCogsRow.price ?? selectedCogsRow._price ?? 0);
-  const unitCogs = computeCOGSForItemDef(selectedCogsRow, invById);
-  const targetRatio = Math.min(
-    selectedCogsRow.targetMarginPctOverride ?? targetMarginPct,
-    0.95
-  );
-  const targetPct = Number(selectedCogsRow._targetMarginPct || targetRatio * 100);
-  const deltas = [-20, -10, -5, -2, 0, 2, 5, 10, 20];
-  const seen = new Set();
-  const scenarios = [];
-  for (const delta of deltas) {
-    const price = Math.max(0, Math.round((basePrice + delta) * 100) / 100);
-    if (seen.has(price)) continue;
-    seen.add(price);
-    const marginPct = price > 0 ? ((price - unitCogs) / price) * 100 : 0;
-    scenarios.push({ price, marginPct, deltaVsTarget: marginPct - targetPct });
-  }
-  if (targetRatio < 1) {
-    const suggested = Math.max(0, Math.round(unitCogs / (1 - targetRatio)));
-    if (!seen.has(suggested)) {
-      const marginPct = suggested > 0 ? ((suggested - unitCogs) / suggested) * 100 : 0;
-      scenarios.push({ price: suggested, marginPct, deltaVsTarget: marginPct - targetPct });
-    }
-  }
-  return scenarios.sort((a, b) => a.price - b.price);
-}, [selectedCogsRow, invById, targetMarginPct]);
-const handleScenarioApply = (price) => {
-  if (!selectedCogsRow) return;
-  updateRowPrice(selectedCogsRow, price, { confirm: true });
-};
+
    function isWithin(d, start, end) {
   const t = +new Date(d);
   return t >= +start && t <= +end;
@@ -4674,7 +4622,7 @@ const generatePurchasesPDF = () => {
             <div style={{ opacity: 0.7, textAlign: "left" }}>%</div>
           </div>
 
-          {selectedCogsRow && (() => {
+               {selectedCogsRow && (() => {
             const cogs = Number(selectedCogsRow._cogs ?? computeCOGSForItemDef(selectedCogsRow, invById));
             const safeM = Math.min(selectedCogsRow.targetMarginPctOverride ?? targetMarginPct, 0.95);
             const suggested = safeM >= 1
@@ -4682,119 +4630,33 @@ const generatePurchasesPDF = () => {
               : Math.max(0, Math.round(cogs / (1 - safeM)));
             const targetLabel = Math.round((selectedCogsRow.targetMarginPctOverride ?? targetMarginPct) * 100);
             const money = (v) => `E£${Number(v || 0).toFixed(2)}`;
-            const overrideValue =
-              selectedCogsRow.targetMarginPctOverride != null
-                ? Math.round(selectedCogsRow.targetMarginPctOverride * 100)
-                : "";
             return (
-              <>
-                <div style={{ marginTop: 12 }}>
-                  <div style={{ fontWeight: 600, marginBottom: 6 }}>Per-item target override</div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <input
-                      type="number"
-                      min={0}
-                      max={95}
-                      step={1}
-                      value={overrideValue}
-                      onChange={(e) => handleOverrideChange(selectedCogsRow, e.target.value === "" ? "" : Number(e.target.value))}
-                      placeholder="Use global target"
-                      style={{
-                        width: 120,
-                        padding: "8px 10px",
-                        borderRadius: 8,
-                        border: `1px solid ${btnBorder}`,
-                        background: dark ? "#1f1f1f" : "#fff",
-                        color: dark ? "#eee" : "#000",
-                      }}
-                    />
-                    {selectedCogsRow.targetMarginPctOverride != null && (
-                      <button
-                        onClick={() => handleOverrideChange(selectedCogsRow, "")}
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: 6,
-                          border: `1px solid ${btnBorder}`,
-                          background: dark ? "#2c2c2c" : "#f1f1f1",
-                          color: dark ? "#fff" : "#000",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Clear
-                      </button>
-                    )}
-                  </div>
-                  <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>Leave blank to inherit the global target margin.</div>
-                </div>
-
-                <div
+              <div
+                style={{
+                  marginTop: 16,
+                  padding: 12,
+                  borderRadius: 10,
+                  background: dark ? "rgba(255,255,255,0.06)" : "#f0f0f0",
+                  display: "grid",
+                  gap: 6,
+                }}
+              >
+                <div>Suggested price (target {targetLabel}% margin): <b>{money(suggested)}</b></div>
+                <button
+                  onClick={() => updateRowPrice(selectedCogsRow, suggested, { confirm: true })}
                   style={{
-                    marginTop: 16,
-                    padding: 12,
-                    borderRadius: 10,
-                    background: dark ? "rgba(255,255,255,0.06)" : "#f0f0f0",
-                    display: "grid",
-                    gap: 6,
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    border: "none",
+                    background: "#2e7d32",
+                    color: "#fff",
+                    cursor: "pointer",
+                    fontWeight: 700,
                   }}
                 >
-                  <div>Suggested price (target {targetLabel}% margin): <b>{money(suggested)}</b></div>
-                  <button
-                    onClick={() => updateRowPrice(selectedCogsRow, suggested, { confirm: true })}
-                    style={{
-                      padding: "8px 12px",
-                      borderRadius: 8,
-                      border: "none",
-                      background: "#2e7d32",
-                      color: "#fff",
-                      cursor: "pointer",
-                      fontWeight: 700,
-                    }}
-                  >
-                    Apply to item
-                  </button>
-                </div>
-
-                {priceScenarios.length > 0 && (
-                  <div style={{ marginTop: 16 }}>
-                    <div style={{ fontWeight: 600, marginBottom: 6 }}>Price vs margin scenarios</div>
-                    <div style={{ overflowX: "auto" }}>
-                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                        <thead>
-                          <tr>
-                            <th style={{ textAlign: "right", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>Price</th>
-                            <th style={{ textAlign: "right", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>Margin %</th>
-                            <th style={{ textAlign: "right", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>Δ vs target</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {priceScenarios.map((scenario) => {
-                            const deltaStyle =
-                              scenario.deltaVsTarget >= 0
-                                ? { color: "#2e7d32", fontWeight: 600 }
-                                : { color: "#c62828", fontWeight: 600 };
-                            return (
-                              <tr
-                                key={scenario.price}
-                                onClick={() => handleScenarioApply(scenario.price)}
-                                style={{ cursor: "pointer" }}
-                                title="Click to apply this price"
-                              >
-                                <td style={{ padding: 6, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{money(scenario.price)}</td>
-                                <td style={{ padding: 6, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{scenario.marginPct.toFixed(1)}%</td>
-                                <td style={{ padding: 6, borderBottom: `1px solid ${cardBorder}`, textAlign: "right", ...deltaStyle }}>
-                                  {scenario.deltaVsTarget >= 0 ? "+" : ""}
-                                  {scenario.deltaVsTarget.toFixed(1)} pts
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                    <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>Click a row to apply that price instantly.</div>
-                  </div>
-                )}
-              </>
+                  Apply to item
+                </button>
+              </div>
             );
           })()}
         </div>
