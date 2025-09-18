@@ -29,6 +29,33 @@ const toIso = (v) => {
   const d = new Date(v);
   return isNaN(d) ? null : d.toISOString();
 };
+const FIRESTORE_SENTINEL_KEY = "_methodName";
+function sanitizeForFirestore(value) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return null;
+    return Number(value);
+  }
+  if (Array.isArray(value)) {
+    const cleaned = value
+      .map((item) => sanitizeForFirestore(item))
+      .filter((item) => item !== undefined);
+    return cleaned;
+  }
+  if (value instanceof Date) return value.toISOString();
+  if (value instanceof Timestamp) return value;
+  if (typeof value === "object") {
+    if (value && typeof value[FIRESTORE_SENTINEL_KEY] === "string") return value;
+    const out = {};
+    for (const [key, inner] of Object.entries(value || {})) {
+      const cleaned = sanitizeForFirestore(inner);
+      if (cleaned !== undefined) out[key] = cleaned;
+    }
+    return out;
+  }
+  return value;
+}
 const firebaseConfig = {
   apiKey: "AIzaSyAp1F6t8zgRiJI9xOzFkKJVsCQIT9BWXno",
   authDomain: "tux-cashier-system.firebaseapp.com",
@@ -83,18 +110,18 @@ function packStateForCloud(state) {
     expenses,
     dayMeta,
     bankTx,
-     reconHistory,
+    reconHistory,
   } = state;
-const purchases = Array.isArray(state.purchases)
-  ? state.purchases.map((p) => ({
-      ...p,
-      date: toIso(p.date),
-    }))
-  : [];
- const purchaseCategories = Array.isArray(state.purchaseCategories)
+  const purchases = Array.isArray(state.purchases)
+    ? state.purchases.map((p) => ({
+        ...p,
+        date: toIso(p.date),
+      }))
+    : [];
+  const purchaseCategories = Array.isArray(state.purchaseCategories)
     ? state.purchaseCategories
     : [];
- const customers = Array.isArray(state.customers)
+  const customers = Array.isArray(state.customers)
     ? state.customers.map((c) => ({
         ...c,
         lastOrderAt: toIso(c.lastOrderAt),
@@ -105,12 +132,12 @@ const purchases = Array.isArray(state.purchases)
   const deliveryZones = Array.isArray(state.deliveryZones)
     ? state.deliveryZones
     : [];
- return {
-        workerProfiles,
-    workerSessions: (state.workerSessions || []).map(s => ({
-      ...s,
-      signInAt: toIso(s.signInAt),
-      signOutAt: toIso(s.signOutAt),
+  const payload = {
+    workerProfiles,
+    workerSessions: (state.workerSessions || []).map((session) => ({
+      ...session,
+      signInAt: toIso(session.signInAt),
+      signOutAt: toIso(session.signOutAt),
     })),
     version: 1,
     updatedAt: serverTimestamp(),
@@ -118,8 +145,8 @@ const purchases = Array.isArray(state.purchases)
     extras: extraList,
     orders: (orders || []).map((o) => ({
       ...o,
-     date: toIso(o.date),
-restockedAt: toIso(o.restockedAt),
+      date: toIso(o.date),
+      restockedAt: toIso(o.restockedAt),
     })),
     inventory,
     nextOrderNo,
@@ -143,11 +170,11 @@ restockedAt: toIso(o.restockedAt),
     dayMeta: dayMeta
       ? {
           ...dayMeta,
-         startedAt: toIso(dayMeta.startedAt),
- endedAt: toIso(dayMeta.endedAt),
- lastReportAt: toIso(dayMeta.lastReportAt),
- resetAt: toIso(dayMeta.resetAt),
-         reconciledAt: toIso(dayMeta.reconciledAt),
+          startedAt: toIso(dayMeta.startedAt),
+          endedAt: toIso(dayMeta.endedAt),
+          lastReportAt: toIso(dayMeta.lastReportAt),
+          resetAt: toIso(dayMeta.resetAt),
+          reconciledAt: toIso(dayMeta.reconciledAt),
           shiftChanges: Array.isArray(dayMeta.shiftChanges)
             ? dayMeta.shiftChanges.map((c) => ({
                 ...c,
@@ -160,11 +187,12 @@ restockedAt: toIso(o.restockedAt),
       ...t,
       date: toIso(t.date),
     })),
-     reconHistory: (reconHistory || []).map(r => ({
+    reconHistory: (reconHistory || []).map((r) => ({
       ...r,
       at: toIso(r.at),
     })),
   };
+  return sanitizeForFirestore(payload);
 }
 function unpackStateFromCloud(data, fallbackDayMeta = {}) {
   const out = {};
@@ -248,34 +276,34 @@ if (Array.isArray(data.workerSessions)) {
 }
 
 function normalizeOrderForCloud(order) {
-return {
-  orderNo: order.orderNo,
-  worker: order.worker,
-  payment: order.payment,
-  paymentParts: Array.isArray(order.paymentParts)
-    ? order.paymentParts.map((p) => ({ method: p.method, amount: Number(p.amount || 0) }))
-    : [],
-  orderType: order.orderType,
-  deliveryFee: order.deliveryFee,
-  deliveryName: order.deliveryName || "",
-deliveryPhone: order.deliveryPhone || "",
-deliveryAddress: order.deliveryAddress || "",
-deliveryZoneId: order.deliveryZoneId || "",   
-  total: order.total,
-  itemsTotal: order.itemsTotal,
-  cashReceived: order.cashReceived ?? null,
-  changeDue: order.changeDue ?? null,
-  done: !!order.done,
-  voided: !!order.voided,
-  voidReason: order.voidReason || "",
-  note: order.note || "",
-  date: toIso(order.date) || new Date().toISOString(),
-restockedAt: toIso(order.restockedAt),
-  cart: order.cart || [],
-  idemKey: order.idemKey || "",
-  createdAt: serverTimestamp(),
-  updatedAt: serverTimestamp(),
-};
+  return sanitizeForFirestore({
+    orderNo: order.orderNo,
+    worker: order.worker,
+    payment: order.payment,
+    paymentParts: Array.isArray(order.paymentParts)
+      ? order.paymentParts.map((p) => ({ method: p.method, amount: Number(p.amount || 0) }))
+      : [],
+    orderType: order.orderType,
+    deliveryFee: order.deliveryFee,
+    deliveryName: order.deliveryName || "",
+    deliveryPhone: order.deliveryPhone || "",
+    deliveryAddress: order.deliveryAddress || "",
+    deliveryZoneId: order.deliveryZoneId || "",
+    total: order.total,
+    itemsTotal: order.itemsTotal,
+    cashReceived: order.cashReceived ?? null,
+    changeDue: order.changeDue ?? null,
+    done: !!order.done,
+    voided: !!order.voided,
+    voidReason: order.voidReason || "",
+    note: order.note || "",
+    date: toIso(order.date) || new Date().toISOString(),
+    restockedAt: toIso(order.restockedAt),
+    cart: order.cart || [],
+    idemKey: order.idemKey || "",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
 }
 function orderFromCloudDoc(id, d) {
   const asDate = (v) =>
@@ -9259,3 +9287,4 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
     </div>
   );
 }
+
