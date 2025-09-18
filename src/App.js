@@ -894,6 +894,12 @@ const [historicalPurchases, setHistoricalPurchases] = useState(() => {
   const l = loadLocal();
   return l.historicalPurchases || [];
 });
+const [reportFilter, setReportFilter] = useState("shift");
+const [reportDay, setReportDay] = useState(() => new Date().toISOString().slice(0, 10));
+const [reportMonth, setReportMonth] = useState(() => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+});
   const [bankFilter, setBankFilter] = useState("day");
 const [bankDay, setBankDay] = useState(new Date().toISOString().slice(0, 10));
 const [bankMonth, setBankMonth] = useState(() => {
@@ -2032,6 +2038,12 @@ const sumPurchases = (rows = []) =>
   rows.reduce((s, p) => s + Number(p.qty || 0) * Number(p.unitPrice || 0), 0);
   
 function getPeriodRange(kind, dayMeta, dayStr, monthStr) {
+  if (kind === "shift") {
+    const now = new Date();
+    const start = dayMeta?.startedAt ? new Date(dayMeta.startedAt) : now;
+    const end = dayMeta?.endedAt ? new Date(dayMeta.endedAt) : now;
+    return [start, end];
+  }
   if (kind === "day" && dayStr) {
     const d = new Date(`${dayStr}T00:00:00`);
     const start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
@@ -2809,7 +2821,7 @@ const voidOrderToExpense = async (orderNo) => {
 
 
   // --------------------------- REPORT TOTALS ---------------------------
-  const getSortedOrders = () => {
+ const getSortedOrders = () => {
     const arr = [...orders];
     if (sortBy === "date-desc") arr.sort((a, b) => b.date - a.date);
     if (sortBy === "date-asc") arr.sort((a, b) => a.date - b.date);
@@ -2817,6 +2829,11 @@ const voidOrderToExpense = async (orderNo) => {
     if (sortBy === "payment") arr.sort((a, b) => a.payment.localeCompare(b.payment));
     return arr;
   };
+
+  const [reportStart, reportEnd] = useMemo(() => {
+    const [start, end] = getPeriodRange(reportFilter, dayMeta, reportDay, reportMonth);
+    return [start, end];
+  }, [reportFilter, reportDay, reportMonth, dayMeta]);
 
   const totals = useMemo(() => {
     const validOrders = orders.filter((o) => !o.voided);
@@ -2871,6 +2888,127 @@ for (const o of validOrders) {
     const margin = revenueTotal - expensesTotal;
     return { revenueTotal, byPay, byType, deliveryFeesTotal, expensesTotal, margin };
   }, [orders, paymentMethods, orderTypes, expenses]);
+
+  const profitTimeline = useMemo(() => {
+    if (!reportStart || !reportEnd) return [];
+    const startMs = +reportStart;
+    const endMs = +reportEnd;
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return [];
+
+    const start = new Date(startMs);
+    const end = new Date(endMs);
+
+    const toDate = (value) => {
+      if (!value) return null;
+      if (value instanceof Date) return value;
+      const d = new Date(value);
+      return Number.isNaN(+d) ? null : d;
+    };
+
+    const shiftStart = dayMeta?.startedAt ? new Date(dayMeta.startedAt) : null;
+    const shiftEndRaw = dayMeta?.endedAt ? new Date(dayMeta.endedAt) : null;
+    const now = new Date();
+    const shiftEnd = shiftEndRaw || now;
+    const includeHistorical =
+      !shiftStart || start < shiftStart || end > shiftEnd;
+
+    const mergeRows = (liveRows = [], historicalRows = []) =>
+      includeHistorical
+        ? [...(historicalRows || []), ...(liveRows || [])]
+        : liveRows || [];
+
+    const map = new Map();
+    const ensureBucket = (dateObj) => {
+      const dayStart = new Date(
+        dateObj.getFullYear(),
+        dateObj.getMonth(),
+        dateObj.getDate(),
+        0,
+        0,
+        0,
+        0
+      );
+      const key = dayStart.getTime();
+      if (!map.has(key)) {
+        const dd = String(dayStart.getDate()).padStart(2, "0");
+        const mm = String(dayStart.getMonth() + 1).padStart(2, "0");
+        const yyyy = dayStart.getFullYear();
+        map.set(key, {
+          ts: key,
+          date: `${dd}-${mm}-${yyyy}`,
+          revenue: 0,
+          purchasesCost: 0,
+          expenseCost: 0,
+        });
+      }
+      return map.get(key);
+    };
+
+    const inRange = (d) => d >= start && d <= end;
+
+    for (const order of mergeRows(orders, historicalOrders)) {
+      if (!order || order.voided) continue;
+      const when = toDate(order.date);
+      if (!when || !inRange(when)) continue;
+      const itemsOnly = Number(
+        order.itemsTotal != null
+          ? order.itemsTotal
+          : (order.total || 0) - (order.deliveryFee || 0)
+      );
+      if (!Number.isFinite(itemsOnly)) continue;
+      const bucket = ensureBucket(when);
+      bucket.revenue += itemsOnly;
+    }
+
+    for (const purchase of mergeRows(purchases, historicalPurchases)) {
+      const when = toDate(purchase?.date);
+      if (!when || !inRange(when)) continue;
+      const qty = Number(purchase?.qty || 0);
+      const price = Number(purchase?.unitPrice || 0);
+      const amount = qty * price;
+      if (!Number.isFinite(amount)) continue;
+      const bucket = ensureBucket(when);
+      bucket.purchasesCost += amount;
+    }
+
+    for (const expense of mergeRows(expenses, historicalExpenses)) {
+      const when = toDate(expense?.date);
+      if (!when || !inRange(when)) continue;
+      const qty = Number(expense?.qty || 0);
+      const price = Number(expense?.unitPrice || 0);
+      const amount = qty * price;
+      if (!Number.isFinite(amount)) continue;
+      const bucket = ensureBucket(when);
+      bucket.expenseCost += amount;
+    }
+
+    return Array.from(map.values())
+      .sort((a, b) => a.ts - b.ts)
+      .map((bucket) => {
+        const net = bucket.revenue - bucket.purchasesCost - bucket.expenseCost;
+        const marginPct = bucket.revenue
+          ? (net / bucket.revenue) * 100
+          : 0;
+        return {
+          date: bucket.date,
+          revenue: Number(bucket.revenue.toFixed(2)),
+          purchasesCost: Number(bucket.purchasesCost.toFixed(2)),
+          expenseCost: Number(bucket.expenseCost.toFixed(2)),
+          net: Number(net.toFixed(2)),
+          marginPct: Number(marginPct.toFixed(2)),
+        };
+      });
+  }, [
+    reportStart,
+    reportEnd,
+    orders,
+    purchases,
+    expenses,
+    historicalOrders,
+    historicalPurchases,
+    historicalExpenses,
+    dayMeta,
+  ]);
 
   const salesStats = useMemo(() => {
     const itemMap = new Map();
@@ -3155,13 +3293,32 @@ const endedStr   = m.endedAt   ? fmtDateTime(m.endedAt)   : "—";
           (totals.byType[t] || 0).toFixed(2),
         ]);
 
-      autoTable(doc, {
+     autoTable(doc, {
         head: [["Metric", "Amount (E£)"]],
         body: totalsBody,
         startY: y + 4,
         theme: "grid",
         styles: { fontSize: 10 },
       });
+
+      if (profitTimeline.length) {
+        y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : y + 40;
+        doc.text("Profit Timeline", 14, y);
+        autoTable(doc, {
+          head: [["Date", "Revenue", "Purchases", "Expenses", "Net", "Margin %"]],
+          body: profitTimeline.map((row) => [
+            row.date,
+            row.revenue.toFixed(2),
+            row.purchasesCost.toFixed(2),
+            row.expenseCost.toFixed(2),
+            row.net.toFixed(2),
+            `${row.marginPct.toFixed(2)}%`,
+          ]),
+          startY: y + 4,
+          theme: "grid",
+          styles: { fontSize: 10 },
+        });
+      }
 
       y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : y + 40;
       doc.text("Items — Times Ordered", 14, y);
@@ -6895,14 +7052,178 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
         }}
       >
         Download Report PDF
-      </button>
+       </button>
     </div>
           <h2>Reports</h2>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 8,
+              alignItems: "center",
+              margin: "12px 0",
+              padding: 8,
+              borderRadius: 8,
+              border: `1px solid ${cardBorder}`,
+              background: dark ? "#151515" : "#fafafa",
+            }}
+          >
+            <button
+              onClick={() => setReportFilter("shift")}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 6,
+                border: `1px solid ${btnBorder}`,
+                background:
+                  reportFilter === "shift"
+                    ? "#ffd54f"
+                    : dark
+                    ? "#2c2c2c"
+                    : "#f1f1f1",
+                cursor: "pointer",
+                fontWeight: 700,
+              }}
+            >
+              SHIFT
+            </button>
+            <button
+              onClick={() => setReportFilter("day")}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 6,
+                border: `1px solid ${btnBorder}`,
+                background:
+                  reportFilter === "day"
+                    ? "#ffd54f"
+                    : dark
+                    ? "#2c2c2c"
+                    : "#f1f1f1",
+                cursor: "pointer",
+                fontWeight: 700,
+              }}
+            >
+              DAY
+            </button>
+            <button
+              onClick={() => setReportFilter("month")}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 6,
+                border: `1px solid ${btnBorder}`,
+                background:
+                  reportFilter === "month"
+                    ? "#ffd54f"
+                    : dark
+                    ? "#2c2c2c"
+                    : "#f1f1f1",
+                cursor: "pointer",
+                fontWeight: 700,
+              }}
+            >
+              MONTH
+            </button>
+            {reportFilter === "day" && (
+              <>
+                <label><b>Pick day:</b></label>
+                <input
+                  type="date"
+                  value={reportDay}
+                  onChange={(e) => setReportDay(e.target.value)}
+                  style={{
+                    padding: 6,
+                    borderRadius: 6,
+                    border: `1px solid ${btnBorder}`,
+                  }}
+                />
+              </>
+            )}
+            {reportFilter === "month" && (
+              <>
+                <label><b>Pick month:</b></label>
+                <input
+                  type="month"
+                  value={reportMonth}
+                  onChange={(e) => setReportMonth(e.target.value)}
+                  style={{
+                    padding: 6,
+                    borderRadius: 6,
+                    border: `1px solid ${btnBorder}`,
+                  }}
+                />
+              </>
+            )}
+            <div style={{ marginLeft: "auto", opacity: 0.8 }}>
+              {reportStart && reportEnd ? (
+                <>
+                  Period: {reportStart.toLocaleDateString()} → {" "}
+                  {reportEnd.toLocaleDateString()}
+                </>
+              ) : (
+                "Period unavailable"
+              )}
+            </div>
+          </div>
           {/* Totals overview */}
           <div
             style={{
               marginBottom: 12,
               padding: 10,
+              borderRadius: 6,
+              background: dark ? "#1b2631" : "#e3f2fd",
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: 10,
+            }}
+          >
+            <div><b>Revenue (items only):</b><br/>E£{totals.revenueTotal.toFixed(2)}</div>
+            <div><b>Delivery Fees:</b><br/>E£{totals.deliveryFeesTotal.toFixed(2)}</div>
+            <div><b>Expenses:</b><br/>E£{totals.expensesTotal.toFixed(2)}</div>
+            <div><b>Margin:</b><br/>E£{totals.margin.toFixed(2)}</div>
+          </div>
+          {/* Items summary (old style: name, unit price (avg), qty, total) */}
+          <h3>Items Sold</h3>
+            <div><b>Delivery Fees:</b><br/>E£{totals.deliveryFeesTotal.toFixed(2)}</div>
+            <div><b>Expenses:</b><br/>E£{totals.expensesTotal.toFixed(2)}</div>
+            <div><b>Margin:</b><br/>E£{totals.margin.toFixed(2)}</div>
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <h3 style={{ marginTop: 0 }}>Profit Timeline</h3>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Date</th>
+                    <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Revenue (E£)</th>
+                    <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Purchases (E£)</th>
+                    <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Expenses (E£)</th>
+                    <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Net (E£)</th>
+                    <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Margin %</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {profitTimeline.map((row) => (
+                    <tr key={row.date}>
+                      <td style={{ padding: 6 }}>{row.date}</td>
+                      <td style={{ padding: 6, textAlign: "right" }}>{row.revenue.toFixed(2)}</td>
+                      <td style={{ padding: 6, textAlign: "right" }}>{row.purchasesCost.toFixed(2)}</td>
+                      <td style={{ padding: 6, textAlign: "right" }}>{row.expenseCost.toFixed(2)}</td>
+                      <td style={{ padding: 6, textAlign: "right" }}>{row.net.toFixed(2)}</td>
+                      <td style={{ padding: 6, textAlign: "right" }}>{row.marginPct.toFixed(2)}%</td>
+                    </tr>
+                  ))}
+                  {!profitTimeline.length && (
+                    <tr>
+                      <td colSpan={6} style={{ padding: 8, opacity: 0.8 }}>
+                        No data for the selected period.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          {/* Items summary (old style: name, unit price (avg), qty, total) */}
+          <h3>Items Sold</h3>
               borderRadius: 6,
               background: dark ? "#1b2631" : "#e3f2fd",
               display: "grid",
@@ -7877,6 +8198,7 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
     </div>
   );
 }
+
 
 
 
