@@ -540,30 +540,6 @@ const UTILITY_TYPES = [
   { name: "Internet", note: "Internet Bill" },
   { name: "Gas", note: "Gas Bill" }
 ];
-const SANDWICH_KEYWORDS = ["sandwich", "sandw", "club", "sub", "panini"];
-const isSandwichName = (name) => {
-  const value = String(name || "").toLowerCase();
-  if (!value) return false;
-  return SANDWICH_KEYWORDS.some((kw) => value.includes(kw));
-};
-const isSandwichDef = (def) => {
-  if (!def) return false;
-  if (isSandwichName(def.name)) return true;
-  const category = String(def.category || "").toLowerCase();
-  if (category && isSandwichName(category)) return true;
-  const tags = Array.isArray(def.tags) ? def.tags : [];
-  return tags.some((tag) => isSandwichName(tag));
-};
-const UTILITY_NOTE_KEYWORDS = {
-  electricity: ["electricity", "electric", "power"],
-  gas: ["gas"],
-  water: ["water"],
-};
-const matchesKeywords = (value, keywords = []) => {
-  const note = String(value || "").toLowerCase();
-  if (!note) return false;
-  return keywords.some((kw) => note.includes(kw));
-};
 const norm = (v) => String(v ?? "").trim();
 const isExpenseVoidEligible = (t) => {
   const k = norm(t).toLowerCase();
@@ -2228,175 +2204,12 @@ useEffect(() => {
     );
   };
 
-
-
-
-
-// Worker payout metrics (shared with COGS overhead calculations)
-const sumHoursForWorker = (name, sessions, start, end) => {
-  const rows = (sessions || []).filter((s) => s.name === name);
-  let hours = 0;
-  const now = new Date();
-  const periodStart = start instanceof Date ? start : new Date(start || now);
-  const periodEnd = end instanceof Date ? end : new Date(end || now);
-  for (const s of rows) {
-    const a = s.signInAt instanceof Date ? s.signInAt : new Date(s.signInAt);
-    const b = s.signOutAt
-      ? s.signOutAt instanceof Date
-        ? s.signOutAt
-        : new Date(s.signOutAt)
-      : now;
-    const toCap = new Date(Math.min(+b, +periodEnd, +now));
-    const from = new Date(Math.max(+a, +periodStart));
-    if (toCap > from) hours += (toCap - from) / (1000 * 60 * 60);
-  }
-  return Number(hours.toFixed(2));
-};
-const hoursForSession = (s, start, end) => {
-  if (!s) return 0;
-  const now = new Date();
-  const a = s.signInAt instanceof Date ? s.signInAt : new Date(s.signInAt);
-  const b = s.signOutAt
-    ? s.signOutAt instanceof Date
-      ? s.signOutAt
-      : new Date(s.signOutAt)
-    : now;
-  const periodStart = start instanceof Date ? start : new Date(start || now);
-  const periodEnd = end instanceof Date ? end : new Date(end || now);
-  const toCap = new Date(Math.min(+b, +periodEnd, +now));
-  const from = new Date(Math.max(+a, +periodStart));
-  if (toCap <= from) return 0;
-  return Number(((toCap - from) / (1000 * 60 * 60)).toFixed(2));
-};
-const [wStart, wEnd] = useMemo(() => {
-  return getPeriodRange(workerLogFilter, dayMeta, workerLogDay, workerLogMonth);
-}, [workerLogFilter, dayMeta, workerLogDay, workerLogMonth]);
-const workerNamesKnown = useMemo(() => {
-  const set = new Set((workerProfiles || []).map((p) => p.name));
-  for (const s of workerSessions || []) set.add(s.name);
-  return Array.from(set);
-}, [workerProfiles, workerSessions]);
-const workerMonthlyStats = useMemo(() => {
-  const rows = [];
-  for (const nm of workerNamesKnown) {
-    const hrs = sumHoursForWorker(nm, workerSessions, wStart, wEnd);
-    const prof = (workerProfiles || []).find((p) => p.name === nm);
-    const rate = prof ? Number(prof.rate || 0) : 0;
-    const pay = Number((hrs * rate).toFixed(2));
-    rows.push({ name: nm, hours: hrs, rate, pay });
-  }
-  return rows.sort((a, b) => a.name.localeCompare(b.name));
-}, [workerNamesKnown, workerSessions, workerProfiles, wStart, wEnd]);
-const rateByName = useMemo(() => {
-  const m = {};
-  for (const p of workerProfiles || []) m[p.name] = Number(p.rate || 0);
-  return m;
-}, [workerProfiles]);
-const sessionsForPeriod = useMemo(() => {
-  const now = new Date();
-  return (workerSessions || [])
-    .filter((s) => {
-      const a = s.signInAt instanceof Date ? s.signInAt : new Date(s.signInAt);
-      const b = s.signOutAt
-        ? s.signOutAt instanceof Date
-          ? s.signOutAt
-          : new Date(s.signOutAt)
-        : now;
-      return b >= wStart && a <= wEnd;
-    })
-    .sort((a, b) => +new Date(b.signInAt) - +new Date(a.signInAt));
-}, [workerSessions, wStart, wEnd]);
-const workerMonthlyTotalPay = useMemo(
-  () => workerMonthlyStats.reduce((s, r) => s + Number(r.pay || 0), 0),
-  [workerMonthlyStats]
-);
-
-const totalSandwichQtySold = useMemo(() => {
-  const allOrders = [...(historicalOrders || []), ...(orders || [])];
-  const start = wStart instanceof Date ? wStart : wStart ? new Date(wStart) : null;
-  const endRaw = wEnd instanceof Date ? wEnd : wEnd ? new Date(wEnd) : null;
-  if (!start || !endRaw) return 0;
-  const now = new Date();
-  const end = new Date(Math.min(+endRaw, +now));
-  if (Number.isNaN(+start) || Number.isNaN(+end)) return 0;
-  let total = 0;
-  for (const ord of allOrders) {
-    if (!ord || ord.voided) continue;
-    const when = ord.date instanceof Date ? ord.date : ord.date ? new Date(ord.date) : null;
-    if (!when || Number.isNaN(+when)) continue;
-    if (when < start || when > end) continue;
-    const lines = Array.isArray(ord.cart) ? ord.cart : [];
-    for (const line of lines) {
-      const qty = Math.max(0, Number(line?.qty || 0));
-      if (!qty) continue;
-      const def = (menu || []).find((item) => String(item?.id) === String(line?.id));
-      const sandwich = def ? isSandwichDef(def) : isSandwichName(line?.name);
-      if (sandwich) total += qty;
-    }
-  }
-  return total;
-}, [historicalOrders, orders, menu, wStart, wEnd]);
-
-const utilitySpending = useMemo(() => {
-  const start = wStart instanceof Date ? wStart : wStart ? new Date(wStart) : null;
-  const endRaw = wEnd instanceof Date ? wEnd : wEnd ? new Date(wEnd) : null;
-  if (!start || !endRaw) {
-    return { electricity: 0, gas: 0, water: 0, total: 0 };
-  }
-  const now = new Date();
-  const end = new Date(Math.min(+endRaw, +now));
-  if (Number.isNaN(+start) || Number.isNaN(+end)) {
-    return { electricity: 0, gas: 0, water: 0, total: 0 };
-  }
-  const totals = { electricity: 0, gas: 0, water: 0, total: 0 };
-  for (const tx of bankTx || []) {
-    if (!tx) continue;
-    const type = String(tx.type || "").toLowerCase();
-    if (type !== "withdraw" && type !== "adjustdown") continue;
-    const when = tx.date instanceof Date ? tx.date : tx.date ? new Date(tx.date) : null;
-    if (!when || Number.isNaN(+when)) continue;
-    if (when < start || when > end) continue;
-    const amount = Math.abs(Number(tx.amount || 0));
-    if (!amount) continue;
-    if (matchesKeywords(tx.note, UTILITY_NOTE_KEYWORDS.electricity)) {
-      totals.electricity += amount;
-      totals.total += amount;
-      continue;
-    }
-    if (matchesKeywords(tx.note, UTILITY_NOTE_KEYWORDS.gas)) {
-      totals.gas += amount;
-      totals.total += amount;
-      continue;
-    }
-    if (matchesKeywords(tx.note, UTILITY_NOTE_KEYWORDS.water)) {
-      totals.water += amount;
-      totals.total += amount;
-    }
-  }
-  return {
-    electricity: Number(totals.electricity.toFixed(2)),
-    gas: Number(totals.gas.toFixed(2)),
-    water: Number(totals.water.toFixed(2)),
-    total: Number(totals.total.toFixed(2)),
-  };
-}, [bankTx, wStart, wEnd]);
-
-const sandwichOverheadPerUnit = useMemo(() => {
-  const qty = Number(totalSandwichQtySold || 0);
-  if (!qty) return 0;
-  const overhead = Number(workerMonthlyTotalPay || 0) + Number(utilitySpending.total || 0);
-  if (!overhead) return 0;
-  return Number((overhead / qty).toFixed(2));
-}, [totalSandwichQtySold, utilitySpending, workerMonthlyTotalPay]);
-
-
-
 const invById = useMemo(() => {
   const map = {};
   for (const item of inventory) map[item.id] = item;
   return map;
 }, [inventory]);
-function computeCOGSForItemDef(def, invMap, sandwichOverhead = 0) {
+function computeCOGSForItemDef(def, invMap) {
   const uses = def?.uses || {};
   let sum = 0;
   for (const k of Object.keys(uses)) {
@@ -2404,7 +2217,6 @@ function computeCOGSForItemDef(def, invMap, sandwichOverhead = 0) {
     const cost = Number(invMap[k]?.costPerUnit || 0);
     sum += need * cost;
   }
-  if (isSandwichDef(def)) sum += Number(sandwichOverhead || 0);
   return Number(sum.toFixed(2));
 }
 const cogsMarginData = useMemo(() => {
@@ -2413,7 +2225,7 @@ const cogsMarginData = useMemo(() => {
     ...extraList.map((d) => ({ ...d, _k: `e-${d.id}`, _type: "extra" })),
   ].map((def) => {
     const price = Number(def.price || 0);
-    const cogs = computeCOGSForItemDef(def, invById, sandwichOverheadPerUnit);
+    const cogs = computeCOGSForItemDef(def, invById);
     const marginPct = price > 0 ? ((price - cogs) / price) * 100 : 0;
     const override = def.targetMarginPctOverride;
     const rowTargetPct = Number(((override ?? targetMarginPct) * 100).toFixed(2));
@@ -2436,7 +2248,7 @@ const cogsMarginData = useMemo(() => {
   const below = rows.filter((row) => row._marginPct + 0.0001 < row._targetMarginPct);
   const missingCostKeys = rows.filter((row) => row._hasMissingCosts).map((row) => row._k);
   return { all: rows, below, threshold, missingCostKeys };
-}, [menu, extraList, invById, targetMarginPct, sandwichOverheadPerUnit]);
+}, [menu, extraList, invById, targetMarginPct]);
 const filteredCogsRows = useMemo(() => {
   let rows = showLowMarginOnly ? cogsMarginData.below : cogsMarginData.all;
   if (cogsTypeFilter === "menu") rows = rows.filter((row) => row._type === "menu");
@@ -2629,7 +2441,7 @@ const marginTrend = useMemo(() => {
   const id = selectedCogsRow.id;
   const type = selectedCogsRow._type;
   if (!id) return [];
-  const unitCogs = computeCOGSForItemDef(selectedCogsRow, invById, sandwichOverheadPerUnit);
+  const unitCogs = computeCOGSForItemDef(selectedCogsRow, invById);
   const map = new Map();
   for (const order of orders || []) {
     const lines = order?.cart || [];
@@ -2678,7 +2490,7 @@ const marginTrend = useMemo(() => {
     })
     .sort((a, b) => a.day.localeCompare(b.day))
     .slice(-10);
-}, [selectedCogsRow, orders, invById, sandwichOverheadPerUnit]);
+}, [selectedCogsRow, orders, invById]);
 
    function isWithin(d, start, end) {
   const t = +new Date(d);
@@ -2829,6 +2641,87 @@ const resetWorkerLog = () => {
   setWorkerSessions([]);
   alert("Worker Log cleared ");
 };
+const sumHoursForWorker = (name, sessions, start, end) => {
+  const rows = (sessions || []).filter(s => s.name === name);
+  let hours = 0;
+  const now = new Date();
+  const periodStart = start instanceof Date ? start : new Date(start || now);
+  const periodEnd   = end   instanceof Date ? end   : new Date(end   || now);
+  for (const s of rows) {
+    const a = s.signInAt instanceof Date ? s.signInAt : new Date(s.signInAt);
+    const b = s.signOutAt
+      ? (s.signOutAt instanceof Date ? s.signOutAt : new Date(s.signOutAt))
+      : now;
+    const toCap = new Date(Math.min(+b, +periodEnd, +now));
+    const from  = new Date(Math.max(+a, +periodStart));
+    if (toCap > from) hours += (toCap - from) / (1000 * 60 * 60);
+  }
+  return Number(hours.toFixed(2));
+};
+  // Hours for a single session, clipped to [start,end] and "now" if still open
+const hoursForSession = (s, start, end) => {
+  if (!s) return 0;
+  const now = new Date();
+  const a = s.signInAt instanceof Date ? s.signInAt : new Date(s.signInAt);
+  const b = s.signOutAt
+    ? (s.signOutAt instanceof Date ? s.signOutAt : new Date(s.signOutAt))
+    : now;
+
+  const periodStart = start instanceof Date ? start : new Date(start || now);
+  const periodEnd   = end   instanceof Date ? end   : new Date(end   || now);
+
+  const toCap = new Date(Math.min(+b, +periodEnd, +now));
+  const from  = new Date(Math.max(+a, +periodStart));
+  if (toCap <= from) return 0;
+
+  return Number(((toCap - from) / (1000 * 60 * 60)).toFixed(2));
+};
+
+const [wStart, wEnd] = useMemo(() => {
+  return getPeriodRange(workerLogFilter, dayMeta, workerLogDay, workerLogMonth);
+}, [workerLogFilter, workerLogDay, workerLogMonth, dayMeta]);
+const workerNamesKnown = useMemo(() => {
+  const set = new Set((workerProfiles || []).map(p => p.name));
+  for (const s of workerSessions || []) set.add(s.name);
+  return Array.from(set);
+}, [workerProfiles, workerSessions]);
+const workerMonthlyStats = useMemo(() => {
+  const rows = [];
+  for (const nm of workerNamesKnown) {
+    const hrs = sumHoursForWorker(nm, workerSessions, wStart, wEnd);
+    const prof = (workerProfiles || []).find(p => p.name === nm);
+    const rate = prof ? Number(prof.rate || 0) : 0;
+    const pay  = Number((hrs * rate).toFixed(2));
+    rows.push({ name: nm, hours: hrs, rate, pay });
+  }
+  return rows.sort((a,b) => a.name.localeCompare(b.name));
+}, [workerNamesKnown, workerSessions, workerProfiles, wStart, wEnd]);
+  // Quick lookup: name -> hourly rate
+const rateByName = useMemo(() => {
+  const m = {};
+  for (const p of workerProfiles || []) m[p.name] = Number(p.rate || 0);
+  return m;
+}, [workerProfiles]);
+
+// Sessions restricted to the selected Worker Log period (day/month)
+const sessionsForPeriod = useMemo(() => {
+  const now = new Date();
+  return (workerSessions || [])
+    .filter((s) => {
+      const a = s.signInAt instanceof Date ? s.signInAt : new Date(s.signInAt);
+      const b = s.signOutAt
+        ? (s.signOutAt instanceof Date ? s.signOutAt : new Date(s.signOutAt))
+        : now;
+      return b >= wStart && a <= wEnd; // overlaps period
+    })
+    .sort((a, b) => +new Date(b.signInAt) - +new Date(a.signInAt));
+}, [workerSessions, wStart, wEnd]);
+
+
+const workerMonthlyTotalPay = useMemo(
+  () => workerMonthlyStats.reduce((s, r) => s + Number(r.pay || 0), 0),
+  [workerMonthlyStats]
+);
   const promptAdminAndPin = () => {
     const adminStr = window.prompt("Enter Admin number (1 to 6):", "1");
     if (!adminStr) return null;
@@ -4594,7 +4487,7 @@ const generatePurchasesPDF = () => {
           >
             <optgroup label="Menu">
               {menu.map(def => {
-                const cogs = computeCOGSForItemDef(def, invById, sandwichOverheadPerUnit);
+                const cogs = computeCOGSForItemDef(def, invById);
                 return (
                   <option key={`m-${def.id}`} value={`m-${def.id}`}>
                     {`${def.name} — COGS E£${cogs.toFixed(2)} • Price E£${Number(def.price||0).toFixed(2)}`}
@@ -4604,7 +4497,7 @@ const generatePurchasesPDF = () => {
             </optgroup>
             <optgroup label="Extras">
               {extraList.map(def => {
-                const cogs = computeCOGSForItemDef(def, invById, sandwichOverheadPerUnit);
+                const cogs = computeCOGSForItemDef(def, invById);
                 return (
                   <option key={`e-${def.id}`} value={`e-${def.id}`}>
                     {`${def.name} — COGS E£${cogs.toFixed(2)} • Price E£${Number(def.price||0).toFixed(2)}`}
@@ -4617,10 +4510,7 @@ const generatePurchasesPDF = () => {
           {/* Current stats for selection */}
           {selectedCogsRow && (() => {
             const price = Number(selectedCogsRow._price ?? selectedCogsRow.price ?? 0);
-            const cogs = Number(
-              selectedCogsRow._cogs ??
-                computeCOGSForItemDef(selectedCogsRow, invById, sandwichOverheadPerUnit)
-            );
+            const cogs = Number(selectedCogsRow._cogs ?? computeCOGSForItemDef(selectedCogsRow, invById));
             const marginPct = selectedCogsRow._marginPct ?? (price > 0 ? ((price - cogs) / price) * 100 : 0);
             const targetPct = Number(selectedCogsRow._targetMarginPct || targetMarginPct * 100);
             const money = (v) => `E£${Number(v || 0).toFixed(2)}`;
@@ -4766,11 +4656,8 @@ const generatePurchasesPDF = () => {
             <div style={{ opacity: 0.7, textAlign: "left" }}>%</div>
           </div>
 
-          {selectedCogsRow && (() => {
-            const cogs = Number(
-              selectedCogsRow._cogs ??
-                computeCOGSForItemDef(selectedCogsRow, invById, sandwichOverheadPerUnit)
-            );
+               {selectedCogsRow && (() => {
+            const cogs = Number(selectedCogsRow._cogs ?? computeCOGSForItemDef(selectedCogsRow, invById));
             const safeM = Math.min(selectedCogsRow.targetMarginPctOverride ?? targetMarginPct, 0.95);
             const suggested = safeM >= 1
               ? Number(selectedCogsRow._price || selectedCogsRow.price || 0)
@@ -9406,3 +9293,4 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
     </div>
   );
 }
+
