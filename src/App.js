@@ -4959,7 +4959,7 @@ const endedStr   = m.endedAt   ? fmtDateTime(m.endedAt)   : "—";
         ["Purchases (Shift)", totals.purchasesTotal.toFixed(2)],
         ["Expenses (Shift)", totals.expensesTotal.toFixed(2)],
         [
-          "Margin (Revenue − Purchases − Expenses)",
+          "Margin",
           totals.margin.toFixed(2),
         ],
       ];
@@ -10936,6 +10936,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
