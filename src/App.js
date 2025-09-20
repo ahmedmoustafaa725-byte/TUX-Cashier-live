@@ -1991,7 +1991,13 @@ const [workerLogMonth, setWorkerLogMonth] = useState(() => {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
 });
 const workerWeekInfo = useMemo(
-
+  () => getSundayWeekInfo(workerLogWeekStart, true),
+  [workerLogWeekStart]
+);
+const workerWeekInputValue = useMemo(
+  () => toWeekInputValueFromSunday(workerWeekInfo.start),
+  [workerWeekInfo]
+);
 const [signInPin, setSignInPin] = useState("");
 const [signOutPin, setSignOutPin] = useState("");
 const activeWorkers = useMemo(() => {
@@ -10905,6 +10911,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
