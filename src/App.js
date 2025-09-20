@@ -102,7 +102,13 @@ function getISOWeekYearAndNumber(date) {
 
 function formatWeekInputValue(date) {
   const d = new Date(date);
-  const { year, week } = getISOWeekYearAndNumber(d);
+  if (Number.isNaN(+d)) return "";
+  const shifted = new Date(d);
+  if (shifted.getDay() === 0) {
+    // Treat Sundays as the start of the upcoming week so the range becomes Sunday → Saturday.
+    shifted.setDate(shifted.getDate() + 1);
+  }
+  const { year, week } = getISOWeekYearAndNumber(shifted);
   return `${year}-W${String(week).padStart(2, '0')}`;
 }
 
@@ -113,42 +119,19 @@ function getWeekRangeFromInput(weekStr) {
   const week = Number(weekPart);
   if (!year || !week) return null;
 
-  // Determine the Monday of the first ISO week for the provided year.
-  const firstThursday = new Date(Date.UTC(year, 0, 4));
-  const firstThursdayDay = firstThursday.getUTCDay() || 7;
-  const firstMonday = new Date(firstThursday);
-  firstMonday.setUTCDate(firstThursday.getUTCDate() - firstThursdayDay + 1);
+  // Determine the ISO week Monday, then shift back one day so the range runs Sunday → Saturday.
+  const jan4 = new Date(year, 0, 4);
+  const jan4Day = jan4.getDay() || 7;
+  const isoWeekMonday = new Date(jan4);
+  isoWeekMonday.setDate(jan4.getDate() - jan4Day + 1 + (week - 1) * 7);
 
- // Add the requested number of weeks to reach the target week (ISO weeks start on Monday).
-  const isoWeekStartUtc = new Date(firstMonday);
-  isoWeekStartUtc.setUTCDate(firstMonday.getUTCDate() + (week - 1) * 7);
+  const weekStart = new Date(isoWeekMonday);
+  weekStart.setDate(isoWeekMonday.getDate() - 1);
+  weekStart.setHours(0, 0, 0, 0);
 
-  // Shift to a Sunday-start week by moving one day back, then span 6 days.
-  const sundayStartUtc = new Date(isoWeekStartUtc);
-  sundayStartUtc.setUTCDate(isoWeekStartUtc.getUTCDate() - 1);
-
-  const saturdayEndUtc = new Date(sundayStartUtc);
-  saturdayEndUtc.setUTCDate(sundayStartUtc.getUTCDate() + 6);
-
-  // Convert back to local time boundaries using the new Sunday-start range.
-  const weekStart = new Date(
-    sundayStartUtc.getUTCFullYear(),
-    sundayStartUtc.getUTCMonth(),
-    sundayStartUtc.getUTCDate(),
-    0,
-    0,
-    0,
-    0
-  );
-  const weekEnd = new Date(
-    saturdayEndUtc.getUTCFullYear(),
-    saturdayEndUtc.getUTCMonth(),
-    saturdayEndUtc.getUTCDate(),
-    23,
-    59,
-    59,
-    999
-  );
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 6);
+  weekEnd.setHours(23, 59, 59, 999);
 
   return [weekStart, weekEnd];
 }
@@ -10229,6 +10212,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
