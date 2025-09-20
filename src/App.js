@@ -87,8 +87,41 @@ function formatDateDDMMYY(date) {
   const d = new Date(date);
   const day = String(d.getDate()).padStart(2, '0');
   const month = String(d.getMonth() + 1).padStart(2, '0');
-  const year = String(d.getFullYear()).slice(-2);
+  const year = String(d.getFullYear());
   return `${day}/${month}/${year}`;
+}
+
+function getISOWeekYearAndNumber(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+  return { year: d.getUTCFullYear(), week: weekNo };
+}
+
+function formatWeekInputValue(date) {
+  const d = new Date(date);
+  const { year, week } = getISOWeekYearAndNumber(d);
+  return `${year}-W${String(week).padStart(2, '0')}`;
+}
+
+function getWeekRangeFromInput(weekStr) {
+  if (!weekStr) return null;
+  const [yearPart, weekPart] = weekStr.split('-W');
+  const year = Number(yearPart);
+  const week = Number(weekPart);
+  if (!year || !week) return null;
+  const simple = new Date(year, 0, 1 + (week - 1) * 7);
+  const dayOfWeek = simple.getDay();
+  const isoWeekStart = new Date(simple);
+  const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  isoWeekStart.setDate(simple.getDate() + diff);
+  isoWeekStart.setHours(0, 0, 0, 0);
+  const isoWeekEnd = new Date(isoWeekStart);
+  isoWeekEnd.setDate(isoWeekEnd.getDate() + 6);
+  isoWeekEnd.setHours(23, 59, 59, 999);
+  return [isoWeekStart, isoWeekEnd];
 }
 export function packStateForCloud(state) {
    const {
@@ -1682,8 +1715,9 @@ const [newWName, setNewWName] = useState("");
 const [newWPin, setNewWPin] = useState("");
 const [newWRate, setNewWRate] = useState("");
 const [workerSessions, setWorkerSessions] = useState([]);
-const [workerLogFilter, setWorkerLogFilter] = useState("month"); // 'day' | 'month'
+const [workerLogFilter, setWorkerLogFilter] = useState("month"); // 'day' | 'week' | 'month'
 const [workerLogDay, setWorkerLogDay] = useState(() => new Date().toISOString().slice(0,10));
+const [workerLogWeek, setWorkerLogWeek] = useState(() => formatWeekInputValue(new Date()));
 const [workerLogMonth, setWorkerLogMonth] = useState(() => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
@@ -3022,7 +3056,7 @@ const marginTrend = useMemo(() => {
 const sumPurchases = (rows = []) =>
   rows.reduce((s, p) => s + Number(p.qty || 0) * Number(p.unitPrice || 0), 0);
   
-function getPeriodRange(kind, dayMeta, dayStr, monthStr) {
+function getPeriodRange(kind, dayMeta, dayStr, monthStr, weekStr) {
   if (kind === "shift") {
     const now = new Date();
     const start = dayMeta?.startedAt ? new Date(dayMeta.startedAt) : now;
@@ -3036,6 +3070,11 @@ function getPeriodRange(kind, dayMeta, dayStr, monthStr) {
     return [start, end];
   }
 
+  if (kind === "week" && weekStr) {
+    const range = getWeekRangeFromInput(weekStr);
+    if (range) return range;
+  }
+
   if (kind === "month" && monthStr) {
     const [y, m] = monthStr.split("-").map(Number);
     const start = new Date(y, m - 1, 1, 0, 0, 0, 0);
@@ -3045,8 +3084,13 @@ function getPeriodRange(kind, dayMeta, dayStr, monthStr) {
   if (kind === "day") {
     const now = new Date();
     const start = dayMeta?.startedAt ? new Date(dayMeta.startedAt) : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-   const end = dayMeta?.endedAt ? new Date(dayMeta.endedAt) : now;
+    const end = dayMeta?.endedAt ? new Date(dayMeta.endedAt) : now;
     return [start, end];
+  }
+  if (kind === "week") {
+    const now = new Date();
+    const range = getWeekRangeFromInput(formatWeekInputValue(now));
+    if (range) return range;
   }
   if (kind === "month") {
     const now = new Date();
@@ -3201,8 +3245,8 @@ const hoursForSession = (s, start, end) => {
 };
 
 const [wStart, wEnd] = useMemo(() => {
-  return getPeriodRange(workerLogFilter, dayMeta, workerLogDay, workerLogMonth);
-}, [workerLogFilter, workerLogDay, workerLogMonth, dayMeta]);
+  return getPeriodRange(workerLogFilter, dayMeta, workerLogDay, workerLogMonth, workerLogWeek);
+}, [workerLogFilter, workerLogDay, workerLogMonth, workerLogWeek, dayMeta]);
 const workerNamesKnown = useMemo(() => {
   const set = new Set((workerProfiles || []).map(p => p.name));
   for (const s of workerSessions || []) set.add(s.name);
@@ -3876,7 +3920,7 @@ const voidOrderToExpense = async (orderNo) => {
   };
 
   const [reportStart, reportEnd] = useMemo(() => {
-    const [start, end] = getPeriodRange(reportFilter, dayMeta, reportDay, reportMonth);
+    const [start, end] = getPeriodRange(reportFilter, dayMeta, reportDay, reportMonth, undefined);
     return [start, end];
   }, [reportFilter, reportDay, reportMonth, dayMeta]);
 
@@ -4083,7 +4127,7 @@ for (const o of validOrders) {
     return { items, extras };
   }, [orders]);
 const filteredBankTx = useMemo(() => {
-  const [start, end] = getPeriodRange(bankFilter, dayMeta, bankDay, bankMonth);
+  const [start, end] = getPeriodRange(bankFilter, dayMeta, bankDay, bankMonth, undefined);
   return bankTx.filter(t => {
     const d = t.date instanceof Date ? t.date : new Date(t.date);
     return d >= start && d <= end;
@@ -4091,7 +4135,7 @@ const filteredBankTx = useMemo(() => {
 }, [bankTx, bankFilter, bankDay, bankMonth, dayMeta]);
 
 const [pStart, pEnd] = useMemo(
-  () => getPeriodRange(purchaseFilter, dayMeta, purchaseDay, purchaseMonth),
+  () => getPeriodRange(purchaseFilter, dayMeta, purchaseDay, purchaseMonth, undefined),
   [purchaseFilter, dayMeta, purchaseDay, purchaseMonth]
 );
 const filteredPurchases = useMemo(() => {
@@ -4555,7 +4599,7 @@ const prettyDate = (d) => fmtDate(d);
 const generatePurchasesPDF = () => {
   try {
     const doc = new jsPDF();
-    const [start, end] = getPeriodRange(purchaseFilter, dayMeta, purchaseDay, purchaseMonth);
+    const [start, end] = getPeriodRange(purchaseFilter, dayMeta, purchaseDay, purchaseMonth, undefined);
     const title = `TUX — Purchases Report (${purchaseFilter.toUpperCase()})`;
     doc.text(title, 14, 12);
 
@@ -8738,7 +8782,7 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
     <h2>Worker Log</h2>
     {/* Filter row */}
     <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
-      <button
+     <button
         onClick={() => setWorkerLogFilter("day")}
         style={{
           padding: "6px 10px", borderRadius: 6, border: `1px solid ${btnBorder}`,
@@ -8746,6 +8790,14 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
           cursor:"pointer"
         }}
       >DAY</button>
+      <button
+        onClick={() => setWorkerLogFilter("week")}
+        style={{
+          padding: "6px 10px", borderRadius: 6, border: `1px solid ${btnBorder}`,
+          background: workerLogFilter === "week" ? "#ffd54f" : (dark ? "#2c2c2c" : "#f1f1f1"),
+          cursor:"pointer"
+        }}
+      >WEEK</button>
       <button
         onClick={() => setWorkerLogFilter("month")}
         style={{
@@ -8765,7 +8817,7 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
           />
         </>
       )}
-      {workerLogFilter === "month" && (
+       {workerLogFilter === "month" && (
         <>
           <label><b>Pick month:</b></label>
           <input
@@ -8776,8 +8828,19 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
           />
         </>
       )}
+      {workerLogFilter === "week" && (
+        <>
+          <label><b>Pick week:</b></label>
+          <input
+            type="week"
+            value={workerLogWeek}
+            onChange={(e) => setWorkerLogWeek(e.target.value)}
+            style={{ padding:6, borderRadius:6, border:`1px solid ${btnBorder}` }}
+          />
+        </>
+      )}
       <div style={{ marginLeft:"auto", opacity:.8 }}>
-        Period: {wStart.toLocaleDateString()} → {wEnd.toLocaleDateString()}
+        Period: {formatDateDDMMYY(wStart)} → {formatDateDDMMYY(wEnd)}
       </div>
     </div>
 {/* Sessions table */}
@@ -10137,6 +10200,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
