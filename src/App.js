@@ -152,14 +152,7 @@ function getSundayStartDate(value) {
   return sunday;
 }
 
-function toWeekInputValueFromSunday(sundayValue) {
-  if (!sundayValue) return "";
-  const sunday = sundayValue instanceof Date
-    ? new Date(sundayValue)
-    : new Date(sundayValue);
-  if (Number.isNaN(+sunday)) return "";
-  return formatSundayWeekInputValue(sunday);
-}
+
 
 function getSundayWeekInfo(value, useStartYear = false) {
   const target = value instanceof Date ? new Date(value) : new Date(value || new Date());
@@ -237,8 +230,7 @@ function SundayWeekPicker({ selectedSunday, onSelect, dark = false, btnBorder = 
         return prev;
       return new Date(selectedStart.getFullYear(), selectedStart.getMonth(), 1);
     });
-  }, [selectedStartTime]);
-
+  }, [selectedStart, selectedStartTime]);
   useEffect(() => {
     if (!open) return;
     const handleClickAway = (event) => {
@@ -11225,6 +11217,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
