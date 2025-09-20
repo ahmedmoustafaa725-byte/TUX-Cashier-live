@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { initializeApp, getApps, getApp } from "firebase/app";
@@ -156,6 +156,168 @@ function getWeekRangeFromInput(weekStr) {
   weekEnd.setHours(23, 59, 59, 999);
 
   return [weekStart, weekEnd];
+}
+
+function MarginLineChart({ data, dark }) {
+  const width = 720;
+  const height = 260;
+  const padding = { top: 24, right: 32, bottom: 44, left: 72 };
+
+  if (!data || data.length === 0) {
+    return (
+      <div style={{ padding: 12, fontStyle: "italic", opacity: 0.8 }}>
+        Not enough data to display the margin chart.
+      </div>
+    );
+  }
+
+  const sorted = [...data].sort((a, b) => a.ts - b.ts);
+  const xValues = sorted.map((row) => row.ts);
+  const yValues = sorted.map((row) => row.net);
+
+  const xMin = xValues[0];
+  const xMax = xValues[xValues.length - 1];
+  let yMin = Math.min(...yValues);
+  let yMax = Math.max(...yValues);
+  if (yMin === yMax) {
+    const adjust = Math.abs(yMin) || 1;
+    yMin -= adjust;
+    yMax += adjust;
+  }
+
+  const xSpan = xMax - xMin || 1;
+  const ySpan = yMax - yMin || 1;
+  const innerWidth = width - padding.left - padding.right;
+  const innerHeight = height - padding.top - padding.bottom;
+
+  const points = sorted.map((row) => {
+    const x = padding.left + ((row.ts - xMin) / xSpan) * innerWidth;
+    const y = padding.top + (1 - (row.net - yMin) / ySpan) * innerHeight;
+    return { ...row, x, y };
+  });
+
+  const pathD = points
+    .map((point, idx) => `${idx === 0 ? "M" : "L"}${point.x} ${point.y}`)
+    .join(" ");
+
+  const axisColor = dark ? "#8fa58f" : "#b0bec5";
+  const gridColor = dark ? "#1f2b1f" : "#e0e0e0";
+  const lineColor = "#2e7d32";
+  const textColor = dark ? "#ffffff" : "#102027";
+
+  const yTicks = 4;
+  const yTickValues = Array.from({ length: yTicks + 1 }, (_, i) => yMin + (ySpan / yTicks) * i);
+
+  const xTickCount = Math.min(points.length, 6);
+  const xTickIndexes = xTickCount > 1
+    ? Array.from({ length: xTickCount }, (_, i) =>
+        Math.round((points.length - 1) * (i / (xTickCount - 1))))
+    : [0];
+
+  const formatAmount = (value) =>
+    `E£${Number(value).toLocaleString(undefined, {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    })}`;
+
+  const formatDateLabel = (ts) =>
+    new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+
+  return (
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      style={{ width: "100%", height }}
+      role="img"
+      aria-label="Margin over time"
+    >
+      {/* grid */}
+      {yTickValues.map((value, idx) => {
+        const y = padding.top + (1 - (value - yMin) / ySpan) * innerHeight;
+        return (
+          <line
+            key={`grid-${idx}`}
+            x1={padding.left}
+            x2={width - padding.right}
+            y1={y}
+            y2={y}
+            stroke={gridColor}
+            strokeWidth={idx === 0 || idx === yTicks ? 1.5 : 1}
+          />
+        );
+      })}
+
+      {/* axes */}
+      <line
+        x1={padding.left}
+        y1={height - padding.bottom}
+        x2={width - padding.right}
+        y2={height - padding.bottom}
+        stroke={axisColor}
+        strokeWidth={1.5}
+      />
+      <line
+        x1={padding.left}
+        y1={padding.top}
+        x2={padding.left}
+        y2={height - padding.bottom}
+        stroke={axisColor}
+        strokeWidth={1.5}
+      />
+
+      {/* axis labels */}
+      {yTickValues.map((value, idx) => {
+        const y = padding.top + (1 - (value - yMin) / ySpan) * innerHeight;
+        return (
+          <text
+            key={`ylabel-${idx}`}
+            x={padding.left - 8}
+            y={y + 4}
+            textAnchor="end"
+            fontSize={12}
+            fill={textColor}
+          >
+            {formatAmount(value)}
+          </text>
+        );
+      })}
+
+      {xTickIndexes.map((idx, i) => {
+        const point = points[idx];
+        return (
+          <text
+            key={`xlabel-${i}`}
+            x={point.x}
+            y={height - padding.bottom + 24}
+            textAnchor="middle"
+            fontSize={12}
+            fill={textColor}
+          >
+            {formatDateLabel(point.ts)}
+          </text>
+        );
+      })}
+
+      {/* line */}
+      <path
+        d={pathD}
+        fill="none"
+        stroke={lineColor}
+        strokeWidth={3}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+
+      {/* points */}
+      {points.map((point, idx) => (
+        <g key={`pt-${idx}`}>
+          <circle cx={point.x} cy={point.y} r={4} fill={lineColor} />
+          <title>
+            {`${formatDateLabel(point.ts)} — ${formatAmount(point.net)}`}
+          </title>
+        </g>
+      ))}
+    </svg>
+  );
 }
 export function packStateForCloud(state) {
    const {
@@ -1504,6 +1666,7 @@ const [reportMonth, setReportMonth] = useState(() => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 });
+const [marginChartFilter, setMarginChartFilter] = useState("week");
   const [bankFilter, setBankFilter] = useState("day");
 const [bankDay, setBankDay] = useState(new Date().toISOString().slice(0, 10));
 const [bankMonth, setBankMonth] = useState(() => {
@@ -3977,9 +4140,9 @@ const voidOrderToExpense = async (orderNo) => {
     return [start, end];
   }, [reportFilter, reportDay, reportMonth, dayMeta]);
 
-  const totals = useMemo(() => {
+const totals = useMemo(() => {
     const validOrders = orders.filter((o) => !o.voided);
-    const revenueTotal = validOrders.reduce(
+    const revenueTotal = validOrders.reduce(␊
       (s, o) =>
         s +
         Number(
@@ -4027,11 +4190,149 @@ for (const o of validOrders) {
       (s, e) => s + Number((e.qty || 0) * (e.unitPrice || 0)),
       0
     );
-    const margin = revenueTotal - expensesTotal;
+   const margin = revenueTotal - expensesTotal;
     return { revenueTotal, byPay, byType, deliveryFeesTotal, expensesTotal, margin };
   }, [orders, paymentMethods, orderTypes, expenses]);
 
-  const profitTimeline = useMemo(() => {
+  const resetReports = () => {
+    const now = new Date();
+    const isoDay = now.toISOString().slice(0, 10);
+    const isoMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    setReportFilter("shift");
+    setReportDay(isoDay);
+    setReportMonth(isoMonth);
+    setMarginChartFilter("week");
+  };
+
+  const computeProfitBuckets = useCallback(
+    (rangeStart, rangeEnd) => {
+      if (!rangeStart || !rangeEnd) return [];
+      const startMs = +rangeStart;
+      const endMs = +rangeEnd;
+      if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return [];
+
+      const start = new Date(startMs);
+      const end = new Date(endMs);
+
+      const toDate = (value) => {
+        if (!value) return null;
+        if (value instanceof Date) return value;
+        const d = new Date(value);
+        return Number.isNaN(+d) ? null : d;
+      };
+
+      const shiftStart = dayMeta?.startedAt ? new Date(dayMeta.startedAt) : null;
+      const shiftEndRaw = dayMeta?.endedAt ? new Date(dayMeta.endedAt) : null;
+      const now = new Date();
+      const shiftEnd = shiftEndRaw || now;
+      const includeHistorical =
+        !shiftStart || start < shiftStart || end > shiftEnd;
+
+      const mergeRows = (liveRows = [], historicalRows = []) =>
+        includeHistorical
+          ? [...(historicalRows || []), ...(liveRows || [])]
+          : liveRows || [];
+
+      const map = new Map();
+      const ensureBucket = (dateObj) => {
+        const dayStart = new Date(
+          dateObj.getFullYear(),
+          dateObj.getMonth(),
+          dateObj.getDate(),
+          0,
+          0,
+          0,
+          0
+        );
+        const key = dayStart.getTime();
+        if (!map.has(key)) {
+          const dd = String(dayStart.getDate()).padStart(2, "0");
+          const mm = String(dayStart.getMonth() + 1).padStart(2, "0");
+          const yyyy = dayStart.getFullYear();
+          map.set(key, {
+            ts: key,
+            date: `${dd}-${mm}-${yyyy}`,
+            revenue: 0,
+            purchasesCost: 0,
+            expenseCost: 0,
+          });
+        }
+        return map.get(key);
+      };
+
+      const inRange = (d) => d >= start && d <= end;
+
+      for (const order of mergeRows(orders, historicalOrders)) {
+        if (!order || order.voided) continue;
+        const when = toDate(order.date);
+        if (!when || !inRange(when)) continue;
+        const itemsOnly = Number(
+          order.itemsTotal != null
+            ? order.itemsTotal
+            : (order.total || 0) - (order.deliveryFee || 0)
+        );
+        if (!Number.isFinite(itemsOnly)) continue;
+        const bucket = ensureBucket(when);
+        bucket.revenue += itemsOnly;
+      }
+
+      for (const purchase of mergeRows(purchases, historicalPurchases)) {
+        const when = toDate(purchase?.date);
+        if (!when || !inRange(when)) continue;
+        const qty = Number(purchase?.qty || 0);
+        const price = Number(purchase?.unitPrice || 0);
+        const amount = qty * price;
+        if (!Number.isFinite(amount)) continue;
+        const bucket = ensureBucket(when);
+        bucket.purchasesCost += amount;
+      }
+
+      for (const expense of mergeRows(expenses, historicalExpenses)) {
+        const when = toDate(expense?.date);
+        if (!when || !inRange(when)) continue;
+        const qty = Number(expense?.qty || 0);
+        const price = Number(expense?.unitPrice || 0);
+        const amount = qty * price;
+        if (!Number.isFinite(amount)) continue;
+        const bucket = ensureBucket(when);
+        bucket.expenseCost += amount;
+      }
+
+      return Array.from(map.values())
+        .sort((a, b) => a.ts - b.ts)
+        .map((bucket) => {
+          const net = bucket.revenue - bucket.purchasesCost - bucket.expenseCost;
+          const marginPct = bucket.revenue
+            ? (net / bucket.revenue) * 100
+            : 0;
+          return {
+            date: bucket.date,
+            ts: bucket.ts,
+            revenue: Number(bucket.revenue.toFixed(2)),
+            purchasesCost: Number(bucket.purchasesCost.toFixed(2)),
+            expenseCost: Number(bucket.expenseCost.toFixed(2)),
+            net: Number(net.toFixed(2)),
+            marginPct: Number(marginPct.toFixed(2)),
+          };
+        });
+    },
+    [
+      orders,
+      purchases,
+      expenses,
+      historicalOrders,
+      historicalPurchases,
+      historicalExpenses,
+      dayMeta,
+    ]
+  );
+
+  const profitTimeline = useMemo(
+    () => computeProfitBuckets(reportStart, reportEnd),
+    [computeProfitBuckets, reportStart, reportEnd]
+  );
+
+  const reportOrders = useMemo(() => {
     if (!reportStart || !reportEnd) return [];
     const startMs = +reportStart;
     const endMs = +reportEnd;
@@ -4054,103 +4355,16 @@ for (const o of validOrders) {
     const includeHistorical =
       !shiftStart || start < shiftStart || end > shiftEnd;
 
-    const mergeRows = (liveRows = [], historicalRows = []) =>
-      includeHistorical
-        ? [...(historicalRows || []), ...(liveRows || [])]
-        : liveRows || [];
+    const sourceOrders = includeHistorical
+      ? [...(historicalOrders || []), ...(orders || [])]
+      : orders || [];
 
-    const map = new Map();
-    const ensureBucket = (dateObj) => {
-      const dayStart = new Date(
-        dateObj.getFullYear(),
-        dateObj.getMonth(),
-        dateObj.getDate(),
-        0,
-        0,
-        0,
-        0
-      );
-      const key = dayStart.getTime();
-      if (!map.has(key)) {
-        const dd = String(dayStart.getDate()).padStart(2, "0");
-        const mm = String(dayStart.getMonth() + 1).padStart(2, "0");
-        const yyyy = dayStart.getFullYear();
-        map.set(key, {
-          ts: key,
-          date: `${dd}-${mm}-${yyyy}`,
-          revenue: 0,
-          purchasesCost: 0,
-          expenseCost: 0,
-        });
-      }
-      return map.get(key);
-    };
-
-    const inRange = (d) => d >= start && d <= end;
-
-    for (const order of mergeRows(orders, historicalOrders)) {
-      if (!order || order.voided) continue;
+    return sourceOrders.filter((order) => {
+      if (!order || order.voided) return false;
       const when = toDate(order.date);
-      if (!when || !inRange(when)) continue;
-      const itemsOnly = Number(
-        order.itemsTotal != null
-          ? order.itemsTotal
-          : (order.total || 0) - (order.deliveryFee || 0)
-      );
-      if (!Number.isFinite(itemsOnly)) continue;
-      const bucket = ensureBucket(when);
-      bucket.revenue += itemsOnly;
-    }
-
-    for (const purchase of mergeRows(purchases, historicalPurchases)) {
-      const when = toDate(purchase?.date);
-      if (!when || !inRange(when)) continue;
-      const qty = Number(purchase?.qty || 0);
-      const price = Number(purchase?.unitPrice || 0);
-      const amount = qty * price;
-      if (!Number.isFinite(amount)) continue;
-      const bucket = ensureBucket(when);
-      bucket.purchasesCost += amount;
-    }
-
-    for (const expense of mergeRows(expenses, historicalExpenses)) {
-      const when = toDate(expense?.date);
-      if (!when || !inRange(when)) continue;
-      const qty = Number(expense?.qty || 0);
-      const price = Number(expense?.unitPrice || 0);
-      const amount = qty * price;
-      if (!Number.isFinite(amount)) continue;
-      const bucket = ensureBucket(when);
-      bucket.expenseCost += amount;
-    }
-
-    return Array.from(map.values())
-      .sort((a, b) => a.ts - b.ts)
-      .map((bucket) => {
-        const net = bucket.revenue - bucket.purchasesCost - bucket.expenseCost;
-        const marginPct = bucket.revenue
-          ? (net / bucket.revenue) * 100
-          : 0;
-        return {
-          date: bucket.date,
-          revenue: Number(bucket.revenue.toFixed(2)),
-          purchasesCost: Number(bucket.purchasesCost.toFixed(2)),
-          expenseCost: Number(bucket.expenseCost.toFixed(2)),
-          net: Number(net.toFixed(2)),
-          marginPct: Number(marginPct.toFixed(2)),
-        };
-      });
-  }, [
-    reportStart,
-    reportEnd,
-    orders,
-    purchases,
-    expenses,
-    historicalOrders,
-    historicalPurchases,
-    historicalExpenses,
-    dayMeta,
-  ]);
+      return when && when >= start && when <= end;
+    });
+  }, [orders, historicalOrders, reportStart, reportEnd, dayMeta]);
 
   const salesStats = useMemo(() => {
     const itemMap = new Map();
@@ -4161,7 +4375,7 @@ for (const o of validOrders) {
       prev.revenue += revenue;
       map.set(id, prev);
     };
-    for (const o of orders) {
+    for (const o of reportOrders) {
       if (o.voided) continue;
       for (const line of o.cart || []) {
         const q = Number(line.qty || 1);
@@ -4178,7 +4392,47 @@ for (const o of validOrders) {
       (a, b) => b.count - a.count || b.revenue - a.revenue
     );
     return { items, extras };
-  }, [orders]);
+  }, [reportOrders]);
+
+  const marginChartRange = useMemo(() => {
+    const now = new Date();
+    const todayEnd = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      23,
+      59,
+      59,
+      999
+    );
+
+    let start;
+    let end;
+
+    if (marginChartFilter === "year") {
+      start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+      end = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+    } else if (marginChartFilter === "month") {
+      start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    } else {
+      start = new Date(now);
+      start.setDate(now.getDate() - now.getDay());
+      start.setHours(0, 0, 0, 0);
+      end = new Date(start);
+      end.setDate(start.getDate() + 6);
+      end.setHours(23, 59, 59, 999);
+    }
+
+    if (end > todayEnd) end = todayEnd;
+
+    return { start, end };
+  }, [marginChartFilter]);
+
+  const marginChartData = useMemo(
+    () => computeProfitBuckets(marginChartRange.start, marginChartRange.end),
+    [computeProfitBuckets, marginChartRange]
+  );
 const filteredBankTx = useMemo(() => {
   const [start, end] = getPeriodRange(bankFilter, dayMeta, bankDay, bankMonth, undefined);
   return bankTx.filter(t => {
@@ -8881,7 +9135,7 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
           />
         </>
       )}
- {workerLogFilter === "week" && (
+  {workerLogFilter === "week" && (
         <>
           <label><b>Pick week:</b></label>
           <input
@@ -8895,7 +9149,11 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
               }
             }}
             style={{ padding:6, borderRadius:6, border:`1px solid ${btnBorder}` }}
+            title={`Week starts ${formatDateDDMMYY(workerLogWeekStart)}`}
           />
+          <span style={{ fontSize: 12, opacity: 0.75 }}>
+            (Starts: {formatDateDDMMYY(workerLogWeekStart)})
+          </span>
         </>
       )}
       <div style={{ marginLeft:"auto", opacity:.8 }}>
@@ -9214,7 +9472,7 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
                 />
               </>
             )}
-            {reportFilter === "month" && (
+ {reportFilter === "month" && (
               <>
                 <label><b>Pick month:</b></label>
                 <input
@@ -9229,6 +9487,19 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
                 />
               </>
             )}
+            <button
+              onClick={resetReports}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 6,
+                border: `1px solid ${btnBorder}`,
+                background: dark ? "#2c2c2c" : "#f1f1f1",
+                cursor: "pointer",
+                fontWeight: 700,
+              }}
+            >
+              Reset
+            </button>
             <div style={{ marginLeft: "auto", opacity: 0.8 }}>
               {reportStart && reportEnd ? (
                 <>
@@ -9247,7 +9518,8 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
                 marginBottom: 12,
                 padding: 10,
                 borderRadius: 6,
-                background: dark ? "#1b2631" : "#e3f2fd",
+                background: dark ? "#0f2d18" : "#e8f5e9",
+                color: dark ? "#c8e6c9" : "#1b5e20",
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
                 gap: 10,
@@ -9257,6 +9529,67 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
               <div><b>Delivery Fees:</b><br/>E£{totals.deliveryFeesTotal.toFixed(2)}</div>
               <div><b>Expenses:</b><br/>E£{totals.expensesTotal.toFixed(2)}</div>
               <div><b>Margin:</b><br/>E£{totals.margin.toFixed(2)}</div>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 8,
+                  alignItems: "center",
+                  marginBottom: 8,
+                }}
+              >
+                <h3 style={{ margin: 0 }}>Margin Trend</h3>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {[
+                    ["week", "Week"],
+                    ["month", "Month"],
+                    ["year", "Year"],
+                  ].map(([key, label]) => (
+                    <button
+                      key={key}
+                      onClick={() => setMarginChartFilter(key)}
+                      style={{
+                        padding: "6px 10px",
+                        borderRadius: 6,
+                        border: `1px solid ${btnBorder}`,
+                        background:
+                          marginChartFilter === key
+                            ? "#ffd54f"
+                            : dark
+                            ? "#2c2c2c"
+                            : "#f1f1f1",
+                        cursor: "pointer",
+                        fontWeight: 700,
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ marginLeft: "auto", opacity: 0.8 }}>
+                  {marginChartRange.start && marginChartRange.end ? (
+                    <>
+                      Period: {formatDateDDMMYY(marginChartRange.start)} → {" "}
+                      {formatDateDDMMYY(marginChartRange.end)}
+                    </>
+                  ) : (
+                    "Period unavailable"
+                  )}
+                </div>
+              </div>
+              <div
+                style={{
+                  border: `1px solid ${cardBorder}`,
+                  borderRadius: 12,
+                  padding: 12,
+                  background: dark ? "#151515" : "#ffffff",
+                }}
+              >
+                <MarginLineChart data={marginChartData} dark={dark} />
+              </div>
             </div>
             <div style={{ marginBottom: 16 }}>
               <h3 style={{ marginTop: 0 }}>Profit Timeline</h3>
@@ -9318,9 +9651,9 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
                   </tr>
                 );
               })}
-              {salesStats.items.length === 0 && (
+       {salesStats.items.length === 0 && (
                 <tr>
-                  <td colSpan={4} style={{ padding: 8, opacity: 0.8 }}>No items sold in this shift.</td>
+                  <td colSpan={4} style={{ padding: 8, opacity: 0.8 }}>No items sold in this period.</td>
                 </tr>
               )}
             </tbody>
@@ -9348,9 +9681,9 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
                   </tr>
                 );
               })}
-              {salesStats.extras.length === 0 && (
+             {salesStats.extras.length === 0 && (
                 <tr>
-                  <td colSpan={4} style={{ padding: 8, opacity: 0.8 }}>No extras sold in this shift.</td>
+                  <td colSpan={4} style={{ padding: 8, opacity: 0.8 }}>No extras sold in this period.</td>
                 </tr>
               )}
             </tbody>
