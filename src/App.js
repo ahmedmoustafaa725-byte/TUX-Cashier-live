@@ -112,16 +112,42 @@ function getWeekRangeFromInput(weekStr) {
   const year = Number(yearPart);
   const week = Number(weekPart);
   if (!year || !week) return null;
-  const simple = new Date(year, 0, 1 + (week - 1) * 7);
-  const dayOfWeek = simple.getDay();
-  const isoWeekStart = new Date(simple);
-  const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-  isoWeekStart.setDate(simple.getDate() + diff);
-  isoWeekStart.setHours(0, 0, 0, 0);
-  const isoWeekEnd = new Date(isoWeekStart);
-  isoWeekEnd.setDate(isoWeekEnd.getDate() + 6);
-  isoWeekEnd.setHours(23, 59, 59, 999);
+
+  // Determine the Monday of the first ISO week for the provided year.
+  const firstThursday = new Date(Date.UTC(year, 0, 4));
+  const firstThursdayDay = firstThursday.getUTCDay() || 7;
+  const firstMonday = new Date(firstThursday);
+  firstMonday.setUTCDate(firstThursday.getUTCDate() - firstThursdayDay + 1);
+
+  // Add the requested number of weeks to reach the target week.
+  const startUtc = new Date(firstMonday);
+  startUtc.setUTCDate(firstMonday.getUTCDate() + (week - 1) * 7);
+
+  const endUtc = new Date(startUtc);
+  endUtc.setUTCDate(startUtc.getUTCDate() + 6);
+
+  // Convert back to local time boundaries.
+  const isoWeekStart = new Date(
+    startUtc.getUTCFullYear(),
+    startUtc.getUTCMonth(),
+    startUtc.getUTCDate(),
+    0,
+    0,
+    0,
+    0
+  );
+  const isoWeekEnd = new Date(
+    endUtc.getUTCFullYear(),
+    endUtc.getUTCMonth(),
+    endUtc.getUTCDate(),
+    23,
+    59,
+    59,
+    999
+  );
+
   return [isoWeekStart, isoWeekEnd];
+}
 }
 export function packStateForCloud(state) {
    const {
@@ -10200,6 +10226,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
