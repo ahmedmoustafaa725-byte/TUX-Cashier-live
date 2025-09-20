@@ -202,6 +202,312 @@ function getSundayStartOfWeek(year, week) {
 }
 
 
+function SundayWeekPicker({ selectedSunday, onSelect, dark = false, btnBorder = "#ccc" }) {
+  const containerRef = useRef(null);
+  const [open, setOpen] = useState(false);
+  const [hoveredWeek, setHoveredWeek] = useState(null);
+
+  const selectedInfo = useMemo(() => {
+    if (!selectedSunday) return null;
+    return getSundayWeekInfo(selectedSunday, true);
+  }, [selectedSunday]);
+
+  const selectedStart = useMemo(() => {
+    if (!selectedInfo?.start) return null;
+    const d = new Date(selectedInfo.start);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, [selectedInfo]);
+
+  const selectedStartTime = selectedStart ? selectedStart.getTime() : null;
+
+  const [viewMonth, setViewMonth] = useState(() => {
+    const base = selectedStart || new Date();
+    return new Date(base.getFullYear(), base.getMonth(), 1);
+  });
+
+  useEffect(() => {
+    if (!selectedStart) return;
+    setViewMonth((prev) => {
+      if (
+        prev &&
+        prev.getFullYear() === selectedStart.getFullYear() &&
+        prev.getMonth() === selectedStart.getMonth()
+      )
+        return prev;
+      return new Date(selectedStart.getFullYear(), selectedStart.getMonth(), 1);
+    });
+  }, [selectedStartTime]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClickAway = (event) => {
+      if (!containerRef.current) return;
+      if (!containerRef.current.contains(event.target)) setOpen(false);
+    };
+    const handleEscape = (event) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", handleClickAway);
+    document.addEventListener("touchstart", handleClickAway);
+    window.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleClickAway);
+      document.removeEventListener("touchstart", handleClickAway);
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) setHoveredWeek(null);
+  }, [open]);
+
+  const weeks = useMemo(() => {
+    if (!viewMonth) return [];
+    const firstOfMonth = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), 1);
+    firstOfMonth.setHours(0, 0, 0, 0);
+    const calendarStart = new Date(firstOfMonth);
+    calendarStart.setDate(calendarStart.getDate() - calendarStart.getDay());
+    calendarStart.setHours(0, 0, 0, 0);
+
+    const rows = [];
+    for (let w = 0; w < 6; w += 1) {
+      const weekStart = new Date(calendarStart);
+      weekStart.setDate(calendarStart.getDate() + w * 7);
+      weekStart.setHours(0, 0, 0, 0);
+      const days = [];
+      for (let d = 0; d < 7; d += 1) {
+        const day = new Date(weekStart);
+        day.setDate(weekStart.getDate() + d);
+        day.setHours(0, 0, 0, 0);
+        days.push(day);
+      }
+      rows.push({ weekStart, days });
+    }
+    return rows;
+  }, [viewMonth]);
+
+  const monthLabel = useMemo(() => {
+    if (!viewMonth) return "";
+    return viewMonth.toLocaleString(undefined, {
+      month: "long",
+      year: "numeric",
+    });
+  }, [viewMonth]);
+
+  const selectedLabel = useMemo(() => {
+    if (!selectedInfo?.week || !selectedStart) return "Select week";
+    const end = new Date(selectedStart);
+    end.setDate(selectedStart.getDate() + 6);
+    return `Week ${String(selectedInfo.week).padStart(2, "0")} • ${formatDateDDMMYY(
+      selectedStart
+    )} → ${formatDateDDMMYY(end)}`;
+  }, [selectedInfo, selectedStart]);
+
+  const openPicker = () => {
+    if (!open) {
+      setViewMonth((prev) => {
+        const base = selectedStart || new Date();
+        const month = new Date(base.getFullYear(), base.getMonth(), 1);
+        if (
+          prev &&
+          prev.getFullYear() === month.getFullYear() &&
+          prev.getMonth() === month.getMonth()
+        )
+          return prev;
+        return month;
+      });
+    }
+    setOpen((prev) => !prev);
+  };
+
+  const handleSelect = (weekStart) => {
+    setOpen(false);
+    if (onSelect) {
+      const normalized = new Date(weekStart);
+      normalized.setHours(0, 0, 0, 0);
+      onSelect(normalized);
+    }
+  };
+
+  const goMonth = (delta) => {
+    setViewMonth((prev) => {
+      const base = prev || new Date();
+      return new Date(base.getFullYear(), base.getMonth() + delta, 1);
+    });
+  };
+
+  const weekButtonBaseStyle = {
+    display: "grid",
+    gridTemplateColumns: "52px repeat(7, 32px)",
+    gap: 4,
+    alignItems: "center",
+    padding: "4px 6px",
+    borderRadius: 8,
+    border: "none",
+    cursor: "pointer",
+    background: "transparent",
+    color: dark ? "#f2f2f2" : "#111",
+    fontSize: 12,
+    fontWeight: 600,
+    textAlign: "center",
+  };
+
+  const dayLabels = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+
+  return (
+    <div ref={containerRef} style={{ position: "relative", display: "inline-block" }}>
+      <button
+        type="button"
+        onClick={openPicker}
+        style={{
+          padding: "6px 12px",
+          borderRadius: 6,
+          border: `1px solid ${btnBorder}`,
+          background: dark ? "#2c2c2c" : "#fff",
+          color: dark ? "#f1f1f1" : "#000",
+          cursor: "pointer",
+          minWidth: 220,
+          textAlign: "left",
+          fontWeight: 600,
+        }}
+      >
+        {selectedLabel}
+      </button>
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 6px)",
+            left: 0,
+            zIndex: 1000,
+            borderRadius: 10,
+            border: `1px solid ${btnBorder}`,
+            background: dark ? "#1c1c1c" : "#fff",
+            color: dark ? "#f1f1f1" : "#000",
+            boxShadow: dark
+              ? "0 12px 24px rgba(0,0,0,0.45)"
+              : "0 12px 24px rgba(0,0,0,0.18)",
+            padding: 12,
+            minWidth: 340,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 8,
+              gap: 8,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => goMonth(-1)}
+              style={{
+                border: `1px solid ${btnBorder}`,
+                borderRadius: 6,
+                padding: "4px 8px",
+                cursor: "pointer",
+                background: dark ? "#2c2c2c" : "#f1f1f1",
+                color: dark ? "#f1f1f1" : "#000",
+                fontWeight: 700,
+              }}
+            >
+              ‹
+            </button>
+            <div style={{ fontWeight: 700 }}>{monthLabel}</div>
+            <button
+              type="button"
+              onClick={() => goMonth(1)}
+              style={{
+                border: `1px solid ${btnBorder}`,
+                borderRadius: 6,
+                padding: "4px 8px",
+                cursor: "pointer",
+                background: dark ? "#2c2c2c" : "#f1f1f1",
+                color: dark ? "#f1f1f1" : "#000",
+                fontWeight: 700,
+              }}
+            >
+              ›
+            </button>
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "52px repeat(7, 32px)",
+              gap: 4,
+              fontSize: 11,
+              fontWeight: 700,
+              textAlign: "center",
+              marginBottom: 4,
+            }}
+          >
+            <div style={{ opacity: 0.7 }}>Week</div>
+            {dayLabels.map((d) => (
+              <div key={d} style={{ opacity: 0.7 }}>
+                {d}
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "grid", gap: 4 }}>
+            {weeks.map(({ weekStart, days }) => {
+              const weekInfo = getSundayWeekInfo(weekStart, true);
+              const weekNumber = weekInfo?.week || 0;
+              const key = weekStart.getTime();
+              const isSelected = selectedStart && key === selectedStartTime;
+              const isHovered = hoveredWeek === key;
+              const background = isSelected
+                ? dark
+                  ? "rgba(25, 118, 210, 0.35)"
+                  : "rgba(25, 118, 210, 0.2)"
+                : isHovered
+                ? dark
+                  ? "rgba(255,255,255,0.08)"
+                  : "rgba(0,0,0,0.05)"
+                : "transparent";
+              const borderColor = isSelected ? "#1976d2" : "transparent";
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onMouseEnter={() => setHoveredWeek(key)}
+                  onMouseLeave={() => setHoveredWeek(null)}
+                  onClick={() => handleSelect(weekStart)}
+                  style={{
+                    ...weekButtonBaseStyle,
+                    background,
+                    border: `1px solid ${borderColor}`,
+                  }}
+                >
+                  <div style={{ fontSize: 12, fontWeight: 700 }}>{String(weekNumber).padStart(2, "0")}</div>
+                  {days.map((day) => {
+                    const outside = day.getMonth() !== viewMonth.getMonth();
+                    return (
+                      <div
+                        key={day.getTime()}
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 600,
+                          opacity: outside ? 0.35 : 1,
+                        }}
+                      >
+                        {String(day.getDate()).padStart(2, "0")}
+                      </div>
+                    );
+                  })}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function MarginLineChart({ data, dark }) {
   const width = 720;
   const height = 260;
@@ -1717,10 +2023,6 @@ const [marginChartWeek, setMarginChartWeek] = useState(() =>
 const [marginChartWeekYear, setMarginChartWeekYear] = useState(() =>
   getSundayWeekInfo(new Date()).year
 );
-const marginChartWeekInputValue = useMemo(() => {
-  const start = getSundayStartOfWeek(marginChartWeekYear, marginChartWeek);
-  return start ? toWeekInputValueFromSunday(start) : "";
-}, [marginChartWeekYear, marginChartWeek]);
 const [marginChartMonthSelection, setMarginChartMonthSelection] = useState(() => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -1983,10 +2285,6 @@ const [workerLogMonth, setWorkerLogMonth] = useState(() => {
 const workerWeekInfo = useMemo(
   () => getSundayWeekInfo(workerLogWeekStart, true),
   [workerLogWeekStart]
-);
-const workerWeekInputValue = useMemo(
-  () => toWeekInputValueFromSunday(workerWeekInfo.start),
-  [workerWeekInfo]
 );
 const [signInPin, setSignInPin] = useState("");
 const [signOutPin, setSignOutPin] = useState("");
@@ -9379,18 +9677,17 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
           />
         </>
       )}
-      {workerLogFilter === "week" && (
+ {workerLogFilter === "week" && (
         <>
           <label><b>Pick week:</b></label>
-          <input
-            type="week"
-            value={workerWeekInputValue}
-            onChange={(e) => {
-              const range = getWeekRangeFromInput(e.target.value);
-              if (!range) return;
-              setWorkerLogWeekStart(toDateInputValue(range[0]));
+          <SundayWeekPicker
+            selectedSunday={workerWeekInfo.start}
+            onSelect={(weekStart) => {
+              if (!weekStart) return;
+              setWorkerLogWeekStart(toDateInputValue(weekStart));
             }}
-            style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+            dark={dark}
+            btnBorder={btnBorder}
           />
           {workerWeekInfo.start && (
             <span style={{ fontSize: 12, opacity: 0.75 }}>
@@ -9848,21 +10145,17 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
  {marginChartFilter === "week" && (
                     <>
                       <label style={{ fontWeight: 600 }}>Pick week:</label>
-                      <input
-                        type="week"
-                        value={marginChartWeekInputValue}
-                        onChange={(e) => {
-                          const range = getWeekRangeFromInput(e.target.value);
-                          if (!range) return;
-                          const info = getSundayWeekInfo(range[0], true);
+                      <SundayWeekPicker
+                        selectedSunday={marginChartRange.start}
+                        onSelect={(weekStart) => {
+                          if (!weekStart) return;
+                          const info = getSundayWeekInfo(weekStart, true);
+                          if (!info) return;
                           setMarginChartWeek(info.week);
                           setMarginChartWeekYear(info.year);
                         }}
-                        style={{
-                          padding: 6,
-                          borderRadius: 6,
-                          border: `1px solid ${btnBorder}`,
-                        }}
+                        dark={dark}
+                        btnBorder={btnBorder}
                       />
                       {marginChartRange.start && (
                         <span style={{ fontSize: 12, opacity: 0.75 }}>
@@ -10932,6 +11225,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
