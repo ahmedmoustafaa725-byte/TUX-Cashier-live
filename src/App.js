@@ -148,7 +148,6 @@ function getWeekRangeFromInput(weekStr) {
 
   return [isoWeekStart, isoWeekEnd];
 }
-}
 export function packStateForCloud(state) {
    const {
     menu,
@@ -10226,6 +10225,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
