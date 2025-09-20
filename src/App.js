@@ -91,20 +91,18 @@ function formatDateDDMMYY(date) {
   return `${day}/${month}/${year}`;
 }
 
-function getISOWeekYearAndNumber(date) {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const dayNum = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  const weekNo = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
-  return { year: d.getUTCFullYear(), week: weekNo };
+function getSundayWeekYearAndNumber(date) {
+  const d = new Date(date);
+  if (Number.isNaN(+d)) return null;
+  const { year, week } = getSundayWeekInfo(d, true) || {};
+  if (!year || !week) return null;
+  return { year, week };
 }
 
-function formatWeekInputValue(date) {
-  const d = new Date(date);
-  if (Number.isNaN(+d)) return "";
-  const { year, week } = getISOWeekYearAndNumber(d);
-  return `${year}-W${String(week).padStart(2, '0')}`;
+function formatSundayWeekInputValue(date) {
+  const info = getSundayWeekYearAndNumber(date);
+  if (!info) return "";
+  return `${info.year}-W${String(info.week).padStart(2, '0')}`;
 }
 
 function toDateInputValue(date) {
@@ -133,21 +131,15 @@ function getWeekRangeFromInput(weekStr) {
   const week = Number(weekPart);
   if (!year || !week) return null;
 
-  // Determine the ISO week Monday, then shift back one day so the range runs Sunday → Saturday.
-  const jan4 = new Date(year, 0, 4);
-  const jan4Day = jan4.getDay() || 7;
-  const isoWeekMonday = new Date(jan4);
-  isoWeekMonday.setDate(jan4.getDate() - jan4Day + 1 + (week - 1) * 7);
-
-  const weekStart = new Date(isoWeekMonday);
-  weekStart.setDate(isoWeekMonday.getDate() - 1);
+  const weekStart = getSundayStartOfWeek(year, week);
+  if (!weekStart) return null;
   weekStart.setHours(0, 0, 0, 0);
 
   const weekEnd = new Date(weekStart);
   weekEnd.setDate(weekStart.getDate() + 6);
   weekEnd.setHours(23, 59, 59, 999);
 
- return [weekStart, weekEnd];
+  return [weekStart, weekEnd];
 }
 
 function getSundayStartDate(value) {
@@ -166,9 +158,7 @@ function toWeekInputValueFromSunday(sundayValue) {
     ? new Date(sundayValue)
     : new Date(sundayValue);
   if (Number.isNaN(+sunday)) return "";
-  const monday = new Date(sunday);
-  monday.setDate(monday.getDate() + 1);
-  return formatWeekInputValue(monday);
+  return formatSundayWeekInputValue(sunday);
 }
 
 function getSundayWeekInfo(value, useStartYear = false) {
@@ -3391,7 +3381,7 @@ function getPeriodRange(kind, dayMeta, dayStr, monthStr, weekStr) {
       end.setHours(23, 59, 59, 999);
       return [start, end];
     }
-    const range = getWeekRangeFromInput(formatWeekInputValue(now));
+    const range = getWeekRangeFromInput(formatSundayWeekInputValue(now));
     if (range) return range;
   }
   if (kind === "month") {
@@ -9766,7 +9756,7 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
           </div>
           {/* Totals overview */}
           <>
-           <div
+            <div
               style={{
                 marginBottom: 12,
                 padding: 10,
@@ -9778,31 +9768,36 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
                 gap: 10,
               }}
             >
-              <div>
-                <b style={{ color: "#000" }}>Revenue (items only):</b>
-                <br />
-                E£{totals.revenueTotal.toFixed(2)}
-              </div>
-              <div>
-                <b style={{ color: "#000" }}>Delivery Fees:</b>
-                <br />
-                E£{totals.deliveryFeesTotal.toFixed(2)}
-              </div>
-              <div>
-                <b style={{ color: "#000" }}>Purchases:</b>
-                <br />
-                E£{totals.purchasesTotal.toFixed(2)}
-              </div>
-              <div>
-                <b style={{ color: "#000" }}>Expenses:</b>
-                <br />
-                E£{totals.expensesTotal.toFixed(2)}
-              </div>
-              <div>
-                <b style={{ color: "#000" }}>Margin:</b>
-                <br />
-                E£{totals.margin.toFixed(2)}
-              </div>
+              {[{
+                label: "Revenue (items only):",
+                value: totals.revenueTotal.toFixed(2),
+              }, {
+                label: "Delivery Fees:",
+                value: totals.deliveryFeesTotal.toFixed(2),
+              }, {
+                label: "Purchases:",
+                value: totals.purchasesTotal.toFixed(2),
+              }, {
+                label: "Expenses:",
+                value: totals.expensesTotal.toFixed(2),
+              }, {
+                label: "Margin:",
+                value: totals.margin.toFixed(2),
+              }].map(({ label, value }) => (
+                <div
+                  key={label}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 8,
+                    fontWeight: 600,
+                  }}
+                >
+                  <span style={{ color: "#000" }}>{label}</span>
+                  <span style={{ fontWeight: 700 }}>E£{value}</span>
+                </div>
+              ))}
             </div>
             <div style={{ marginBottom: 16 }}>
               <div
@@ -10936,6 +10931,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
