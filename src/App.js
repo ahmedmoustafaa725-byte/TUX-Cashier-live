@@ -103,13 +103,35 @@ function getISOWeekYearAndNumber(date) {
 function formatWeekInputValue(date) {
   const d = new Date(date);
   if (Number.isNaN(+d)) return "";
-  const shifted = new Date(d);
-  if (shifted.getDay() === 0) {
-    // Treat Sundays as the start of the upcoming week so the range becomes Sunday → Saturday.
-    shifted.setDate(shifted.getDate() + 1);
-  }
-  const { year, week } = getISOWeekYearAndNumber(shifted);
+  const { year, week } = getISOWeekYearAndNumber(d);
   return `${year}-W${String(week).padStart(2, '0')}`;
+}
+
+function toDateInputValue(date) {
+  const d = date instanceof Date ? new Date(date) : new Date(date);
+  if (Number.isNaN(+d)) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function getSundayStart(date) {
+  const d = new Date(date);
+  if (Number.isNaN(+d)) return "";
+  const sunday = new Date(d);
+  sunday.setDate(d.getDate() - d.getDay());
+  sunday.setHours(0, 0, 0, 0);
+  return toDateInputValue(sunday);
+}
+
+function getWeekInputValueFromSunday(isoDateStr) {
+  if (!isoDateStr) return "";
+  const sunday = new Date(`${isoDateStr}T00:00:00`);
+  if (Number.isNaN(+sunday)) return "";
+  const monday = new Date(sunday);
+  monday.setDate(monday.getDate() + 1);
+  return formatWeekInputValue(monday);
 }
 
 function getWeekRangeFromInput(weekStr) {
@@ -1729,7 +1751,7 @@ const [newWRate, setNewWRate] = useState("");
 const [workerSessions, setWorkerSessions] = useState([]);
 const [workerLogFilter, setWorkerLogFilter] = useState("month"); // 'day' | 'week' | 'month'
 const [workerLogDay, setWorkerLogDay] = useState(() => new Date().toISOString().slice(0,10));
-const [workerLogWeek, setWorkerLogWeek] = useState(() => formatWeekInputValue(new Date()));
+const [workerLogWeekStart, setWorkerLogWeekStart] = useState(() => getSundayStart(new Date()));
 const [workerLogMonth, setWorkerLogMonth] = useState(() => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
@@ -3082,9 +3104,20 @@ function getPeriodRange(kind, dayMeta, dayStr, monthStr, weekStr) {
     return [start, end];
   }
 
-  if (kind === "week" && weekStr) {
-    const range = getWeekRangeFromInput(weekStr);
-    if (range) return range;
+ if (kind === "week" && weekStr) {
+    if (weekStr.includes('-W')) {
+      const range = getWeekRangeFromInput(weekStr);
+      if (range) return range;
+    } else {
+      const start = new Date(`${weekStr}T00:00:00`);
+      if (!Number.isNaN(+start)) {
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(start);
+        end.setDate(start.getDate() + 6);
+        end.setHours(23, 59, 59, 999);
+        return [start, end];
+      }
+    }
   }
 
   if (kind === "month" && monthStr) {
@@ -3099,8 +3132,16 @@ function getPeriodRange(kind, dayMeta, dayStr, monthStr, weekStr) {
     const end = dayMeta?.endedAt ? new Date(dayMeta.endedAt) : now;
     return [start, end];
   }
-  if (kind === "week") {
+   if (kind === "week") {
     const now = new Date();
+    const sundayStr = getSundayStart(now);
+    if (sundayStr) {
+      const start = new Date(`${sundayStr}T00:00:00`);
+      const end = new Date(start);
+      end.setDate(start.getDate() + 6);
+      end.setHours(23, 59, 59, 999);
+      return [start, end];
+    }
     const range = getWeekRangeFromInput(formatWeekInputValue(now));
     if (range) return range;
   }
@@ -3257,8 +3298,8 @@ const hoursForSession = (s, start, end) => {
 };
 
 const [wStart, wEnd] = useMemo(() => {
-  return getPeriodRange(workerLogFilter, dayMeta, workerLogDay, workerLogMonth, workerLogWeek);
-}, [workerLogFilter, workerLogDay, workerLogMonth, workerLogWeek, dayMeta]);
+  return getPeriodRange(workerLogFilter, dayMeta, workerLogDay, workerLogMonth, workerLogWeekStart);
+}, [workerLogFilter, workerLogDay, workerLogMonth, workerLogWeekStart, dayMeta]);
 const workerNamesKnown = useMemo(() => {
   const set = new Set((workerProfiles || []).map(p => p.name));
   for (const s of workerSessions || []) set.add(s.name);
@@ -8840,13 +8881,19 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
           />
         </>
       )}
-      {workerLogFilter === "week" && (
+ {workerLogFilter === "week" && (
         <>
           <label><b>Pick week:</b></label>
           <input
             type="week"
-            value={workerLogWeek}
-            onChange={(e) => setWorkerLogWeek(e.target.value)}
+            value={getWeekInputValueFromSunday(workerLogWeekStart)}
+            onChange={(e) => {
+              const range = getWeekRangeFromInput(e.target.value);
+              if (range) {
+                const [start] = range;
+                setWorkerLogWeekStart(toDateInputValue(start));
+              }
+            }}
             style={{ padding:6, borderRadius:6, border:`1px solid ${btnBorder}` }}
           />
         </>
@@ -10212,6 +10259,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
