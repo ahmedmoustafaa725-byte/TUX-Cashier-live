@@ -9768,7 +9768,7 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
                 gap: 10,
               }}
             >
-              {[{
+             {[{
                 label: "Revenue (items only):",
                 value: totals.revenueTotal.toFixed(2),
               }, {
@@ -9787,10 +9787,11 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
                 <div
                   key={label}
                   style={{
-                    display: "flex",
-                    justifyContent: "space-between",
+                    display: "grid",
+                    gridTemplateColumns: "auto auto",
                     alignItems: "center",
-                    gap: 8,
+                    columnGap: 8,
+                    rowGap: 2,
                     fontWeight: 600,
                   }}
                 >
@@ -10931,6 +10932,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
