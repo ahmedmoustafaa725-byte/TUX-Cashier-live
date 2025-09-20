@@ -4142,7 +4142,7 @@ const voidOrderToExpense = async (orderNo) => {
 
 const totals = useMemo(() => {
     const validOrders = orders.filter((o) => !o.voided);
-    const revenueTotal = validOrders.reduce(␊
+    const revenueTotal = validOrders.reduce(
       (s, o) =>
         s +
         Number(
@@ -10592,6 +10592,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
