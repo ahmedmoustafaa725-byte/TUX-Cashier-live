@@ -91,7 +91,7 @@ function formatDateDDMMYY(date) {
   return `${day}/${month}/${year}`;
 }
 export function packStateForCloud(state) {
-  const {
+   const {
     menu,
     extraList,
     orders,
@@ -113,6 +113,9 @@ export function packStateForCloud(state) {
     bankTx,
     reconHistory,
     realtimeOrders,
+    utilityBills,
+    laborProfile,
+    equipmentList,
   } = state;
   const purchases = Array.isArray(state.purchases)
     ? state.purchases.map((p) => ({
@@ -190,10 +193,13 @@ export function packStateForCloud(state) {
       ...t,
       date: toIso(t.date),
     })),
-    reconHistory: (reconHistory || []).map((r) => ({
+   reconHistory: (reconHistory || []).map((r) => ({
       ...r,
       at: toIso(r.at),
     })),
+    utilityBills,
+    laborProfile,
+    equipmentList,
   };
   return sanitizeForFirestore(payload);
 }
@@ -268,7 +274,7 @@ export function unpackStateFromCloud(data, fallbackDayMeta = {}) {
 if (typeof data.defaultDeliveryFee === "number")
     out.defaultDeliveryFee = data.defaultDeliveryFee;
   if (Array.isArray(data.workerProfiles)) out.workerProfiles = data.workerProfiles;
-  if (Array.isArray(data.workerSessions)) {
+if (Array.isArray(data.workerSessions)) {
     out.workerSessions = data.workerSessions.map((s) => ({
       ...s,
       signInAt: s.signInAt ? new Date(s.signInAt) : null,
@@ -276,6 +282,9 @@ if (typeof data.defaultDeliveryFee === "number")
     }));
   }
   if (typeof data.realtimeOrders === "boolean") out.realtimeOrders = data.realtimeOrders;
+  if (data.utilityBills) out.utilityBills = data.utilityBills;
+  if (data.laborProfile) out.laborProfile = data.laborProfile;
+  if (Array.isArray(data.equipmentList)) out.equipmentList = data.equipmentList;
   return out;
 }
 
@@ -351,47 +360,326 @@ function dedupeOrders(list) {
   );
 }
 const BASE_MENU = [
-  { id: 1, name: "Single Smashed Patty", price: 95, uses: {}, targetMarginPctOverride: null },
-  { id: 2, name: "Double Smashed Patty", price: 140, uses: {}, targetMarginPctOverride: null },
-  { id: 3, name: "Triple Smashed Patty", price: 160, uses: {}, targetMarginPctOverride: null },
-  { id: 4, name: "Tux Quatro Smashed Patty", price: 190, uses: {}, targetMarginPctOverride: null },
-  { id: 14, name: "TUXIFY Single", price: 120, uses: {}, targetMarginPctOverride: null },
-  { id: 15, name: "TUXIFY Double", price: 160, uses: {}, targetMarginPctOverride: null },
-  { id: 16, name: "TUXIFY Triple", price: 200, uses: {}, targetMarginPctOverride: null },
-  { id: 17, name: "TUXIFY Quatro", price: 240, uses: {}, targetMarginPctOverride: null },
-  { id: 5, name: "Classic Fries", price: 25, uses: {}, targetMarginPctOverride: null },
-  { id: 6, name: "Cheese Fries", price: 40, uses: {}, targetMarginPctOverride: null },
-  { id: 7, name: "Chili Fries", price: 50, uses: {}, targetMarginPctOverride: null },
-  { id: 8, name: "Tux Fries", price: 75, uses: {}, targetMarginPctOverride: null },
-  { id: 9, name: "Doppy Fries", price: 95, uses: {}, targetMarginPctOverride: null },
-  { id: 10, name: "Classic Hawawshi", price: 80, uses: {}, targetMarginPctOverride: null },
-  { id: 11, name: "Tux Hawawshi", price: 100, uses: {}, targetMarginPctOverride: null },
-  { id: 12, name: "Soda", price: 20, uses: {}, targetMarginPctOverride: null },
-  { id: 13, name: "Water", price: 10, uses: {}, targetMarginPctOverride: null },
+  {
+    id: 1,
+    name: "Single Smashed Patty",
+    price: 95,
+    uses: {},
+    targetMarginPctOverride: null,
+    prepMinutes: 0,
+    equipmentMinutes: {},
+  },
+  {
+    id: 2,
+    name: "Double Smashed Patty",
+    price: 140,
+    uses: {},
+    targetMarginPctOverride: null,
+    prepMinutes: 0,
+    equipmentMinutes: {},
+  },
+  {
+    id: 3,
+    name: "Triple Smashed Patty",
+    price: 160,
+    uses: {},
+    targetMarginPctOverride: null,
+    prepMinutes: 0,
+    equipmentMinutes: {},
+  },
+  {
+    id: 4,
+    name: "Tux Quatro Smashed Patty",
+    price: 190,
+    uses: {},
+    targetMarginPctOverride: null,
+    prepMinutes: 0,
+    equipmentMinutes: {},
+  },
+  {
+    id: 14,
+    name: "TUXIFY Single",
+    price: 120,
+    uses: {},
+    targetMarginPctOverride: null,
+    prepMinutes: 0,
+    equipmentMinutes: {},
+  },
+  {
+    id: 15,
+    name: "TUXIFY Double",
+    price: 160,
+    uses: {},
+    targetMarginPctOverride: null,
+    prepMinutes: 0,
+    equipmentMinutes: {},
+  },
+  {
+    id: 16,
+    name: "TUXIFY Triple",
+    price: 200,
+    uses: {},
+    targetMarginPctOverride: null,
+    prepMinutes: 0,
+    equipmentMinutes: {},
+  },
+  {
+    id: 17,
+    name: "TUXIFY Quatro",
+    price: 240,
+    uses: {},
+    targetMarginPctOverride: null,
+    prepMinutes: 0,
+    equipmentMinutes: {},
+  },
+  {
+    id: 5,
+    name: "Classic Fries",
+    price: 25,
+    uses: {},
+    targetMarginPctOverride: null,
+    prepMinutes: 0,
+    equipmentMinutes: {},
+  },
+  {
+    id: 6,
+    name: "Cheese Fries",
+    price: 40,
+    uses: {},
+    targetMarginPctOverride: null,
+    prepMinutes: 0,
+    equipmentMinutes: {},
+  },
+  {
+    id: 7,
+    name: "Chili Fries",
+    price: 50,
+    uses: {},
+    targetMarginPctOverride: null,
+    prepMinutes: 0,
+    equipmentMinutes: {},
+  },
+  {
+    id: 8,
+    name: "Tux Fries",
+    price: 75,
+    uses: {},
+    targetMarginPctOverride: null,
+    prepMinutes: 0,
+    equipmentMinutes: {},
+  },
+  {
+    id: 9,
+    name: "Doppy Fries",
+    price: 95,
+    uses: {},
+    targetMarginPctOverride: null,
+    prepMinutes: 0,
+    equipmentMinutes: {},
+  },
+  {
+    id: 10,
+    name: "Classic Hawawshi",
+    price: 80,
+    uses: {},
+    targetMarginPctOverride: null,
+    prepMinutes: 0,
+    equipmentMinutes: {},
+  },
+  {
+    id: 11,
+    name: "Tux Hawawshi",
+    price: 100,
+    uses: {},
+    targetMarginPctOverride: null,
+    prepMinutes: 0,
+    equipmentMinutes: {},
+  },
+  {
+    id: 12,
+    name: "Soda",
+    price: 20,
+    uses: {},
+    targetMarginPctOverride: null,
+    prepMinutes: 0,
+    equipmentMinutes: {},
+  },
+  {
+    id: 13,
+    name: "Water",
+    price: 10,
+    uses: {},
+    targetMarginPctOverride: null,
+    prepMinutes: 0,
+    equipmentMinutes: {},
+  },
 ];
 const BASE_EXTRAS = [
-  { id: 101, name: "Extra Smashed Patty", price: 40, uses: {}, targetMarginPctOverride: null },
-  { id: 102, name: "Bacon", price: 20, uses: {}, targetMarginPctOverride: null },
-  { id: 103, name: "Cheese", price: 15, uses: {}, targetMarginPctOverride: null },
-  { id: 104, name: "Ranch", price: 15, uses: {}, targetMarginPctOverride: null },
-  { id: 105, name: "Mushroom", price: 15, uses: {}, targetMarginPctOverride: null },
-  { id: 106, name: "Caramelized Onion", price: 10, uses: {}, targetMarginPctOverride: null },
-  { id: 107, name: "Jalapeno", price: 10, uses: {}, targetMarginPctOverride: null },
-  { id: 108, name: "Tux Sauce", price: 10, uses: {}, targetMarginPctOverride: null },
-  { id: 109, name: "Extra Bun", price: 10, uses: {}, targetMarginPctOverride: null },
-  { id: 110, name: "Pickle", price: 5, uses: {}, targetMarginPctOverride: null },
-  { id: 111, name: "BBQ / Ketchup / Sweet Chili / Hot Sauce", price: 5, uses: {}, targetMarginPctOverride: null },
-  { id: 112, name: "Mozzarella Cheese", price: 20, uses: {}, targetMarginPctOverride: null },
-  { id: 113, name: "Tux Hawawshi Sauce", price: 10, uses: {}, targetMarginPctOverride: null },
+  {
+    id: 101,
+    name: "Extra Smashed Patty",
+    price: 40,
+    uses: {},
+    targetMarginPctOverride: null,
+    prepMinutes: 0,
+    equipmentMinutes: {},
+  },
+  {
+    id: 102,
+    name: "Bacon",
+    price: 20,
+    uses: {},
+    targetMarginPctOverride: null,
+    prepMinutes: 0,
+    equipmentMinutes: {},
+  },
+  {
+    id: 103,
+    name: "Cheese",
+    price: 15,
+    uses: {},
+    targetMarginPctOverride: null,
+    prepMinutes: 0,
+    equipmentMinutes: {},
+  },
+  {
+    id: 104,
+    name: "Ranch",
+    price: 15,
+    uses: {},
+    targetMarginPctOverride: null,
+    prepMinutes: 0,
+    equipmentMinutes: {},
+  },
+  {
+    id: 105,
+    name: "Mushroom",
+    price: 15,
+    uses: {},
+    targetMarginPctOverride: null,
+    prepMinutes: 0,
+    equipmentMinutes: {},
+  },
+  {
+    id: 106,
+    name: "Caramelized Onion",
+    price: 10,
+    uses: {},
+    targetMarginPctOverride: null,
+    prepMinutes: 0,
+    equipmentMinutes: {},
+  },
+  {
+    id: 107,
+    name: "Jalapeno",
+    price: 10,
+    uses: {},
+    targetMarginPctOverride: null,
+    prepMinutes: 0,
+    equipmentMinutes: {},
+  },
+  {
+    id: 108,
+    name: "Tux Sauce",
+    price: 10,
+    uses: {},
+    targetMarginPctOverride: null,
+    prepMinutes: 0,
+    equipmentMinutes: {},
+  },
+  {
+    id: 109,
+    name: "Extra Bun",
+    price: 10,
+    uses: {},
+    targetMarginPctOverride: null,
+    prepMinutes: 0,
+    equipmentMinutes: {},
+  },
+  {
+    id: 110,
+    name: "Pickle",
+    price: 5,
+    uses: {},
+    targetMarginPctOverride: null,
+    prepMinutes: 0,
+    equipmentMinutes: {},
+  },
+  {
+    id: 111,
+    name: "BBQ / Ketchup / Sweet Chili / Hot Sauce",
+    price: 5,
+    uses: {},
+    targetMarginPctOverride: null,
+    prepMinutes: 0,
+    equipmentMinutes: {},
+  },
+  {
+    id: 112,
+    name: "Mozzarella Cheese",
+    price: 20,
+    uses: {},
+    targetMarginPctOverride: null,
+    prepMinutes: 0,
+    equipmentMinutes: {},
+  },
+  {
+    id: 113,
+    name: "Tux Hawawshi Sauce",
+    price: 10,
+    uses: {},
+    targetMarginPctOverride: null,
+    prepMinutes: 0,
+    equipmentMinutes: {},
+  },
 ];
 const DEFAULT_INVENTORY = [
   { id: "meat",   name: "Meat",   unit: "g",     qty: 0, costPerUnit: 0, minQty: 0 },
   { id: "cheese", name: "Cheese", unit: "slices",qty: 0, costPerUnit: 0, minQty: 0 },
 ];
+const DEFAULT_UTILITY_BILLS = {
+  electricity: { amount: 0, units: 0 },
+  gas: { amount: 0, units: 0 },
+  water: { amount: 0, units: 0 },
+};
+const DEFAULT_LABOR_PROFILE = { payout: 0, productiveHours: 0 };
+const BASE_EQUIPMENT = [];
 const BASE_WORKERS = ["Hassan","Andiel", "Warda", "Ahmed", "Hazem",];
 const DEFAULT_PAYMENT_METHODS = ["Cash", "Card", "Instapay"];
 const DEFAULT_ORDER_TYPES = ["Take-Away", "Dine-in", "Delivery"];
 const DEFAULT_DELIVERY_FEE = 20;
+const UTILITY_UNIT_LABELS = {
+  electricity: { amount: "Bill amount (E£)", units: "Usage on bill (kWh)", per: "E£ / kWh" },
+  gas: { amount: "Bill amount (E£)", units: "Usage on bill (m³)", per: "E£ / m³" },
+  water: { amount: "Bill amount (E£)", units: "Usage on bill (L)", per: "E£ / L" },
+};
+function normalizeUtilityBills(raw = {}) {
+  const safe = (v = {}) => ({
+    amount: Number(v.amount || 0),
+    units: Number(v.units || 0),
+  });
+  return {
+    electricity: safe(raw.electricity),
+    gas: safe(raw.gas),
+    water: safe(raw.water),
+  };
+}
+function normalizeLaborProfile(raw = {}) {
+  return {
+    payout: Number(raw.payout || 0),
+    productiveHours: Number(raw.productiveHours || 0),
+  };
+}
+function normalizeEquipmentList(raw = []) {
+  if (!Array.isArray(raw) || !raw.length) return [...BASE_EQUIPMENT];
+  return raw.map((eq, idx) => ({
+    id: eq?.id || `eq_${idx + 1}`,
+    name: eq?.name || "",
+    electricKw: Number(eq?.electricKw || 0),
+    gasM3PerHour: Number(eq?.gasM3PerHour || 0),
+    waterLPerMin: Number(eq?.waterLPerMin || 0),
+  }));
+}
 const BASE_WORKER_PROFILES = [
   { id: "w_hassan", name: "Hassan", pin: "1234", rate: 41.67, isActive: false },
   { id: "w_andiel", name: "Andiel", pin: "2345", rate: 31.67, isActive: false },
@@ -1059,6 +1347,19 @@ const [targetMarginPct, setTargetMarginPct] = useState(() => {
   const v = Number(l?.targetMarginPct);
   return isFinite(v) ? v : 0.5; // default 50% like your screenshot
 });
+const [utilityBills, setUtilityBills] = useState(() => {
+  const l = loadLocal();
+  return normalizeUtilityBills(l?.utilityBills || DEFAULT_UTILITY_BILLS);
+});
+const [laborProfile, setLaborProfile] = useState(() => {
+  const l = loadLocal();
+  return normalizeLaborProfile(l?.laborProfile || DEFAULT_LABOR_PROFILE);
+});
+const [equipmentList, setEquipmentList] = useState(() => {
+  const l = loadLocal();
+  const raw = Array.isArray(l?.equipmentList) ? l.equipmentList : BASE_EQUIPMENT;
+  return normalizeEquipmentList(raw);
+});
 const [showLowMarginOnly, setShowLowMarginOnly] = useState(() => {
   const l = loadLocal();
   return Boolean(l?.showLowMarginOnly);
@@ -1098,7 +1399,7 @@ const [newItemColor, setNewItemColor] = useState("#ffffff");
   const name = String(newItemName || "").trim();
   if (!name) return alert("Name required.");
   const id = getNextMenuId(menu);
-  setMenu((arr) => [
+setMenu((arr) => [
     ...arr,
     {
       id,
@@ -1106,6 +1407,8 @@ const [newItemColor, setNewItemColor] = useState("#ffffff");
       price: Math.max(0, Number(newItemPrice || 0)),
       uses: {},
       color: newItemColor || "#ffffff",
+      prepMinutes: 0,
+      equipmentMinutes: {},
     },
   ]);
   setNewItemName("");
@@ -1690,10 +1993,13 @@ useEffect(() => {
   if (l.menu) setMenu(l.menu);
   if (l.extraList) setExtraList(l.extraList);
   if (l.workers) setWorkers(l.workers);
-  if (l.paymentMethods) setPaymentMethods(l.paymentMethods);
+ if (l.paymentMethods) setPaymentMethods(l.paymentMethods);
   if (l.orderTypes) setOrderTypes(l.orderTypes);
   if (typeof l.defaultDeliveryFee === "number") setDefaultDeliveryFee(l.defaultDeliveryFee);
   if (l.inventory) setInventory(l.inventory);
+  if (l.utilityBills) setUtilityBills(normalizeUtilityBills(l.utilityBills));
+  if (l.laborProfile) setLaborProfile(normalizeLaborProfile(l.laborProfile));
+  if (Array.isArray(l.equipmentList)) setEquipmentList(normalizeEquipmentList(l.equipmentList));
   if (l.adminPins) setAdminPins((prev) => ({ ...prev, ...l.adminPins }));
   if (typeof l.dark === "boolean") setDark(l.dark);
   if (Array.isArray(l.workerProfiles)) setWorkerProfiles(l.workerProfiles);
@@ -1791,9 +2097,12 @@ useEffect(() => { saveLocalPartial({ workers }); }, [workers]);
 useEffect(() => { saveLocalPartial({ paymentMethods }); }, [paymentMethods]);
 useEffect(() => { saveLocalPartial({ orderTypes }); }, [orderTypes]);
 useEffect(() => { saveLocalPartial({ defaultDeliveryFee }); }, [defaultDeliveryFee]);
+useEffect(() => { saveLocalPartial({ utilityBills }); }, [utilityBills]);
+useEffect(() => { saveLocalPartial({ laborProfile }); }, [laborProfile]);
+useEffect(() => { saveLocalPartial({ equipmentList }); }, [equipmentList]);
 useEffect(() => { saveLocalPartial({ inventory }); }, [inventory]);
 useEffect(() => { saveLocalPartial({ adminPins }); }, [adminPins]);
-useEffect(() => { saveLocalPartial({ dark }); }, [dark]);  
+useEffect(() => { saveLocalPartial({ dark }); }, [dark]);
 useEffect(() => { saveLocalPartial({ targetMarginPct }); }, [targetMarginPct]);
 useEffect(() => { saveLocalPartial({ showLowMarginOnly }); }, [showLowMarginOnly]);
 useEffect(() => {
@@ -1836,11 +2145,12 @@ useEffect(() => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [
   menu, extraList, workers, paymentMethods, orderTypes, defaultDeliveryFee,
-  inventory, adminPins, dark,
+ inventory, adminPins, dark,
   expenses, bankTx, dayMeta, inventoryLocked, inventorySnapshot, inventoryLockedAt,
   autoPrintOnCheckout, preferredPaperWidthMm, cloudEnabled, realtimeOrders, nextOrderNo,
    purchases, purchaseCategories, customers, deliveryZones, purchaseFilter, purchaseDay, purchaseMonth,workerProfiles,
  workerSessions,
+  utilityBills, laborProfile, equipmentList,
 ]);
 useEffect(() => {
   if (!orderTypes.includes(orderType)) {
@@ -1913,6 +2223,9 @@ useEffect(() => {
           if (unpacked.reconHistory) setReconHistory(unpacked.reconHistory);
           if (unpacked.extraList) setExtraList(unpacked.extraList);
           if (unpacked.inventory) setInventory(unpacked.inventory);
+          if (unpacked.utilityBills) setUtilityBills(normalizeUtilityBills(unpacked.utilityBills));
+          if (unpacked.laborProfile) setLaborProfile(normalizeLaborProfile(unpacked.laborProfile));
+          if (unpacked.equipmentList) setEquipmentList(normalizeEquipmentList(unpacked.equipmentList));
           if (unpacked.nextOrderNo != null) setNextOrderNo(unpacked.nextOrderNo);
           if (unpacked.dark != null) setDark(unpacked.dark);
           if (unpacked.workers) setWorkers(unpacked.workers);
@@ -2070,9 +2383,12 @@ if (unpacked.workerSessions) setWorkerSessions(unpacked.workerSessions);
       expenses,
       purchases,
       purchaseCategories,
-      customers,
+     customers,
       deliveryZones,
       dayMeta,
+      utilityBills,
+      laborProfile,
+      equipmentList,
       bankTx,
       realtimeOrders,
     });
@@ -2118,6 +2434,9 @@ useEffect(() => {
         purchaseCategories,
         customers,
         deliveryZones,
+        utilityBills,
+        laborProfile,
+        equipmentList,
           workerProfiles,
          workerSessions,
         dayMeta,
@@ -2209,15 +2528,87 @@ const invById = useMemo(() => {
   for (const item of inventory) map[item.id] = item;
   return map;
 }, [inventory]);
-function computeCOGSForItemDef(def, invMap) {
+const equipmentById = useMemo(() => {
+  const map = {};
+  for (const eq of equipmentList || []) {
+    if (!eq?.id) continue;
+    map[eq.id] = eq;
+  }
+  return map;
+}, [equipmentList]);
+const utilityRates = useMemo(() => {
+  const safeRate = (bill = {}) => {
+    const amount = Number(bill.amount || 0);
+    const units = Number(bill.units || 0);
+    if (!amount || !units) return 0;
+    return amount / units;
+  };
+  return {
+    electricity: safeRate(utilityBills?.electricity),
+    gas: safeRate(utilityBills?.gas),
+    water: safeRate(utilityBills?.water),
+  };
+}, [utilityBills]);
+const laborCostPerMinute = useMemo(() => {
+  const payout = Number(laborProfile?.payout || 0);
+  const hours = Number(laborProfile?.productiveHours || 0);
+  if (!payout || !hours) return 0;
+  const minutes = hours * 60;
+  if (!minutes) return 0;
+  return payout / minutes;
+}, [laborProfile]);
+const cogsCostContext = useMemo(
+  () => ({ utilityRates, laborCostPerMinute, equipmentById }),
+  [utilityRates, laborCostPerMinute, equipmentById]
+);
+function computeCostBreakdown(def, invMap, ctx = {}) {
+  const round2 = (v) => Number((Number.isFinite(v) ? v : 0).toFixed(2));
   const uses = def?.uses || {};
-  let sum = 0;
+  let ingredientCost = 0;
   for (const k of Object.keys(uses)) {
     const need = Number(uses[k] || 0);
     const cost = Number(invMap[k]?.costPerUnit || 0);
-    sum += need * cost;
+    ingredientCost += need * cost;
   }
-  return Number(sum.toFixed(2));
+  const prepMinutes = Number(def?.prepMinutes || 0);
+  const laborCost = prepMinutes > 0 ? prepMinutes * (ctx.laborCostPerMinute || 0) : 0;
+  let electricityCost = 0;
+  let gasCost = 0;
+  let waterCost = 0;
+  const equipmentMinutes = def?.equipmentMinutes || {};
+  for (const eqId of Object.keys(equipmentMinutes)) {
+    const minutes = Number(equipmentMinutes[eqId] || 0);
+    if (!(minutes > 0)) continue;
+    const eq = ctx.equipmentById?.[eqId];
+    if (!eq) continue;
+    const electricKw = Number(eq.electricKw || 0);
+    const gasPerHour = Number(eq.gasM3PerHour || 0);
+    const waterPerMin = Number(eq.waterLPerMin || 0);
+    if (electricKw > 0 && (ctx.utilityRates?.electricity || 0) > 0) {
+      const kwh = electricKw * (minutes / 60);
+      electricityCost += kwh * (ctx.utilityRates.electricity || 0);
+    }
+    if (gasPerHour > 0 && (ctx.utilityRates?.gas || 0) > 0) {
+      const m3 = gasPerHour * (minutes / 60);
+      gasCost += m3 * (ctx.utilityRates.gas || 0);
+    }
+    if (waterPerMin > 0 && (ctx.utilityRates?.water || 0) > 0) {
+      const liters = waterPerMin * minutes;
+      waterCost += liters * (ctx.utilityRates.water || 0);
+    }
+  }
+  const total = ingredientCost + laborCost + electricityCost + gasCost + waterCost;
+  return {
+    ingredients: round2(ingredientCost),
+    labor: round2(laborCost),
+    electricity: round2(electricityCost),
+    gas: round2(gasCost),
+    water: round2(waterCost),
+    total: round2(total),
+  };
+}
+function computeCOGSForItemDef(def, invMap, ctx) {
+  return computeCostBreakdown(def, invMap, ctx).total;
 }
 const cogsMarginData = useMemo(() => {
   const rows = [
@@ -2225,7 +2616,8 @@ const cogsMarginData = useMemo(() => {
     ...extraList.map((d) => ({ ...d, _k: `e-${d.id}`, _type: "extra" })),
   ].map((def) => {
     const price = Number(def.price || 0);
-    const cogs = computeCOGSForItemDef(def, invById);
+    const breakdown = computeCostBreakdown(def, invById, cogsCostContext);
+    const cogs = breakdown.total;
     const marginPct = price > 0 ? ((price - cogs) / price) * 100 : 0;
     const override = def.targetMarginPctOverride;
     const rowTargetPct = Number(((override ?? targetMarginPct) * 100).toFixed(2));
@@ -2236,19 +2628,20 @@ const cogsMarginData = useMemo(() => {
       usesEntries.some(([invId]) => !Number(invById[invId]?.costPerUnit));
     return {
       ...def,
-      _price: price,
+ _price: price,
       _cogs: cogs,
       _marginPct: marginPct,
       _targetMarginPct: rowTargetPct,
       _marginGap: marginGap,
       _hasMissingCosts: hasMissingCosts,
+      _costBreakdown: breakdown,
     };
   });
   const threshold = targetMarginPct * 100;
   const below = rows.filter((row) => row._marginPct + 0.0001 < row._targetMarginPct);
   const missingCostKeys = rows.filter((row) => row._hasMissingCosts).map((row) => row._k);
   return { all: rows, below, threshold, missingCostKeys };
-}, [menu, extraList, invById, targetMarginPct]);
+}, [menu, extraList, invById, targetMarginPct, cogsCostContext]);
 const filteredCogsRows = useMemo(() => {
   let rows = showLowMarginOnly ? cogsMarginData.below : cogsMarginData.all;
   if (cogsTypeFilter === "menu") rows = rows.filter((row) => row._type === "menu");
@@ -2432,6 +2825,131 @@ const handleInlinePriceCommit = (row, value) => {
     return next;
   });
 };
+const handleUtilityBillChange = (type, field, value) => {
+  setUtilityBills((prev) => {
+    const current = normalizeUtilityBills(prev);
+    const nextSection = {
+      ...current[type],
+      [field]: Number(value || 0),
+    };
+    return { ...current, [type]: nextSection };
+  });
+};
+const addEquipment = () => {
+  const id = `eq_${Date.now()}`;
+  setEquipmentList((list) => [
+    ...list,
+    { id, name: "", electricKw: 0, gasM3PerHour: 0, waterLPerMin: 0 },
+  ]);
+};
+const updateEquipmentField = (id, field, value) => {
+  setEquipmentList((list) =>
+    list.map((eq) =>
+      eq.id === id
+        ? {
+            ...eq,
+            [field]: field === "name" ? value : Number(value || 0),
+          }
+        : eq
+    )
+  );
+};
+const applyToCatalogItem = (kind, itemId, updater) => {
+  if (kind === "menu") {
+    setMenu((items) => items.map((it) => (it.id === itemId ? updater(it) : it)));
+  } else {
+    setExtraList((items) => items.map((it) => (it.id === itemId ? updater(it) : it)));
+  }
+};
+const removeEquipment = (id) => {
+  setEquipmentList((list) => list.filter((eq) => eq.id !== id));
+  setMenu((items) =>
+    items.map((it) => {
+      if (!it.equipmentMinutes || !(id in it.equipmentMinutes)) return it;
+      const next = { ...it.equipmentMinutes };
+      delete next[id];
+      return { ...it, equipmentMinutes: next };
+    })
+  );
+  setExtraList((items) =>
+    items.map((it) => {
+      if (!it.equipmentMinutes || !(id in it.equipmentMinutes)) return it;
+      const next = { ...it.equipmentMinutes };
+      delete next[id];
+      return { ...it, equipmentMinutes: next };
+    })
+  );
+};
+const updatePrepMinutesForItem = (kind, itemId, minutes) => {
+  const value = Math.max(0, Number(minutes || 0));
+  applyToCatalogItem(kind, itemId, (item) => ({ ...item, prepMinutes: value }));
+};
+const updateEquipmentMinutesForItem = (kind, itemId, equipmentId, minutes) => {
+  const value = Math.max(0, Number(minutes || 0));
+  applyToCatalogItem(kind, itemId, (item) => {
+    const next = { ...(item.equipmentMinutes || {}) };
+    if (!value) delete next[equipmentId];
+    else next[equipmentId] = value;
+    return { ...item, equipmentMinutes: next };
+  });
+};
+const renderPrepTable = (kind, list, emptyLabel) => {
+  if (!list.length) {
+    return <div style={{ fontSize: 12, opacity: 0.7 }}>{emptyLabel}</div>;
+  }
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <thead>
+          <tr>
+            <th style={{ textAlign: "left", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>Item</th>
+            <th style={{ textAlign: "right", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>Prep min</th>
+            {equipmentList.map((eq) => (
+              <th
+                key={eq.id}
+                style={{ textAlign: "right", padding: 6, borderBottom: `1px solid ${cardBorder}` }}
+              >
+                {eq.name || "Equipment"} (min)
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {list.map((item) => (
+            <tr key={item.id}>
+              <td style={{ padding: 6, borderBottom: `1px solid ${cardBorder}` }}>{item.name}</td>
+              <td style={{ padding: 6, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.1}
+                  value={Number(item.prepMinutes || 0)}
+                  onChange={(e) => updatePrepMinutesForItem(kind, item.id, e.target.value)}
+                  style={{ width: 80, textAlign: "right" }}
+                />
+              </td>
+              {equipmentList.map((eq) => (
+                <td
+                  key={`${item.id}-${eq.id}`}
+                  style={{ padding: 6, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}
+                >
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.1}
+                    value={Number((item.equipmentMinutes || {})[eq.id] || 0)}
+                    onChange={(e) => updateEquipmentMinutesForItem(kind, item.id, eq.id, e.target.value)}
+                    style={{ width: 80, textAlign: "right" }}
+                  />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
 const selectedCogsRow = useMemo(
   () => cogsMarginData.all.find((row) => row._k === cogsKey) || null,
   [cogsMarginData, cogsKey]
@@ -2441,7 +2959,7 @@ const marginTrend = useMemo(() => {
   const id = selectedCogsRow.id;
   const type = selectedCogsRow._type;
   if (!id) return [];
-  const unitCogs = computeCOGSForItemDef(selectedCogsRow, invById);
+  const unitCogs = computeCOGSForItemDef(selectedCogsRow, invById, cogsCostContext);
   const map = new Map();
   for (const order of orders || []) {
     const lines = order?.cart || [];
@@ -2490,7 +3008,7 @@ const marginTrend = useMemo(() => {
     })
     .sort((a, b) => a.day.localeCompare(b.day))
     .slice(-10);
-}, [selectedCogsRow, orders, invById]);
+}, [selectedCogsRow, orders, invById, cogsCostContext]);
 
    function isWithin(d, start, end) {
   const t = +new Date(d);
@@ -4485,19 +5003,19 @@ const generatePurchasesPDF = () => {
               color: dark ? "#eee" : "#000",
             }}
           >
-            <optgroup label="Menu">
+           <optgroup label="Menu">
               {menu.map(def => {
-                const cogs = computeCOGSForItemDef(def, invById);
+                const cogs = computeCOGSForItemDef(def, invById, cogsCostContext);
                 return (
                   <option key={`m-${def.id}`} value={`m-${def.id}`}>
                     {`${def.name} — COGS E£${cogs.toFixed(2)} • Price E£${Number(def.price||0).toFixed(2)}`}
                   </option>
                 );
               })}
-            </optgroup>
+            </optgroup>␊
             <optgroup label="Extras">
               {extraList.map(def => {
-                const cogs = computeCOGSForItemDef(def, invById);
+                const cogs = computeCOGSForItemDef(def, invById, cogsCostContext);
                 return (
                   <option key={`e-${def.id}`} value={`e-${def.id}`}>
                     {`${def.name} — COGS E£${cogs.toFixed(2)} • Price E£${Number(def.price||0).toFixed(2)}`}
@@ -4510,7 +5028,8 @@ const generatePurchasesPDF = () => {
           {/* Current stats for selection */}
           {selectedCogsRow && (() => {
             const price = Number(selectedCogsRow._price ?? selectedCogsRow.price ?? 0);
-            const cogs = Number(selectedCogsRow._cogs ?? computeCOGSForItemDef(selectedCogsRow, invById));
+            const breakdown = selectedCogsRow._costBreakdown || computeCostBreakdown(selectedCogsRow, invById, cogsCostContext);
+            const cogs = Number(selectedCogsRow._cogs ?? breakdown.total ?? computeCOGSForItemDef(selectedCogsRow, invById, cogsCostContext));
             const marginPct = selectedCogsRow._marginPct ?? (price > 0 ? ((price - cogs) / price) * 100 : 0);
             const targetPct = Number(selectedCogsRow._targetMarginPct || targetMarginPct * 100);
             const money = (v) => `E£${Number(v || 0).toFixed(2)}`;
@@ -4527,6 +5046,19 @@ const generatePurchasesPDF = () => {
                 totalCost: unitCost * quantity,
               };
             });
+            const overheadRows = [
+              { key: "labor", label: "Labor", value: breakdown.labor },
+              { key: "electricity", label: "Electricity", value: breakdown.electricity },
+              { key: "gas", label: "Gas", value: breakdown.gas },
+              { key: "water", label: "Water", value: breakdown.water },
+            ].filter((row) => row.value && Math.abs(row.value) > 0.001);
+            const equipmentUsage = Object.entries(selectedCogsRow.equipmentMinutes || {})
+              .map(([eqId, minutes]) => ({
+                id: eqId,
+                name: equipmentById[eqId]?.name || eqId,
+                minutes: Number(minutes || 0),
+              }))
+              .filter((row) => row.minutes && Math.abs(row.minutes) > 0.001);
             const chartPoints = marginTrend;
             return (
               <div
@@ -4543,7 +5075,7 @@ const generatePurchasesPDF = () => {
                   <div>Current price: <b>{money(price)}</b></div>
                   <div>COGS: <b>{money(cogs)}</b></div>
                   <div>Current margin: <b>{marginPct.toFixed(1)}%</b> (target {targetPct.toFixed(1)}%)</div>
-                </div>
+               </div>
 
                 <div>
                   <div style={{ fontWeight: 600, marginBottom: 6 }}>Ingredient cost breakdown</div>
@@ -4574,6 +5106,40 @@ const generatePurchasesPDF = () => {
                     </div>
                   ) : (
                     <div style={{ fontSize: 12, opacity: 0.7 }}>No ingredients linked yet. Build the recipe in Inventory to see the breakdown.</div>
+              )}
+                </div>
+
+                <div>
+                  <div style={{ fontWeight: 600, marginBottom: 6 }}>Overhead per item</div>
+                  {overheadRows.length ? (
+                    <div style={{ display: "grid", gap: 4 }}>
+                      {overheadRows.map((row) => (
+                        <div
+                          key={row.key}
+                          style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}
+                        >
+                          <span>{row.label}</span>
+                          <span>{money(row.value)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 12, opacity: 0.7 }}>No labor or utility data yet.</div>
+                  )}
+                  <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>
+                    Prep time: {Number(selectedCogsRow.prepMinutes || 0).toFixed(1)} min
+                  </div>
+                  {equipmentUsage.length > 0 && (
+                    <div style={{ fontSize: 12, marginTop: 6 }}>
+                      <div style={{ opacity: 0.7 }}>Equipment minutes</div>
+                      <ul style={{ margin: "4px 0 0 16px", padding: 0 }}>
+                        {equipmentUsage.map((eq) => (
+                          <li key={eq.id} style={{ listStyle: "disc" }}>
+                            {eq.name}: {eq.minutes.toFixed(1)} min
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
                 </div>
 
@@ -4657,8 +5223,10 @@ const generatePurchasesPDF = () => {
           </div>
 
                {selectedCogsRow && (() => {
-            const cogs = Number(selectedCogsRow._cogs ?? computeCOGSForItemDef(selectedCogsRow, invById));
-            const safeM = Math.min(selectedCogsRow.targetMarginPctOverride ?? targetMarginPct, 0.95);
+const cogs = Number(
+              selectedCogsRow._cogs ??
+              computeCOGSForItemDef(selectedCogsRow, invById, cogsCostContext)
+            );            const safeM = Math.min(selectedCogsRow.targetMarginPctOverride ?? targetMarginPct, 0.95);
             const suggested = safeM >= 1
               ? Number(selectedCogsRow._price || selectedCogsRow.price || 0)
               : Math.max(0, Math.round(cogs / (1 - safeM)));
@@ -4693,6 +5261,275 @@ const generatePurchasesPDF = () => {
               </div>
             );
           })()}
+        </div>
+     </div>
+
+      {/* ── Overhead inputs for labor & utilities ─────────────────────── */}
+      <div
+        style={{
+          marginTop: 18,
+          border: `1px solid ${cardBorder}`,
+          borderRadius: 12,
+          padding: 16,
+          background: dark ? "#151515" : "#fafafa",
+          display: "grid",
+          gap: 16,
+        }}
+      >
+        <div>
+          <h3 style={{ margin: 0 }}>COGS Overhead Builder</h3>
+          <p style={{ margin: "6px 0 0", opacity: 0.75, fontSize: 13 }}>
+            Enter your latest utility bills, labor productivity, and equipment usage to fold operational overhead into
+            every menu item.
+          </p>
+        </div>
+
+        <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+          {[
+            ["electricity", "Electricity"],
+            ["gas", "Gas"],
+            ["water", "Water"],
+          ].map(([key, label]) => {
+            const bill = utilityBills?.[key] || { amount: 0, units: 0 };
+            const config = UTILITY_UNIT_LABELS[key];
+            const rate = utilityRates?.[key] || 0;
+            return (
+              <div
+                key={key}
+                style={{
+                  border: `1px solid ${cardBorder}`,
+                  borderRadius: 10,
+                  padding: 12,
+                  background: dark ? "rgba(255,255,255,0.04)" : "#fff",
+                  display: "grid",
+                  gap: 8,
+                }}
+              >
+                <div style={{ fontWeight: 600 }}>{label} bill</div>
+                <label style={{ fontSize: 12, opacity: 0.75 }}>{config.amount}</label>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={Number(bill.amount || 0)}
+                  onChange={(e) => handleUtilityBillChange(key, "amount", e.target.value)}
+                  style={{
+                    padding: "6px 8px",
+                    borderRadius: 8,
+                    border: `1px solid ${btnBorder}`,
+                    background: dark ? "#1f1f1f" : "#fff",
+                    color: dark ? "#eee" : "#000",
+                  }}
+                />
+                <label style={{ fontSize: 12, opacity: 0.75 }}>{config.units}</label>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={Number(bill.units || 0)}
+                  onChange={(e) => handleUtilityBillChange(key, "units", e.target.value)}
+                  style={{
+                    padding: "6px 8px",
+                    borderRadius: 8,
+                    border: `1px solid ${btnBorder}`,
+                    background: dark ? "#1f1f1f" : "#fff",
+                    color: dark ? "#eee" : "#000",
+                  }}
+                />
+                <div style={{ fontSize: 12, opacity: 0.75 }}>
+                  {rate > 0
+                    ? `Cost rate: E£${rate.toFixed(4)} ${config.per}`
+                    : "Add bill amount and usage to derive the rate."}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div
+          style={{
+            border: `1px solid ${cardBorder}`,
+            borderRadius: 10,
+            padding: 12,
+            background: dark ? "rgba(255,255,255,0.04)" : "#fff",
+            display: "grid",
+            gap: 8,
+          }}
+        >
+          <div style={{ fontWeight: 600 }}>Labor productivity</div>
+          <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
+            <label style={{ display: "grid", gap: 4 }}>
+              <span style={{ fontSize: 12, opacity: 0.75 }}>Total payout (E£)</span>
+              <input
+                type="number"
+                min={0}
+                step={0.01}
+                value={Number(laborProfile?.payout || 0)}
+                onChange={(e) =>
+                  setLaborProfile((prev) => ({ ...prev, payout: Math.max(0, Number(e.target.value || 0)) }))
+                }
+                style={{
+                  padding: "6px 8px",
+                  borderRadius: 8,
+                  border: `1px solid ${btnBorder}`,
+                  background: dark ? "#1f1f1f" : "#fff",
+                  color: dark ? "#eee" : "#000",
+                }}
+              />
+            </label>
+            <label style={{ display: "grid", gap: 4 }}>
+              <span style={{ fontSize: 12, opacity: 0.75 }}>Productive hours</span>
+              <input
+                type="number"
+                min={0}
+                step={0.1}
+                value={Number(laborProfile?.productiveHours || 0)}
+                onChange={(e) =>
+                  setLaborProfile((prev) => ({
+                    ...prev,
+                    productiveHours: Math.max(0, Number(e.target.value || 0)),
+                  }))
+                }
+                style={{
+                  padding: "6px 8px",
+                  borderRadius: 8,
+                  border: `1px solid ${btnBorder}`,
+                  background: dark ? "#1f1f1f" : "#fff",
+                  color: dark ? "#eee" : "#000",
+                }}
+              />
+            </label>
+          </div>
+          <div style={{ fontSize: 12, opacity: 0.75 }}>
+            {laborCostPerMinute > 0
+              ? `Derived labor cost: E£${(laborCostPerMinute * 60).toFixed(2)} per hour (E£${laborCostPerMinute.toFixed(
+                  4
+                )} per minute)`
+              : "Enter payout and productive hours to derive a labor cost per minute."}
+          </div>
+        </div>
+
+        <div style={{ borderTop: `1px solid ${cardBorder}`, paddingTop: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <h4 style={{ margin: 0 }}>Equipment</h4>
+            <button
+              onClick={addEquipment}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 6,
+                border: `1px solid ${btnBorder}`,
+                background: dark ? "#2c2c2c" : "#fff",
+                color: dark ? "#fff" : "#000",
+                cursor: "pointer",
+              }}
+            >
+              + Add equipment
+            </button>
+          </div>
+          {equipmentList.length ? (
+            <div style={{ overflowX: "auto", marginTop: 10 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: "left", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>Name</th>
+                    <th style={{ textAlign: "right", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>Electric kW</th>
+                    <th style={{ textAlign: "right", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>Gas m³/hr</th>
+                    <th style={{ textAlign: "right", padding: 6, borderBottom: `1px solid ${cardBorder}` }}>Water L/min</th>
+                    <th style={{ padding: 6, borderBottom: `1px solid ${cardBorder}` }} />
+                  </tr>
+                </thead>
+                <tbody>
+                  {equipmentList.map((eq) => (
+                    <tr key={eq.id}>
+                      <td style={{ padding: 6, borderBottom: `1px solid ${cardBorder}` }}>
+                        <input
+                          type="text"
+                          value={eq.name || ""}
+                          onChange={(e) => updateEquipmentField(eq.id, "name", e.target.value)}
+                          placeholder="Equipment name"
+                          style={{
+                            width: "100%",
+                            padding: "6px 8px",
+                            borderRadius: 6,
+                            border: `1px solid ${btnBorder}`,
+                            background: dark ? "#1f1f1f" : "#fff",
+                            color: dark ? "#eee" : "#000",
+                          }}
+                        />
+                      </td>
+                      <td style={{ padding: 6, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.01}
+                          value={Number(eq.electricKw || 0)}
+                          onChange={(e) => updateEquipmentField(eq.id, "electricKw", e.target.value)}
+                          style={{ width: 100, textAlign: "right" }}
+                        />
+                      </td>
+                      <td style={{ padding: 6, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.01}
+                          value={Number(eq.gasM3PerHour || 0)}
+                          onChange={(e) => updateEquipmentField(eq.id, "gasM3PerHour", e.target.value)}
+                          style={{ width: 100, textAlign: "right" }}
+                        />
+                      </td>
+                      <td style={{ padding: 6, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.01}
+                          value={Number(eq.waterLPerMin || 0)}
+                          onChange={(e) => updateEquipmentField(eq.id, "waterLPerMin", e.target.value)}
+                          style={{ width: 100, textAlign: "right" }}
+                        />
+                      </td>
+                      <td style={{ padding: 6, borderBottom: `1px solid ${cardBorder}`, textAlign: "center" }}>
+                        <button
+                          onClick={() => removeEquipment(eq.id)}
+                          style={{
+                            padding: "4px 8px",
+                            borderRadius: 6,
+                            border: `1px solid ${btnBorder}`,
+                            background: dark ? "#2c2c2c" : "#fff",
+                            color: dark ? "#fff" : "#000",
+                            cursor: "pointer",
+                          }}
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, opacity: 0.7, marginTop: 8 }}>
+              Add equipment with their energy and water usage to allocate utility costs.
+            </div>
+          )}
+        </div>
+
+        <div style={{ borderTop: `1px solid ${cardBorder}`, paddingTop: 12 }}>
+          <h4 style={{ margin: "0 0 6px" }}>Prep &amp; equipment minutes per item</h4>
+          <p style={{ margin: 0, fontSize: 12, opacity: 0.75 }}>
+            Minutes entered here multiply with the labor and utility rates above to build a fully-loaded COGS for each
+            recipe.
+          </p>
+          <div style={{ display: "grid", gap: 16, marginTop: 12, gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
+            <div>
+              <h5 style={{ margin: "0 0 6px" }}>Menu</h5>
+              {renderPrepTable("menu", menu, "No menu items yet.")}
+            </div>
+            <div>
+              <h5 style={{ margin: "0 0 6px" }}>Extras</h5>
+              {renderPrepTable("extra", extraList, "No extras yet.")}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -8791,7 +9628,7 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
     const name = String(newExtraName || "").trim();
     if (!name) return alert("Name required.");
     const id = Date.now();
-    setExtraList((arr) => [
+setExtraList((arr) => [
       ...arr,
       {
         id,
@@ -8799,6 +9636,8 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
         price: Math.max(0, Number(newExtraPrice || 0)),
         uses: {},
         color: "#ffffff",
+        prepMinutes: 0,
+        equipmentMinutes: {},
       },
     ]);
     setNewExtraName("");
@@ -9293,5 +10132,6 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
     </div>
   );
 }
+
 
 
