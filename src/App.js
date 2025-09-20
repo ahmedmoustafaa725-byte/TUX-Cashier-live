@@ -2377,40 +2377,17 @@ const utilitySpending = useMemo(() => {
     electricity: Number(totals.electricity.toFixed(2)),
     gas: Number(totals.gas.toFixed(2)),
     water: Number(totals.water.toFixed(2)),
-      total: Number(totals.total.toFixed(2)),
+    total: Number(totals.total.toFixed(2)),
   };
 }, [bankTx, wStart, wEnd]);
 
-const sandwichOverhead = useMemo(() => {
+const sandwichOverheadPerUnit = useMemo(() => {
   const qty = Number(totalSandwichQtySold || 0);
-  const workerTotal = Number(workerMonthlyTotalPay || 0);
-  const electricityTotal = Number(utilitySpending.electricity || 0);
-  const gasTotal = Number(utilitySpending.gas || 0);
-  const waterTotal = Number(utilitySpending.water || 0);
-  const perUnitValue = (value) => (qty ? Number((value / qty).toFixed(2)) : 0);
-  const components = {
-    workers: {
-      perUnit: perUnitValue(workerTotal),
-      total: Number(workerTotal.toFixed(2)),
-    },
-    electricity: {
-      perUnit: perUnitValue(electricityTotal),
-      total: Number(electricityTotal.toFixed(2)),
-    },
-    gas: {
-      perUnit: perUnitValue(gasTotal),
-      total: Number(gasTotal.toFixed(2)),
-    },
-    water: {
-      perUnit: perUnitValue(waterTotal),
-      total: Number(waterTotal.toFixed(2)),
-    },
-  };
-  const perUnit = perUnitValue(workerTotal + electricityTotal + gasTotal + waterTotal);
-  return { perUnit, qty, components };
-}, [totalSandwichQtySold, workerMonthlyTotalPay, utilitySpending]);
-
-const sandwichOverheadPerUnit = sandwichOverhead.perUnit;
+  if (!qty) return 0;
+  const overhead = Number(workerMonthlyTotalPay || 0) + Number(utilitySpending.total || 0);
+  if (!overhead) return 0;
+  return Number((overhead / qty).toFixed(2));
+}, [totalSandwichQtySold, utilitySpending, workerMonthlyTotalPay]);
 
 
 
@@ -4644,7 +4621,7 @@ const generatePurchasesPDF = () => {
               selectedCogsRow._cogs ??
                 computeCOGSForItemDef(selectedCogsRow, invById, sandwichOverheadPerUnit)
             );
-        const marginPct = selectedCogsRow._marginPct ?? (price > 0 ? ((price - cogs) / price) * 100 : 0);
+            const marginPct = selectedCogsRow._marginPct ?? (price > 0 ? ((price - cogs) / price) * 100 : 0);
             const targetPct = Number(selectedCogsRow._targetMarginPct || targetMarginPct * 100);
             const money = (v) => `E£${Number(v || 0).toFixed(2)}`;
             const ingredients = Object.entries(selectedCogsRow.uses || {}).map(([invId, qty]) => {
@@ -4660,25 +4637,6 @@ const generatePurchasesPDF = () => {
                 totalCost: unitCost * quantity,
               };
             });
-            const isSandwichItem = isSandwichDef(selectedCogsRow);
-            const overhead = sandwichOverhead || { qty: 0, perUnit: 0, components: {} };
-            const overheadComponents = overhead.components || {};
-            const overheadRows = [
-              { key: "workers", label: "Worker payout", data: overheadComponents.workers },
-              { key: "electricity", label: "Electricity bill", data: overheadComponents.electricity },
-              { key: "gas", label: "Gas bill", data: overheadComponents.gas },
-              { key: "water", label: "Water bill", data: overheadComponents.water },
-            ];
-            const hasOverheadSpend = overheadRows.some((row) => Number(row.data?.total || 0) > 0);
-            const hasOverheadPerUnit = overhead.qty > 0 && hasOverheadSpend;
-            const totalOverheadPerUnit = overheadRows.reduce(
-              (sum, row) => sum + Number(row.data?.perUnit || 0),
-              0
-            );
-            const totalOverheadPeriod = overheadRows.reduce(
-              (sum, row) => sum + Number(row.data?.total || 0),
-              0
-            );
             const chartPoints = marginTrend;
             return (
               <div
@@ -4695,7 +4653,7 @@ const generatePurchasesPDF = () => {
                   <div>Current price: <b>{money(price)}</b></div>
                   <div>COGS: <b>{money(cogs)}</b></div>
                   <div>Current margin: <b>{marginPct.toFixed(1)}%</b> (target {targetPct.toFixed(1)}%)</div>
-               </div>
+                </div>
 
                 <div>
                   <div style={{ fontWeight: 600, marginBottom: 6 }}>Ingredient cost breakdown</div>
@@ -4725,82 +4683,9 @@ const generatePurchasesPDF = () => {
                       </table>
                     </div>
                   ) : (
-                                   <div style={{ fontSize: 12, opacity: 0.7 }}>No ingredients linked yet. Build the recipe in Inventory to see the breakdown.</div>
+                    <div style={{ fontSize: 12, opacity: 0.7 }}>No ingredients linked yet. Build the recipe in Inventory to see the breakdown.</div>
                   )}
                 </div>
-
-                {isSandwichItem && (
-                  <div style={{ display: "grid", gap: 6 }}>
-                    <div style={{ fontWeight: 600 }}>Shared overhead allocation (per sandwich)</div>
-                    <div style={{ fontSize: 12, opacity: 0.8 }}>
-                      Based on worker payouts and electricity, gas, and water bills recorded for this period.
-                      {overhead.qty > 0 && (
-                        <>
-                          {" "}(Spread across {overhead.qty} sandwich{overhead.qty === 1 ? "" : "es"}.)
-                        </>
-                      )}
-                    </div>
-                    {hasOverheadPerUnit ? (
-                      <div style={{ overflowX: "auto" }}>
-                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                          <thead>
-                            <tr>
-                              <th style={{ textAlign: "left", padding: 4, borderBottom: `1px solid ${cardBorder}` }}>Category</th>
-                              <th style={{ textAlign: "right", padding: 4, borderBottom: `1px solid ${cardBorder}` }}>Per sandwich</th>
-                              <th style={{ textAlign: "right", padding: 4, borderBottom: `1px solid ${cardBorder}` }}>Period total</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {overheadRows.map((row) => (
-                              <tr key={row.key}>
-                                <td style={{ padding: 4, borderBottom: `1px solid ${cardBorder}` }}>{row.label}</td>
-                                <td style={{ padding: 4, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
-                                  {money(row.data?.perUnit)}
-                                </td>
-                                <td style={{ padding: 4, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
-                                  {money(row.data?.total)}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                          <tfoot>
-                            <tr>
-                              <td style={{ padding: 4, borderTop: `1px solid ${cardBorder}`, fontWeight: 600 }}>Total overhead</td>
-                              <td
-                                style={{
-                                  padding: 4,
-                                  borderTop: `1px solid ${cardBorder}`,
-                                  textAlign: "right",
-                                  fontWeight: 600,
-                                }}
-                              >
-                                {money(totalOverheadPerUnit)}
-                              </td>
-                              <td
-                                style={{
-                                  padding: 4,
-                                  borderTop: `1px solid ${cardBorder}`,
-                                  textAlign: "right",
-                                  fontWeight: 600,
-                                }}
-                              >
-                                {money(totalOverheadPeriod)}
-                              </td>
-                            </tr>
-                          </tfoot>
-                        </table>
-                      </div>
-                    ) : hasOverheadSpend ? (
-                      <div style={{ fontSize: 12, opacity: 0.7 }}>
-                        Record sandwich sales for this period to spread the captured overhead across items.
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: 12, opacity: 0.7 }}>
-                        Record worker payouts and utility bills in Bank to include them in sandwich COGS.
-                      </div>
-                    )}
-                  </div>
-                )}
 
                 <div>
                   <div style={{ fontWeight: 600, marginBottom: 6 }}>Margin trend (last {chartPoints.length} day{chartPoints.length === 1 ? "" : "s"})</div>
@@ -9521,4 +9406,3 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
     </div>
   );
 }
-
