@@ -9849,8 +9849,33 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
               {label}
                     </button>
                   ))}
-    {marginChartFilter === "week" && (
-                  {marginChartFilter === "month" && (
+ {marginChartFilter === "week" && (
+                    <>
+                      <label style={{ fontWeight: 600 }}>Pick week:</label>
+                      <input
+                        type="week"
+                        value={marginChartWeekInputValue}
+                        onChange={(e) => {
+                          const range = getWeekRangeFromInput(e.target.value);
+                          if (!range) return;
+                          const info = getSundayWeekInfo(range[0], true);
+                          setMarginChartWeek(info.week);
+                          setMarginChartWeekYear(info.year);
+                        }}
+                        style={{
+                          padding: 6,
+                          borderRadius: 6,
+                          border: `1px solid ${btnBorder}`,
+                        }}
+                      />
+                      {marginChartRange.start && (
+                        <span style={{ fontSize: 12, opacity: 0.75 }}>
+                          (Starts: {formatDateDDMMYY(marginChartRange.start)})
+                        </span>
+                      )}
+                    </>
+                  )}                 
+{marginChartFilter === "month" && (
                     <>
                       <label style={{ fontWeight: 600 }}>Month:</label>
                       <input
@@ -10911,6 +10936,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
