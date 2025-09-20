@@ -10035,8 +10035,17 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
             <div style={{ marginLeft: "auto", opacity: 0.8 }}>
               {reportStart && reportEnd ? (
                 <>
-                  Period: {reportStart.toLocaleDateString()} → {" "}
-                  {reportEnd.toLocaleDateString()}
+            Period: {reportStart.toLocaleDateString("en-GB", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                  })}
+                  {" "}→ {" "}
+                  {reportEnd.toLocaleDateString("en-GB", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                  })}
                 </>
               ) : (
                 "Period unavailable"
@@ -10045,16 +10054,16 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
           </div>
           {/* Totals overview */}
           <>
-            <div
+       <div␊
               style={{
                 marginBottom: 12,
                 padding: 10,
                 borderRadius: 6,
                 background: dark ? "#f5f5f5" : "#e8f5e9",
                 color: "#000",
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                gap: 10,
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 16,
               }}
             >
              {[{
@@ -10073,15 +10082,14 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
                 label: "Margin:",
                 value: totals.margin.toFixed(2),
               }].map(({ label, value }) => (
-                <div
+     <div
                   key={label}
                   style={{
-                    display: "grid",
-                    gridTemplateColumns: "auto auto",
+                    display: "flex",
                     alignItems: "center",
-                    columnGap: 8,
-                    rowGap: 2,
+                    gap: 6,
                     fontWeight: 600,
+                    whiteSpace: "nowrap",
                   }}
                 >
                   <span style={{ color: "#000" }}>{label}</span>
@@ -11217,6 +11225,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
