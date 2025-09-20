@@ -9799,7 +9799,7 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
                 E£{totals.expensesTotal.toFixed(2)}
               </div>
               <div>
-                <b style={{ color: "#000" }}>Margin (Revenue − Purchases − Expenses):</b>
+                <b style={{ color: "#000" }}>Margin:</b>
                 <br />
                 E£{totals.margin.toFixed(2)}
               </div>
@@ -10936,6 +10936,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
