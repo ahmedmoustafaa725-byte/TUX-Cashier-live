@@ -203,6 +203,57 @@ export function packStateForCloud(state) {
   };
   return sanitizeForFirestore(payload);
 }
+
+function computeCostBreakdown(def, invMap, ctx = {}) {
+  const round2 = (v) => Number((Number.isFinite(v) ? v : 0).toFixed(2));
+  const uses = def?.uses || {};
+  let ingredientCost = 0;
+  for (const k of Object.keys(uses)) {
+    const need = Number(uses[k] || 0);
+    const cost = Number(invMap[k]?.costPerUnit || 0);
+    ingredientCost += need * cost;
+  }
+  const prepMinutes = Number(def?.prepMinutes || 0);
+  const laborCost = prepMinutes > 0 ? prepMinutes * (ctx.laborCostPerMinute || 0) : 0;
+  let electricityCost = 0;
+  let gasCost = 0;
+  let waterCost = 0;
+  const equipmentMinutes = def?.equipmentMinutes || {};
+  for (const eqId of Object.keys(equipmentMinutes)) {
+    const minutes = Number(equipmentMinutes[eqId] || 0);
+    if (!(minutes > 0)) continue;
+    const eq = ctx.equipmentById?.[eqId];
+    if (!eq) continue;
+    const electricKw = Number(eq.electricKw || 0);
+    const gasPerHour = Number(eq.gasM3PerHour || 0);
+    const waterPerMin = Number(eq.waterLPerMin || 0);
+    if (electricKw > 0 && (ctx.utilityRates?.electricity || 0) > 0) {
+      const kwh = electricKw * (minutes / 60);
+      electricityCost += kwh * (ctx.utilityRates.electricity || 0);
+    }
+    if (gasPerHour > 0 && (ctx.utilityRates?.gas || 0) > 0) {
+      const m3 = gasPerHour * (minutes / 60);
+      gasCost += m3 * (ctx.utilityRates.gas || 0);
+    }
+    if (waterPerMin > 0 && (ctx.utilityRates?.water || 0) > 0) {
+      const liters = waterPerMin * minutes;
+      waterCost += liters * (ctx.utilityRates.water || 0);
+    }
+  }
+  const total = ingredientCost + laborCost + electricityCost + gasCost + waterCost;
+  return {
+    ingredients: round2(ingredientCost),
+    labor: round2(laborCost),
+    electricity: round2(electricityCost),
+    gas: round2(gasCost),
+    water: round2(waterCost),
+    total: round2(total),
+  };
+}
+
+function computeCOGSForItemDef(def, invMap, ctx) {
+  return computeCostBreakdown(def, invMap, ctx).total;
+}
 export function unpackStateFromCloud(data, fallbackDayMeta = {}) {
   const out = {};
   if (Array.isArray(data.orders)) {
@@ -2466,7 +2517,7 @@ useEffect(() => {
   hydrated,
   menu,
   workerProfiles,
- workerSessions,
+  workerSessions,
   extraList,
   orders,
   inventory,
@@ -2485,10 +2536,13 @@ useEffect(() => {
   purchaseCategories,
   customers,
   deliveryZones,
+  utilityBills,
+  laborProfile,
+  equipmentList,
   dayMeta,
   bankTx,
   realtimeOrders,
-   reconHistory,
+  reconHistory,
 ]);
   const startedAtMs = dayMeta?.startedAt
     ? new Date(dayMeta.startedAt).getTime()
@@ -2561,55 +2615,6 @@ const cogsCostContext = useMemo(
   () => ({ utilityRates, laborCostPerMinute, equipmentById }),
   [utilityRates, laborCostPerMinute, equipmentById]
 );
-function computeCostBreakdown(def, invMap, ctx = {}) {
-  const round2 = (v) => Number((Number.isFinite(v) ? v : 0).toFixed(2));
-  const uses = def?.uses || {};
-  let ingredientCost = 0;
-  for (const k of Object.keys(uses)) {
-    const need = Number(uses[k] || 0);
-    const cost = Number(invMap[k]?.costPerUnit || 0);
-    ingredientCost += need * cost;
-  }
-  const prepMinutes = Number(def?.prepMinutes || 0);
-  const laborCost = prepMinutes > 0 ? prepMinutes * (ctx.laborCostPerMinute || 0) : 0;
-  let electricityCost = 0;
-  let gasCost = 0;
-  let waterCost = 0;
-  const equipmentMinutes = def?.equipmentMinutes || {};
-  for (const eqId of Object.keys(equipmentMinutes)) {
-    const minutes = Number(equipmentMinutes[eqId] || 0);
-    if (!(minutes > 0)) continue;
-    const eq = ctx.equipmentById?.[eqId];
-    if (!eq) continue;
-    const electricKw = Number(eq.electricKw || 0);
-    const gasPerHour = Number(eq.gasM3PerHour || 0);
-    const waterPerMin = Number(eq.waterLPerMin || 0);
-    if (electricKw > 0 && (ctx.utilityRates?.electricity || 0) > 0) {
-      const kwh = electricKw * (minutes / 60);
-      electricityCost += kwh * (ctx.utilityRates.electricity || 0);
-    }
-    if (gasPerHour > 0 && (ctx.utilityRates?.gas || 0) > 0) {
-      const m3 = gasPerHour * (minutes / 60);
-      gasCost += m3 * (ctx.utilityRates.gas || 0);
-    }
-    if (waterPerMin > 0 && (ctx.utilityRates?.water || 0) > 0) {
-      const liters = waterPerMin * minutes;
-      waterCost += liters * (ctx.utilityRates.water || 0);
-    }
-  }
-  const total = ingredientCost + laborCost + electricityCost + gasCost + waterCost;
-  return {
-    ingredients: round2(ingredientCost),
-    labor: round2(laborCost),
-    electricity: round2(electricityCost),
-    gas: round2(gasCost),
-    water: round2(waterCost),
-    total: round2(total),
-  };
-}
-function computeCOGSForItemDef(def, invMap, ctx) {
-  return computeCostBreakdown(def, invMap, ctx).total;
-}
 const cogsMarginData = useMemo(() => {
   const rows = [
     ...menu.map((d) => ({ ...d, _k: `m-${d.id}`, _type: "menu" })),
@@ -10132,6 +10137,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
