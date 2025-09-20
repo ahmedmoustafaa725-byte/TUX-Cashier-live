@@ -10054,7 +10054,7 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
           </div>
           {/* Totals overview */}
           <>
-       <div␊
+       <div
               style={{
                 marginBottom: 12,
                 padding: 10,
@@ -11225,6 +11225,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
