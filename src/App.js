@@ -420,7 +420,7 @@ function normalizePurchaseCategories(arr = []) {
     };
   });
 }
-const PURCHASE_UNITS = ["kg", "g", "L", "ml", "piece", "pack", "dozen", "bottle", "can", "bag", "box", "carton", "slice", "block","paper"];
+const PURCHASE_UNITS = ["kg", "g", "L", "ml", "piece", "pack", "dozen", "bottle", "can", "bag", "box", "carton", "slice", "block","paper","kWh","cubic meter"];
 const UNIT_MAP = {
   kg: { base: "g",  factor: 1000 },
   g:  { base: "g",  factor: 1 },
@@ -9293,4 +9293,5 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
     </div>
   );
 }
+
 
