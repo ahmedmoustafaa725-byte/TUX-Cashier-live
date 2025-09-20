@@ -158,6 +158,58 @@ function getWeekRangeFromInput(weekStr) {
   return [weekStart, weekEnd];
 }
 
+function getSundayStartDate(value) {
+  if (!value) return null;
+  const d = value instanceof Date ? new Date(value) : new Date(value);
+  if (Number.isNaN(+d)) return null;
+  const sunday = new Date(d);
+  sunday.setDate(d.getDate() - d.getDay());
+  sunday.setHours(0, 0, 0, 0);
+  return sunday;
+}
+
+function getSundayWeekInfo(value, useStartYear = false) {
+  const target = value instanceof Date ? new Date(value) : new Date(value || new Date());
+  if (Number.isNaN(+target)) {
+    const fallback = new Date();
+    fallback.setHours(0, 0, 0, 0);
+    return { year: fallback.getFullYear(), week: 1, start: fallback };
+  }
+
+  const sunday = getSundayStartDate(target);
+  if (!sunday) {
+    const fallback = new Date();
+    fallback.setHours(0, 0, 0, 0);
+    return { year: fallback.getFullYear(), week: 1, start: fallback };
+  }
+
+  const base = new Date(sunday.getFullYear(), 0, 1);
+  base.setDate(base.getDate() - base.getDay());
+  base.setHours(0, 0, 0, 0);
+
+  const diffDays = Math.floor((sunday - base) / 86400000);
+  const week = Math.floor(diffDays / 7) + 1;
+
+  const year = useStartYear ? sunday.getFullYear() : target.getFullYear();
+  return { year, week, start: sunday };
+}
+
+function getSundayStartOfWeek(year, week) {
+  const y = Number(year);
+  const w = Number(week);
+  if (!Number.isFinite(y) || !Number.isFinite(w) || w < 1) return null;
+
+  const base = new Date(y, 0, 1);
+  base.setDate(base.getDate() - base.getDay());
+  base.setHours(0, 0, 0, 0);
+
+  const start = new Date(base);
+  start.setDate(base.getDate() + (Math.min(53, Math.max(1, Math.floor(w))) - 1) * 7);
+  return start;
+}
+
+const SUNDAY_WEEK_OPTIONS = Array.from({ length: 53 }, (_, idx) => idx + 1);
+
 function MarginLineChart({ data, dark }) {
   const width = 720;
   const height = 260;
@@ -1667,6 +1719,19 @@ const [reportMonth, setReportMonth] = useState(() => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 });
 const [marginChartFilter, setMarginChartFilter] = useState("week");
+const [marginChartWeek, setMarginChartWeek] = useState(() =>
+  getSundayWeekInfo(new Date()).week
+);
+const [marginChartWeekYear, setMarginChartWeekYear] = useState(() =>
+  getSundayWeekInfo(new Date()).year
+);
+const [marginChartMonthSelection, setMarginChartMonthSelection] = useState(() => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+});
+const [marginChartYearSelection, setMarginChartYearSelection] = useState(() =>
+  new Date().getFullYear()
+);
   const [bankFilter, setBankFilter] = useState("day");
 const [bankDay, setBankDay] = useState(new Date().toISOString().slice(0, 10));
 const [bankMonth, setBankMonth] = useState(() => {
@@ -1919,6 +1984,12 @@ const [workerLogMonth, setWorkerLogMonth] = useState(() => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
 });
+const workerWeekInfo = useMemo(
+  () => getSundayWeekInfo(workerLogWeekStart, true),
+  [workerLogWeekStart]
+);
+const workerWeekNumber = workerWeekInfo.week;
+const workerWeekYear = workerWeekInfo.year;
 const [signInPin, setSignInPin] = useState("");
 const [signOutPin, setSignOutPin] = useState("");
 const activeWorkers = useMemo(() => {
@@ -2086,14 +2157,21 @@ useEffect(() => {
   }
   lastLockedRef.current = lockedNow;
 }, [expenses]);
-  const [bankForm, setBankForm] = useState({
+const [bankForm, setBankForm] = useState({
     type: "deposit",
     amount: 0,
     worker: "",
     note: "",
   });
 const lastLockedBankRef = useRef([]);
+const skipLockedBankReinsertRef = useRef(false);
 useEffect(() => {
+  if (skipLockedBankReinsertRef.current) {
+    skipLockedBankReinsertRef.current = false;
+    lastLockedBankRef.current = (bankTx || []).filter(isBankLocked);
+    return;
+  }
+
   const lockedNow = (bankTx || []).filter(isBankLocked);
   const missing = lastLockedBankRef.current.filter(
     prev => !lockedNow.some(cur => cur.id === prev.id)
@@ -4195,6 +4273,16 @@ for (const o of validOrders) {
   }, [orders, paymentMethods, orderTypes, expenses]);
 
   const resetReports = () => {
+    const adminNum = promptAdminAndPin();
+    if (!adminNum) return;
+    if (
+      !window.confirm(
+        `Admin ${adminNum}: Reset ALL locally saved report data and filters? This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+
     const now = new Date();
     const isoDay = now.toISOString().slice(0, 10);
     const isoMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -4202,6 +4290,23 @@ for (const o of validOrders) {
     setReportDay(isoDay);
     setReportMonth(isoMonth);
     setMarginChartFilter("week");
+
+    const { week: defaultWeek } = getSundayWeekInfo(now);
+    setMarginChartWeek(defaultWeek);
+    setMarginChartWeekYear(now.getFullYear());
+    setMarginChartMonthSelection(isoMonth);
+    setMarginChartYearSelection(now.getFullYear());
+
+    setHistoricalOrders([]);
+    setHistoricalExpenses([]);
+    setHistoricalPurchases([]);
+    saveLocalPartial({
+      historicalOrders: [],
+      historicalExpenses: [],
+      historicalPurchases: [],
+    });
+
+    alert("Report history and filters have been reset.");
   };
 
   const computeProfitBuckets = useCallback(
@@ -4394,7 +4499,7 @@ for (const o of validOrders) {
     return { items, extras };
   }, [reportOrders]);
 
-  const marginChartRange = useMemo(() => {
+ const marginChartRange = useMemo(() => {
     const now = new Date();
     const todayEnd = new Date(
       now.getFullYear(),
@@ -4410,24 +4515,46 @@ for (const o of validOrders) {
     let end;
 
     if (marginChartFilter === "year") {
-      start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
-      end = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+      const year = Number(marginChartYearSelection) || now.getFullYear();
+      start = new Date(year, 0, 1, 0, 0, 0, 0);
+      end = new Date(year, 11, 31, 23, 59, 59, 999);
     } else if (marginChartFilter === "month") {
-      start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-      end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      const parts = (marginChartMonthSelection || "").split("-");
+      const year = Number(parts[0]) || now.getFullYear();
+      const monthIndex = Number(parts[1]) ? Number(parts[1]) - 1 : now.getMonth();
+      start = new Date(year, monthIndex, 1, 0, 0, 0, 0);
+      end = new Date(year, monthIndex + 1, 0, 23, 59, 59, 999);
     } else {
-      start = new Date(now);
-      start.setDate(now.getDate() - now.getDay());
+      const weekStart =
+        getSundayStartOfWeek(marginChartWeekYear, marginChartWeek) ||
+        getSundayStartDate(now) ||
+        new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+      start = new Date(weekStart);
       start.setHours(0, 0, 0, 0);
       end = new Date(start);
       end.setDate(start.getDate() + 6);
       end.setHours(23, 59, 59, 999);
     }
 
-    if (end > todayEnd) end = todayEnd;
+    if (!start || !end || Number.isNaN(+start) || Number.isNaN(+end)) {
+      const fallbackStart = getSundayStartDate(now) || now;
+      start = new Date(fallbackStart);
+      start.setHours(0, 0, 0, 0);
+      end = new Date(start);
+      end.setDate(start.getDate() + 6);
+      end.setHours(23, 59, 59, 999);
+    }
+
+    if (end > todayEnd && start <= todayEnd) end = todayEnd;
 
     return { start, end };
-  }, [marginChartFilter]);
+  }, [
+    marginChartFilter,
+    marginChartWeek,
+    marginChartWeekYear,
+    marginChartMonthSelection,
+    marginChartYearSelection,
+  ]);
 
   const marginChartData = useMemo(
     () => computeProfitBuckets(marginChartRange.start, marginChartRange.end),
@@ -8886,6 +9013,8 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
           const okAdmin = !!promptAdminAndPin();
           if (!okAdmin) return;
           if (!window.confirm("Reset ALL bank transactions? This cannot be undone.")) return;
+          skipLockedBankReinsertRef.current = true;
+          lastLockedBankRef.current = [];
           setBankTx([]);
         }}
         style={{
@@ -9135,24 +9264,40 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
           />
         </>
       )}
-  {workerLogFilter === "week" && (
+ {workerLogFilter === "week" && (
         <>
-          <label><b>Pick week:</b></label>
-          <input
-            type="week"
-            value={getWeekInputValueFromSunday(workerLogWeekStart)}
+          <label><b>Week:</b></label>
+          <select
+            value={workerWeekNumber}
             onChange={(e) => {
-              const range = getWeekRangeFromInput(e.target.value);
-              if (range) {
-                const [start] = range;
-                setWorkerLogWeekStart(toDateInputValue(start));
-              }
+              const selectedWeek = Math.min(
+                53,
+                Math.max(1, Number(e.target.value || 1))
+              );
+              const start = getSundayStartOfWeek(workerWeekYear, selectedWeek);
+              if (start) setWorkerLogWeekStart(toDateInputValue(start));
             }}
-            style={{ padding:6, borderRadius:6, border:`1px solid ${btnBorder}` }}
-            title={`Week starts ${formatDateDDMMYY(workerLogWeekStart)}`}
+            style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+          >
+            {SUNDAY_WEEK_OPTIONS.map((w) => (
+              <option key={w} value={w}>
+                {w}
+              </option>
+            ))}
+          </select>
+          <label><b>Year:</b></label>
+          <input
+            type="number"
+            value={workerWeekYear}
+            onChange={(e) => {
+              const nextYear = Number(e.target.value) || new Date().getFullYear();
+              const start = getSundayStartOfWeek(nextYear, workerWeekNumber);
+              if (start) setWorkerLogWeekStart(toDateInputValue(start));
+            }}
+            style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 100 }}
           />
           <span style={{ fontSize: 12, opacity: 0.75 }}>
-            (Starts: {formatDateDDMMYY(workerLogWeekStart)})
+            (Starts: {formatDateDDMMYY(workerWeekInfo.start)})
           </span>
         </>
       )}
@@ -9513,22 +9658,38 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
           </div>
           {/* Totals overview */}
           <>
-            <div
+           <div
               style={{
                 marginBottom: 12,
                 padding: 10,
                 borderRadius: 6,
-                background: dark ? "#0f2d18" : "#e8f5e9",
-                color: dark ? "#c8e6c9" : "#1b5e20",
+                background: dark ? "#f5f5f5" : "#e8f5e9",
+                color: "#000",
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
                 gap: 10,
               }}
             >
-              <div><b>Revenue (items only):</b><br/>E£{totals.revenueTotal.toFixed(2)}</div>
-              <div><b>Delivery Fees:</b><br/>E£{totals.deliveryFeesTotal.toFixed(2)}</div>
-              <div><b>Expenses:</b><br/>E£{totals.expensesTotal.toFixed(2)}</div>
-              <div><b>Margin:</b><br/>E£{totals.margin.toFixed(2)}</div>
+              <div>
+                <b style={{ color: "#000" }}>Revenue (items only):</b>
+                <br />
+                E£{totals.revenueTotal.toFixed(2)}
+              </div>
+              <div>
+                <b style={{ color: "#000" }}>Delivery Fees:</b>
+                <br />
+                E£{totals.deliveryFeesTotal.toFixed(2)}
+              </div>
+              <div>
+                <b style={{ color: "#000" }}>Expenses:</b>
+                <br />
+                E£{totals.expensesTotal.toFixed(2)}
+              </div>
+              <div>
+                <b style={{ color: "#000" }}>Margin:</b>
+                <br />
+                E£{totals.margin.toFixed(2)}
+              </div>
             </div>
             <div style={{ marginBottom: 16 }}>
               <div
@@ -9541,7 +9702,14 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
                 }}
               >
                 <h3 style={{ margin: 0 }}>Margin Trend</h3>
-                <div style={{ display: "flex", gap: 6 }}>
+                 <div
+                  style={{
+                    display: "flex",
+                    gap: 6,
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                  }}
+                >
                   {[
                     ["week", "Week"],
                     ["month", "Month"],
@@ -9565,9 +9733,94 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
                         textTransform: "uppercase",
                       }}
                     >
-                      {label}
+              {label}
                     </button>
                   ))}
+                  {marginChartFilter === "week" && (
+                    <>
+                      <label style={{ fontWeight: 600 }}>Week:</label>
+                      <select
+                        value={marginChartWeek}
+                        onChange={(e) =>
+                          setMarginChartWeek(
+                            Math.min(
+                              53,
+                              Math.max(1, Number(e.target.value || 1))
+                            )
+                          )
+                        }
+                        style={{
+                          padding: 6,
+                          borderRadius: 6,
+                          border: `1px solid ${btnBorder}`,
+                        }}
+                      >
+                        {SUNDAY_WEEK_OPTIONS.map((w) => (
+                          <option key={w} value={w}>
+                            {w}
+                          </option>
+                        ))}
+                      </select>
+                      <label style={{ fontWeight: 600 }}>Year:</label>
+                      <input
+                        type="number"
+                        value={marginChartWeekYear}
+                        onChange={(e) =>
+                          setMarginChartWeekYear(
+                            Number(e.target.value) || new Date().getFullYear()
+                          )
+                        }
+                        style={{
+                          padding: 6,
+                          borderRadius: 6,
+                          border: `1px solid ${btnBorder}`,
+                          width: 100,
+                        }}
+                      />
+                      {marginChartRange.start && (
+                        <span style={{ fontSize: 12, opacity: 0.75 }}>
+                          (Starts: {formatDateDDMMYY(marginChartRange.start)})
+                        </span>
+                      )}
+                    </>
+                  )}
+                  {marginChartFilter === "month" && (
+                    <>
+                      <label style={{ fontWeight: 600 }}>Month:</label>
+                      <input
+                        type="month"
+                        value={marginChartMonthSelection}
+                        onChange={(e) =>
+                          setMarginChartMonthSelection(e.target.value)
+                        }
+                        style={{
+                          padding: 6,
+                          borderRadius: 6,
+                          border: `1px solid ${btnBorder}`,
+                        }}
+                      />
+                    </>
+                  )}
+                  {marginChartFilter === "year" && (
+                    <>
+                      <label style={{ fontWeight: 600 }}>Year:</label>
+                      <input
+                        type="number"
+                        value={marginChartYearSelection}
+                        onChange={(e) =>
+                          setMarginChartYearSelection(
+                            Number(e.target.value) || new Date().getFullYear()
+                          )
+                        }
+                        style={{
+                          padding: 6,
+                          borderRadius: 6,
+                          border: `1px solid ${btnBorder}`,
+                          width: 100,
+                        }}
+                      />
+                    </>
+                  )}
                 </div>
                 <div style={{ marginLeft: "auto", opacity: 0.8 }}>
                   {marginChartRange.start && marginChartRange.end ? (
@@ -10592,6 +10845,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
