@@ -147,7 +147,7 @@ function getWeekRangeFromInput(weekStr) {
   weekEnd.setDate(weekStart.getDate() + 6);
   weekEnd.setHours(23, 59, 59, 999);
 
-  return [weekStart, weekEnd];
+ return [weekStart, weekEnd];
 }
 
 function getSundayStartDate(value) {
@@ -158,6 +158,17 @@ function getSundayStartDate(value) {
   sunday.setDate(d.getDate() - d.getDay());
   sunday.setHours(0, 0, 0, 0);
   return sunday;
+}
+
+function toWeekInputValueFromSunday(sundayValue) {
+  if (!sundayValue) return "";
+  const sunday = sundayValue instanceof Date
+    ? new Date(sundayValue)
+    : new Date(sundayValue);
+  if (Number.isNaN(+sunday)) return "";
+  const monday = new Date(sunday);
+  monday.setDate(monday.getDate() + 1);
+  return formatWeekInputValue(monday);
 }
 
 function getSundayWeekInfo(value, useStartYear = false) {
@@ -200,7 +211,6 @@ function getSundayStartOfWeek(year, week) {
   return start;
 }
 
-const SUNDAY_WEEK_OPTIONS = Array.from({ length: 53 }, (_, idx) => idx + 1);
 
 function MarginLineChart({ data, dark }) {
   const width = 720;
@@ -1717,6 +1727,10 @@ const [marginChartWeek, setMarginChartWeek] = useState(() =>
 const [marginChartWeekYear, setMarginChartWeekYear] = useState(() =>
   getSundayWeekInfo(new Date()).year
 );
+const marginChartWeekInputValue = useMemo(() => {
+  const start = getSundayStartOfWeek(marginChartWeekYear, marginChartWeek);
+  return start ? toWeekInputValueFromSunday(start) : "";
+}, [marginChartWeekYear, marginChartWeek]);
 const [marginChartMonthSelection, setMarginChartMonthSelection] = useState(() => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -1977,11 +1991,7 @@ const [workerLogMonth, setWorkerLogMonth] = useState(() => {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
 });
 const workerWeekInfo = useMemo(
-  () => getSundayWeekInfo(workerLogWeekStart, true),
-  [workerLogWeekStart]
-);
-const workerWeekNumber = workerWeekInfo.week;
-const workerWeekYear = workerWeekInfo.year;
+
 const [signInPin, setSignInPin] = useState("");
 const [signOutPin, setSignOutPin] = useState("");
 const activeWorkers = useMemo(() => {
@@ -4210,59 +4220,6 @@ const voidOrderToExpense = async (orderNo) => {
     return [start, end];
   }, [reportFilter, reportDay, reportMonth, dayMeta]);
 
-const totals = useMemo(() => {
-    const validOrders = orders.filter((o) => !o.voided);
-    const revenueTotal = validOrders.reduce(
-      (s, o) =>
-        s +
-        Number(
-          o.itemsTotal != null ? o.itemsTotal : o.total - (o.deliveryFee || 0)
-        ),
-      0
-    );
-   const byPay = {};
-// seed known methods (optional)
-for (const p of paymentMethods) byPay[p] = 0;
-
-for (const o of validOrders) {
-  const itemsOnly = Number(
-    o.itemsTotal != null ? o.itemsTotal : o.total - (o.deliveryFee || 0)
-  );
-
-  if (Array.isArray(o.paymentParts) && o.paymentParts.length) {
-    const sumParts = o.paymentParts.reduce((s, p) => s + Number(p.amount || 0), 0) || o.total || itemsOnly;
-    for (const part of o.paymentParts) {
-      const m = part.method || "Unknown";
-      const share = sumParts ? (Number(part.amount || 0) / sumParts) : 0;
-      if (byPay[m] == null) byPay[m] = 0;
-      byPay[m] += itemsOnly * share;
-    }
-  } else {
-    const m = o.payment || "Unknown";
-    if (byPay[m] == null) byPay[m] = 0;
-    byPay[m] += itemsOnly;
-  }
-}
-    const byType = {};
-    for (const t of orderTypes) byType[t] = 0;
-    for (const o of validOrders) {
-      const itemsOnly = Number(
-        o.itemsTotal != null ? o.itemsTotal : o.total - (o.deliveryFee || 0)
-      );
-      if (byType[o.orderType] == null) byType[o.orderType] = 0;
-      byType[o.orderType] += itemsOnly;
-    }
-    const deliveryFeesTotal = validOrders.reduce(
-      (s, o) => s + (o.deliveryFee || 0),
-      0
-    );
-    const expensesTotal = expenses.reduce(
-      (s, e) => s + Number((e.qty || 0) * (e.unitPrice || 0)),
-      0
-    );
-   const margin = revenueTotal - expensesTotal;
-    return { revenueTotal, byPay, byType, deliveryFeesTotal, expensesTotal, margin };
-  }, [orders, paymentMethods, orderTypes, expenses]);
 
   const resetReports = () => {
     const adminNum = promptAdminAndPin();
@@ -4456,12 +4413,178 @@ for (const o of validOrders) {
       ? [...(historicalOrders || []), ...(orders || [])]
       : orders || [];
 
-    return sourceOrders.filter((order) => {
+ return sourceOrders.filter((order) => {
       if (!order || order.voided) return false;
       const when = toDate(order.date);
       return when && when >= start && when <= end;
     });
   }, [orders, historicalOrders, reportStart, reportEnd, dayMeta]);
+
+  const totals = useMemo(() => {
+    const makeEmptyMaps = () => {
+      const byPay = {};
+      for (const method of paymentMethods) byPay[method] = 0;
+      const byType = {};
+      for (const type of orderTypes) byType[type] = 0;
+      return { byPay, byType };
+    };
+
+    if (!reportStart || !reportEnd) {
+      const { byPay, byType } = makeEmptyMaps();
+      return {
+        revenueTotal: 0,
+        deliveryFeesTotal: 0,
+        expensesTotal: 0,
+        purchasesTotal: 0,
+        margin: 0,
+        byPay,
+        byType,
+      };
+    }
+
+    const startMs = +reportStart;
+    const endMs = +reportEnd;
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+      const { byPay, byType } = makeEmptyMaps();
+      return {
+        revenueTotal: 0,
+        deliveryFeesTotal: 0,
+        expensesTotal: 0,
+        purchasesTotal: 0,
+        margin: 0,
+        byPay,
+        byType,
+      };
+    }
+
+    const start = new Date(startMs);
+    const end = new Date(endMs);
+
+    const toDate = (value) => {
+      if (!value) return null;
+      if (value instanceof Date) return value;
+      const d = new Date(value);
+      return Number.isNaN(+d) ? null : d;
+    };
+
+    const shiftStart = dayMeta?.startedAt ? new Date(dayMeta.startedAt) : null;
+    const shiftEndRaw = dayMeta?.endedAt ? new Date(dayMeta.endedAt) : null;
+    const now = new Date();
+    const shiftEnd = shiftEndRaw || now;
+    const includeHistorical =
+      !shiftStart || start < shiftStart || end > shiftEnd;
+
+    const mergeRows = (liveRows = [], historicalRows = []) =>
+      includeHistorical
+        ? [...(historicalRows || []), ...(liveRows || [])]
+        : liveRows || [];
+
+    const filteredOrders = mergeRows(orders, historicalOrders).filter((order) => {
+      if (!order || order.voided) return false;
+      const when = toDate(order.date);
+      return when && when >= start && when <= end;
+    });
+
+    const revenueTotal = filteredOrders.reduce(
+      (sum, order) =>
+        sum +
+        Number(
+          order.itemsTotal != null
+            ? order.itemsTotal
+            : (order.total || 0) - (order.deliveryFee || 0)
+        ),
+      0
+    );
+
+    const deliveryFeesTotal = filteredOrders.reduce(
+      (sum, order) => sum + Number(order.deliveryFee || 0),
+      0
+    );
+
+    const { byPay, byType } = makeEmptyMaps();
+
+    for (const order of filteredOrders) {
+      const itemsOnly = Number(
+        order.itemsTotal != null
+          ? order.itemsTotal
+          : (order.total || 0) - (order.deliveryFee || 0)
+      );
+
+      if (Array.isArray(order.paymentParts) && order.paymentParts.length) {
+        const sumParts =
+          order.paymentParts.reduce(
+            (sum, part) => sum + Number(part.amount || 0),
+            0
+          ) || order.total || itemsOnly;
+        for (const part of order.paymentParts) {
+          const method = part.method || "Unknown";
+          const share = sumParts ? Number(part.amount || 0) / sumParts : 0;
+          if (byPay[method] == null) byPay[method] = 0;
+          byPay[method] += itemsOnly * share;
+        }
+      } else {
+        const method = order.payment || "Unknown";
+        if (byPay[method] == null) byPay[method] = 0;
+        byPay[method] += itemsOnly;
+      }
+
+      const typeKey = order.orderType || "";
+      if (byType[typeKey] == null) byType[typeKey] = 0;
+      byType[typeKey] += itemsOnly;
+    }
+
+    const filteredPurchases = mergeRows(
+      purchases,
+      historicalPurchases
+    ).filter((purchase) => {
+      const when = toDate(purchase?.date);
+      return when && when >= start && when <= end;
+    });
+
+    const purchasesTotal = filteredPurchases.reduce(
+      (sum, purchase) =>
+        sum + Number(purchase?.qty || 0) * Number(purchase?.unitPrice || 0),
+      0
+    );
+
+    const filteredExpenses = mergeRows(
+      expenses,
+      historicalExpenses
+    ).filter((expense) => {
+      const when = toDate(expense?.date);
+      return when && when >= start && when <= end;
+    });
+
+    const expensesTotal = filteredExpenses.reduce(
+      (sum, expense) =>
+        sum + Number(expense?.qty || 0) * Number(expense?.unitPrice || 0),
+      0
+    );
+
+    const margin = revenueTotal - purchasesTotal - expensesTotal;
+
+    return {
+      revenueTotal,
+      deliveryFeesTotal,
+      expensesTotal,
+      purchasesTotal,
+      margin,
+      byPay,
+      byType,
+    };
+  }, [
+    reportStart,
+    reportEnd,
+    orders,
+    historicalOrders,
+    purchases,
+    historicalPurchases,
+    expenses,
+    historicalExpenses,
+    paymentMethods,
+    orderTypes,
+    dayMeta,
+  ]);
 
   const salesStats = useMemo(() => {
     const itemMap = new Map();
@@ -4824,11 +4947,15 @@ const endedStr   = m.endedAt   ? fmtDateTime(m.endedAt)   : "—";
       y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : y + 40;
       doc.text("Totals (excluding canceled/returned)", 14, y);
 
-      const totalsBody = [
+     const totalsBody = [
         ["Revenue (Shift, excl. delivery)", totals.revenueTotal.toFixed(2)],
         ["Delivery Fees (not in revenue)", totals.deliveryFeesTotal.toFixed(2)],
+        ["Purchases (Shift)", totals.purchasesTotal.toFixed(2)],
         ["Expenses (Shift)", totals.expensesTotal.toFixed(2)],
-        ["Margin (Revenue - Expenses)", totals.margin.toFixed(2)],
+        [
+          "Margin (Revenue − Purchases − Expenses)",
+          totals.margin.toFixed(2),
+        ],
       ];
       for (const p of Object.keys(totals.byPay))
         totalsBody.push([
@@ -9256,41 +9383,24 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
           />
         </>
       )}
- {workerLogFilter === "week" && (
+      {workerLogFilter === "week" && (
         <>
-          <label><b>Week:</b></label>
-          <select
-            value={workerWeekNumber}
+          <label><b>Pick week:</b></label>
+          <input
+            type="week"
+            value={workerWeekInputValue}
             onChange={(e) => {
-              const selectedWeek = Math.min(
-                53,
-                Math.max(1, Number(e.target.value || 1))
-              );
-              const start = getSundayStartOfWeek(workerWeekYear, selectedWeek);
-              if (start) setWorkerLogWeekStart(toDateInputValue(start));
+              const range = getWeekRangeFromInput(e.target.value);
+              if (!range) return;
+              setWorkerLogWeekStart(toDateInputValue(range[0]));
             }}
             style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-          >
-            {SUNDAY_WEEK_OPTIONS.map((w) => (
-              <option key={w} value={w}>
-                {w}
-              </option>
-            ))}
-          </select>
-          <label><b>Year:</b></label>
-          <input
-            type="number"
-            value={workerWeekYear}
-            onChange={(e) => {
-              const nextYear = Number(e.target.value) || new Date().getFullYear();
-              const start = getSundayStartOfWeek(nextYear, workerWeekNumber);
-              if (start) setWorkerLogWeekStart(toDateInputValue(start));
-            }}
-            style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}`, width: 100 }}
           />
-          <span style={{ fontSize: 12, opacity: 0.75 }}>
-            (Starts: {formatDateDDMMYY(workerWeekInfo.start)})
-          </span>
+          {workerWeekInfo.start && (
+            <span style={{ fontSize: 12, opacity: 0.75 }}>
+              (Starts: {formatDateDDMMYY(workerWeekInfo.start)})
+            </span>
+          )}
         </>
       )}
       <div style={{ marginLeft:"auto", opacity:.8 }}>
@@ -9673,12 +9783,17 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
                 E£{totals.deliveryFeesTotal.toFixed(2)}
               </div>
               <div>
+                <b style={{ color: "#000" }}>Purchases:</b>
+                <br />
+                E£{totals.purchasesTotal.toFixed(2)}
+              </div>
+              <div>
                 <b style={{ color: "#000" }}>Expenses:</b>
                 <br />
                 E£{totals.expensesTotal.toFixed(2)}
               </div>
               <div>
-                <b style={{ color: "#000" }}>Margin:</b>
+                <b style={{ color: "#000" }}>Margin (Revenue − Purchases − Expenses):</b>
                 <br />
                 E£{totals.margin.toFixed(2)}
               </div>
@@ -9728,54 +9843,7 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
               {label}
                     </button>
                   ))}
-                  {marginChartFilter === "week" && (
-                    <>
-                      <label style={{ fontWeight: 600 }}>Week:</label>
-                      <select
-                        value={marginChartWeek}
-                        onChange={(e) =>
-                          setMarginChartWeek(
-                            Math.min(
-                              53,
-                              Math.max(1, Number(e.target.value || 1))
-                            )
-                          )
-                        }
-                        style={{
-                          padding: 6,
-                          borderRadius: 6,
-                          border: `1px solid ${btnBorder}`,
-                        }}
-                      >
-                        {SUNDAY_WEEK_OPTIONS.map((w) => (
-                          <option key={w} value={w}>
-                            {w}
-                          </option>
-                        ))}
-                      </select>
-                      <label style={{ fontWeight: 600 }}>Year:</label>
-                      <input
-                        type="number"
-                        value={marginChartWeekYear}
-                        onChange={(e) =>
-                          setMarginChartWeekYear(
-                            Number(e.target.value) || new Date().getFullYear()
-                          )
-                        }
-                        style={{
-                          padding: 6,
-                          borderRadius: 6,
-                          border: `1px solid ${btnBorder}`,
-                          width: 100,
-                        }}
-                      />
-                      {marginChartRange.start && (
-                        <span style={{ fontSize: 12, opacity: 0.75 }}>
-                          (Starts: {formatDateDDMMYY(marginChartRange.start)})
-                        </span>
-                      )}
-                    </>
-                  )}
+    {marginChartFilter === "week" && (
                   {marginChartFilter === "month" && (
                     <>
                       <label style={{ fontWeight: 600 }}>Month:</label>
@@ -10837,6 +10905,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
