@@ -125,14 +125,6 @@ function getSundayStart(date) {
   return toDateInputValue(sunday);
 }
 
-function getWeekInputValueFromSunday(isoDateStr) {
-  if (!isoDateStr) return "";
-  const sunday = new Date(`${isoDateStr}T00:00:00`);
-  if (Number.isNaN(+sunday)) return "";
-  const monday = new Date(sunday);
-  monday.setDate(monday.getDate() + 1);
-  return formatWeekInputValue(monday);
-}
 
 function getWeekRangeFromInput(weekStr) {
   if (!weekStr) return null;
@@ -10845,6 +10837,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
