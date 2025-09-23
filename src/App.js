@@ -1843,13 +1843,34 @@ const openWhatsappNotification = (order, phoneDigits) => {
   if (!waNumber) return;
   const name = order?.deliveryName?.trim() || "customer";
   const message = `Hello ${name}, your order #${order?.orderNo || ""} is ready for pickup.`;
-  const url = `https://wa.me/${waNumber}?text=${encodeURIComponent(message)}`;
+  const encodedMessage = encodeURIComponent(message);
+  const isDesktop = (() => {
+    if (typeof window === "undefined") return false;
+    if (typeof navigator !== "undefined") {
+      const uaData = navigator.userAgentData;
+      if (uaData && typeof uaData.mobile === "boolean") {
+        return !uaData.mobile;
+      }
+      const ua = navigator.userAgent || "";
+      if (/Windows|Macintosh|Linux|X11/i.test(ua) && !/Mobi|Android|iPhone|iPad/i.test(ua)) {
+        return true;
+      }
+    }
+    if (typeof window.innerWidth === "number") {
+      return window.innerWidth >= 768;
+    }
+    return false;
+  })();
+  const url = isDesktop
+    ? `https://web.whatsapp.com/send?phone=${waNumber}&text=${encodedMessage}`
+    : `https://wa.me/${waNumber}?text=${encodedMessage}`;
   if (typeof window !== "undefined" && window?.open) {
     window.open(url, "_blank", "noopener");
   } else {
     console.info("WhatsApp notification URL:", url);
   }
-};const upsertCustomer = (list, rec) => {
+};
+const upsertCustomer = (list, rec) => {
   const phone = normalizePhone(rec.phone);
   const existing = (list || []).find((c) => normalizePhone(c.phone) === phone) || {};
   const without = (list || []).filter((c) => normalizePhone(c.phone) !== phone);
@@ -11388,6 +11409,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
