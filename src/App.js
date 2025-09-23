@@ -827,11 +827,12 @@ function computeCOGSForItemDef(def, invMap, ctx) {
 }
 export function unpackStateFromCloud(data, fallbackDayMeta = {}) {
   const out = {};
-  if (Array.isArray(data.orders)) {
+if (Array.isArray(data.orders)) {
     out.orders = data.orders.map((o) => ({
       ...o,
       date: o.date ? new Date(o.date) : new Date(),
       restockedAt: o.restockedAt ? new Date(o.restockedAt) : undefined,
+      whatsappSentAt: o.whatsappSentAt ? new Date(o.whatsappSentAt) : null,
     }));
   }
  if (Array.isArray(data.expenses)) {
@@ -921,7 +922,12 @@ function normalizeOrderForCloud(order) {
     orderType: order.orderType,
     deliveryFee: order.deliveryFee,
     deliveryName: order.deliveryName || "",
-    deliveryPhone: order.deliveryPhone || "",
+   deliveryPhone: order.deliveryPhone || "",
+    deliveryAddress: order.deliveryAddress || "",
+    deliveryZoneId: order.deliveryZoneId || "",
+    notifyViaWhatsapp: !!order.notifyViaWhatsapp,
+    whatsappSentAt: toIso(order.whatsappSentAt),
+    total: order.total,
     deliveryAddress: order.deliveryAddress || "",
     deliveryZoneId: order.deliveryZoneId || "",
     total: order.total,
@@ -943,21 +949,23 @@ function normalizeOrderForCloud(order) {
 function orderFromCloudDoc(id, d) {
   const asDate = (v) =>
     v instanceof Timestamp ? v.toDate() : v ? new Date(v) : new Date();
-  return {
+ return {
     cloudId: id,
     orderNo: d.orderNo,
     worker: d.worker,
     payment: d.payment,
     paymentParts: Array.isArray(d.paymentParts)
-  ? d.paymentParts.map((p) => ({ method: p.method, amount: Number(p.amount || 0) }))
-  : [],
+      ? d.paymentParts.map((p) => ({ method: p.method, amount: Number(p.amount || 0) }))
+      : [],
     orderType: d.orderType,
     deliveryFee: Number(d.deliveryFee || 0),
     deliveryName: d.deliveryName || "",
-deliveryPhone: d.deliveryPhone || "",
-deliveryAddress: d.deliveryAddress || "",
-deliveryZoneId: d.deliveryZoneId || "",       // ⬅️ NEW
-total: Number(d.total || 0),
+    deliveryPhone: d.deliveryPhone || "",
+    deliveryAddress: d.deliveryAddress || "",
+    deliveryZoneId: d.deliveryZoneId || "",
+    notifyViaWhatsapp: !!d.notifyViaWhatsapp,
+    whatsappSentAt: d.whatsappSentAt ? asDate(d.whatsappSentAt) : null,
+    total: Number(d.total || 0),
     itemsTotal: Number(d.itemsTotal || 0),
     cashReceived: d.cashReceived != null ? Number(d.cashReceived) : null,
     changeDue: d.changeDue != null ? Number(d.changeDue) : null,
@@ -1792,8 +1800,58 @@ function printReceiptHTML(order, widthMm = 80, copy = "Customer", images) {
   htmlWritten = true;
   setTimeout(() => { try { if (document.body.contains(ifr)) ifr.remove(); } catch {} }, 12000);
 }
-const normalizePhone = (s) => String(s || "").replace(/\D/g, "").slice(0, 11);
-const upsertCustomer = (list, rec) => {
+const normalizePhone = (s) => {
+  const digits = String(s || "").replace(/\D/g, "");
+  if (digits.startsWith("20")) {
+    return digits.slice(0, 12);
+  }
+  return digits.slice(0, 11);
+};
+const extractLocalPhoneDigits = (raw) => {
+  const digits = normalizePhone(raw);
+  if (!digits) return "";
+  if (digits.startsWith("20")) return digits.slice(2, 12);
+  if (digits.startsWith("0")) return digits.slice(1, 11);
+  return digits.slice(0, 10);
+};
+const toCanonicalLocalPhone = (raw) => {
+  const local = extractLocalPhoneDigits(raw);
+  if (!local) return "";
+  return `0${local}`.slice(0, 11);
+};
+const formatPhoneForDisplay = (raw) => {
+  const digits = normalizePhone(raw);
+  if (!digits) return "";
+  if (digits.startsWith("0") && digits.length >= 2) {
+    return `+20${digits.slice(1)}`;
+  }
+  if (digits.startsWith("20")) return `+${digits}`;
+  if (digits.startsWith("2")) return `+${digits}`;
+  return `+20${digits}`;
+};
+const formatPhoneForWhatsapp = (raw) => {
+  let digits = normalizePhone(raw);
+  if (!digits) return "";
+  if (digits.startsWith("0") && digits.length > 1) {
+    digits = `2${digits}`;
+  } else if (!digits.startsWith("20")) {
+    digits = `20${digits}`;
+  }
+  return digits.replace(/^\+/, "");
+};
+const hasWhatsappNumberLength = (raw) => /^20\d{10}$/.test(formatPhoneForWhatsapp(raw));
+const openWhatsappNotification = (order, phoneDigits) => {
+  const waNumber = formatPhoneForWhatsapp(phoneDigits);
+  if (!waNumber) return;
+  const name = order?.deliveryName?.trim() || "customer";
+  const message = `Hello ${name}, your order #${order?.orderNo || ""} is ready for pickup.`;
+  const url = `https://wa.me/${waNumber}?text=${encodeURIComponent(message)}`;
+  if (typeof window !== "undefined" && window?.open) {
+    window.open(url, "_blank", "noopener");
+  } else {
+    console.info("WhatsApp notification URL:", url);
+  }
+};const upsertCustomer = (list, rec) => {
   const phone = normalizePhone(rec.phone);
   const existing = (list || []).find((c) => normalizePhone(c.phone) === phone) || {};
   const without = (list || []).filter((c) => normalizePhone(c.phone) !== phone);
@@ -2384,7 +2442,10 @@ const [deliveryFee, setDeliveryFee] = useState(0);
 const [deliveryName, setDeliveryName] = useState("");
 const [deliveryPhone, setDeliveryPhone] = useState("");
 const [deliveryAddress, setDeliveryAddress] = useState("");
-const [deliveryZoneId, setDeliveryZoneId] = useState("");               
+const [deliveryZoneId, setDeliveryZoneId] = useState("");
+const [customerName, setCustomerName] = useState("");
+const [customerPhone, setCustomerPhone] = useState("");
+const [syncWhatsappReady, setSyncWhatsappReady] = useState(false);            
 const [customers, setCustomers] = useState([]);                         
 const [deliveryZones, setDeliveryZones] = useState(DEFAULT_ZONES);
 const [customerSearch, setCustomerSearch] = useState("");
@@ -4179,14 +4240,22 @@ const checkout = async () => {
     if (!worker) return alert("Select worker.");
     if (!orderType) return alert("Select order type.");
     if (!splitPay && !payment) return alert("Select payment.");
-if (orderType === "Delivery") {
-  const n = String(deliveryName || "").trim();
-  const p = String(deliveryPhone || "").trim();
-  const a = String(deliveryAddress || "").trim();
-  if (!n || !/^\d{11}$/.test(p) || !a) {
-    return alert("Please enter customer name, phone Number (11 digits), and address for Delivery.");
+  if (orderType === "Delivery") {
+    const n = String(deliveryName || "").trim();
+    const p = normalizePhone(deliveryPhone);
+    const a = String(deliveryAddress || "").trim();
+    if (!n || !/^\d{11}$/.test(p) || !a) {
+      return alert("Please enter customer name, phone Number (11 digits), and address for Delivery.");
+    }
   }
-}
+  const orderCustomerName =
+    orderType === "Delivery"
+      ? String(deliveryName || "").trim()
+      : String(customerName || "").trim();
+  const orderCustomerPhone =
+    orderType === "Delivery"
+      ? normalizePhone(deliveryPhone)
+      : normalizePhone(customerPhone);
     const cartWithUses = cart.map((line) => {
       const baseItem = menu.find((m) => m.id === line.id);
       const unitUses = { ...(baseItem?.uses || {}) };
@@ -4261,6 +4330,9 @@ if (orderType === "Delivery") {
     }
     let optimisticNo = nextOrderNo;
 
+   const hasWhatsappPhone =
+      orderType !== "Delivery" && hasWhatsappNumberLength(orderCustomerPhone);
+    const shouldWhatsapp = hasWhatsappPhone && !!syncWhatsappReady;
     const order = {
       orderNo: optimisticNo,
       date: new Date(),
@@ -4269,10 +4341,12 @@ if (orderType === "Delivery") {
       paymentParts,
       orderType,
       deliveryFee: delFee,
-      deliveryName: (orderType === "Delivery" ? String(deliveryName || "").trim() : ""),
-deliveryPhone: (orderType === "Delivery" ? String(deliveryPhone || "").trim() : ""),
-deliveryAddress: (orderType === "Delivery" ? String(deliveryAddress || "").trim() : ""),
-      deliveryZoneId: deliveryZoneId || "",   
+      deliveryName: orderCustomerName,
+      deliveryPhone: orderCustomerPhone,
+      deliveryAddress: orderType === "Delivery" ? String(deliveryAddress || "").trim() : "",
+      deliveryZoneId: orderType === "Delivery" ? deliveryZoneId || "" : "",
+      notifyViaWhatsapp: shouldWhatsapp,
+      whatsappSentAt: null,
       total,
       itemsTotal,
       cashReceived: cashVal,
@@ -4325,11 +4399,14 @@ deliveryAddress: (orderType === "Delivery" ? String(deliveryAddress || "").trim(
     const defaultType = orderTypes[0] || "Take-Away";
     setOrderType(defaultType);
     setDeliveryFee(defaultType === "Delivery" ? defaultDeliveryFee : 0);
-    setCashReceived(0);
-setDeliveryName("");
-setDeliveryPhone("");
-setDeliveryAddress("");
-setDeliveryZoneId("");   
+  setCashReceived(0);
+    setDeliveryName("");
+    setDeliveryPhone("");
+    setDeliveryAddress("");
+    setDeliveryZoneId("");
+    setCustomerName("");
+    setCustomerPhone("");
+    setSyncWhatsappReady(false); 
     setSplitPay(false);
     setPayA(""); setPayB("");
     setAmtA(0); setAmtB(0);
@@ -4338,12 +4415,28 @@ setDeliveryZoneId("");
     setIsCheckingOut(false);
   }
 };
- // --------- Order actions ----------
 const markOrderDone = async (orderNo) => {
+  const ord = orders.find((o) => o.orderNo === orderNo);
+  const phoneDigits = ord ? normalizePhone(ord.deliveryPhone) : "";
+  const shouldNotify =
+    ord &&
+    ord.orderType !== "Delivery" &&
+    ord.notifyViaWhatsapp &&
+    !ord.whatsappSentAt &&
+    hasWhatsappNumberLength(phoneDigits);
+  let notifiedAt = null;
+  if (shouldNotify) {
+    notifiedAt = new Date();
+    openWhatsappNotification(ord, phoneDigits);
+  }
   // If not live, update locally
   if (!realtimeOrders) {
     setOrders((o) =>
-      o.map((ord) => (ord.orderNo !== orderNo || ord.done ? ord : { ...ord, done: true }))
+      o.map((ordr) =>
+        ordr.orderNo !== orderNo || ordr.done
+          ? ordr
+          : { ...ordr, done: true, whatsappSentAt: notifiedAt || ordr.whatsappSentAt || null }
+      )
     );
   }
 
@@ -4353,12 +4446,16 @@ const markOrderDone = async (orderNo) => {
     if (!targetId) {
       const ss = await getDocs(query(ordersColRef, where("orderNo", "==", orderNo)));
       if (!ss.empty) targetId = ss.docs[0].id;
-    }
+   }
     if (targetId) {
-      await updateDoc(fsDoc(db, "shops", SHOP_ID, "orders", targetId), {
+      const payload = {
         done: true,
         updatedAt: serverTimestamp(),
-      });
+      };
+      if (notifiedAt) {
+        payload.whatsappSentAt = toIso(notifiedAt);
+      }
+      await updateDoc(fsDoc(db, "shops", SHOP_ID, "orders", targetId), payload);
     }
   } catch (e) {
     console.warn("Cloud update (done) failed:", e);
@@ -7222,7 +7319,7 @@ const cogs = Number(
                   ))}
                 </div>
 
-                {orderType === "Delivery" && (
+               {orderType === "Delivery" && (
   <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
     <div>
       <label>
@@ -7286,7 +7383,7 @@ const cogs = Number(
   }}
   style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
 />
-    <input
+     <input
       type="text"
       placeholder="Address"
       value={deliveryAddress}
@@ -7295,6 +7392,58 @@ const cogs = Number(
     />
   </div>
 )}
+
+                {orderType !== "Delivery" && (
+                  <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
+                    <input
+                      type="text"
+                      placeholder="Customer name (optional)"
+                      value={customerName}
+                      onChange={(e) => setCustomerName(e.target.value)}
+                      style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+                    />
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <span style={{ opacity: 0.8, fontWeight: 600 }}>+20</span>
+                      <input
+                        type="tel"
+                        inputMode="numeric"
+                        placeholder="Customer phone (10 digits)"
+                        maxLength={10}
+                        value={extractLocalPhoneDigits(customerPhone)}
+                        onChange={(e) => setCustomerPhone(toCanonicalLocalPhone(e.target.value))}
+                        onKeyDown={(e) => {
+                          const ctrl = e.ctrlKey || e.metaKey;
+                          const allowed = [
+                            "Backspace",
+                            "Delete",
+                            "ArrowLeft",
+                            "ArrowRight",
+                            "Home",
+                            "End",
+                            "Tab",
+                          ];
+                          if (allowed.includes(e.key) || ctrl) return;
+                          if (!/^\d$/.test(e.key)) e.preventDefault();
+                        }}
+                        style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+                      />
+                    </div>
+                    {hasWhatsappNumberLength(customerPhone) && (
+                      <small style={{ opacity: 0.7 }}>
+                        WhatsApp will use {formatPhoneForDisplay(customerPhone)} for updates.
+                      </small>
+                    )}
+                    <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <input
+                        type="checkbox"
+                        checked={syncWhatsappReady}
+                        onChange={(e) => setSyncWhatsappReady(e.target.checked)}
+                        disabled={!hasWhatsappNumberLength(customerPhone)}
+                      />
+                      <span>Send ready message via WhatsApp when order is done</span>
+                    </label>
+                  </div>
+                )}
 
               </div>
             </div>
@@ -7400,8 +7549,24 @@ const cogs = Number(
                         <> ({o.paymentParts.map(p => `${p.method}: E£${Number(p.amount||0).toFixed(2)}`).join(" + ")})</>
                       ) : null}
                        • Type: {o.orderType || "-"}
-                  {o.orderType === "Delivery" && (
+               {o.orderType === "Delivery" && (
                     <> • Delivery: E£{Number(o.deliveryFee || 0).toFixed(2)}</>
+                  )}
+                  {(o.deliveryName || o.deliveryPhone) && (
+                    <>
+                      {" "}• Customer: {o.deliveryName || "—"}
+                      {o.deliveryPhone
+                        ? ` (${formatPhoneForDisplay(o.deliveryPhone)})`
+                        : ""}
+                    </>
+                  )}
+                  {o.notifyViaWhatsapp && (
+                    <>
+                      {" "}• WhatsApp:{" "}
+                      {o.whatsappSentAt
+                        ? `Sent ${fmtDateTime(o.whatsappSentAt)}`
+                        : "Pending"}
+                    </>
                   )}
                   {o.payment === "Cash" && o.cashReceived != null && (
                     <> • Cash: E£{o.cashReceived.toFixed(2)} • Change: E£{(o.changeDue || 0).toFixed(2)}</>
@@ -11225,6 +11390,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
