@@ -928,9 +928,7 @@ function normalizeOrderForCloud(order) {
     notifyViaWhatsapp: !!order.notifyViaWhatsapp,
     whatsappSentAt: toIso(order.whatsappSentAt),
     total: order.total,
-    deliveryAddress: order.deliveryAddress || "",
-    deliveryZoneId: order.deliveryZoneId || "",
-    total: order.total,
+
     itemsTotal: order.itemsTotal,
     cashReceived: order.cashReceived ?? null,
     changeDue: order.changeDue ?? null,
@@ -11390,6 +11388,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
