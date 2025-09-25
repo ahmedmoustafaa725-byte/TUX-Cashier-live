@@ -98,6 +98,15 @@ function ensureOnlineFirebase() {
     }
   }
 }
+function getOnlineServices() {
+  const app = ensureOnlineFirebase();
+  if (!app) return { onlineAuth: null, onlineDb: null };
+  return {
+    onlineAuth: getAuth(app),
+    onlineDb: getFirestore(app),
+  };
+}
+
 
 const SHOP_ID = "tux";
 const ONLINE_ORDER_COLLECTIONS = [
@@ -280,6 +289,48 @@ function SundayWeekPicker({ selectedSunday, onSelect, dark = false, btnBorder = 
     const base = selectedStart || new Date();
     return new Date(base.getFullYear(), base.getMonth(), 1);
   });
+const [onlineFbUser, setOnlineFbUser] = useState(null);
+
+useEffect(() => {
+  const { onlineAuth } = getOnlineServices();
+  if (!onlineAuth) return;
+
+  // Keep session observed
+  const unsub = onAuthStateChanged(onlineAuth, (u) => {
+    setOnlineFbUser(u || null);
+    if (u) console.log("✅ tux-menu anonymous user:", u.uid);
+  });
+
+  // Ensure we are signed in anonymously
+  signInAnonymously(onlineAuth).catch((err) => {
+    console.error("❌ Anonymous sign-in to tux-menu failed:", err);
+  });
+
+  return () => unsub();
+}, []);
+function getDbForSource(source) {
+  if (source === "menu") {
+    const { onlineDb } = getOnlineServices();
+    return onlineDb;        // tux-menu Firestore
+  }
+  const { db } = ensureFirebase();
+  return db;                // primary POS Firestore
+}
+
+// Example when wiring listeners:
+ONLINE_ORDER_COLLECTIONS.forEach((def) => {
+  const dbForThis = getDbForSource(def.source);
+  if (!dbForThis) return;
+
+  // (Optional) gate menu listeners until anonymous auth is ready
+  if (def.source === "menu" && !onlineFbUser) return;
+
+  const colRef = collection(dbForThis, ...def.path);
+  const q = query(colRef, orderBy("createdAt", "desc"));
+  onSnapshot(q, (snap) => {
+    // merge/dedupe as you already do
+  });
+});
 
   useEffect(() => {
     if (!selectedStart) return;
@@ -12124,6 +12175,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
