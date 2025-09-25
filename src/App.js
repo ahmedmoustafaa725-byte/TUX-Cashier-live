@@ -109,34 +109,14 @@ function getOnlineServices() {
 
 
 const SHOP_ID = "tux";
+// In your React POS app code (App.js)
+
 const ONLINE_ORDER_COLLECTIONS = [
   {
     name: "pos/onlineOrders",
-    source: "pos",
-    path: ["shops", SHOP_ID, "onlineOrders"],
-  },
-  {
-    name: "pos/webOrders",
-    source: "pos",
-    path: ["shops", SHOP_ID, "webOrders"],
-  },
-  {
-    name: "menu/onlineOrders",
-    source: "menu",
-    path: ["shops", SHOP_ID, "onlineOrders"],
-    constraints: [where("shopId", "==", SHOP_ID)],
-  },
-  {
-    name: "menu/webOrders",
-    source: "menu",
-    path: ["shops", SHOP_ID, "webOrders"],
-    constraints: [where("shopId", "==", SHOP_ID)],
-  },
-  {
-    name: "menu/orders",
-    source: "menu",
-    path: ["orders"],
-    constraints: [where("shopId", "==", SHOP_ID)],
+    source: "menu", // This correctly uses the 'tux-menu' Firebase project
+    path: ["shops", SHOP_ID, "onlineOrders"], // This is the path we are writing to
+    constraints: [where("shopId", "==", SHOP_ID)], // This filter remains correct
   },
 ];
 const LS_KEY = "tux_pos_local_state_v1";
@@ -12175,6 +12155,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
