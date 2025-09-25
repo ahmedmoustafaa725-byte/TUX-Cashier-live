@@ -193,6 +193,14 @@ function getWeekRangeFromInput(weekStr) {
   return [weekStart, weekEnd];
 }
 
+function multiplyUses(uses = {}, factor = 1) {
+  const out = {};
+  for (const key of Object.keys(uses || {})) {
+    out[key] = Number(uses[key] || 0) * factor;
+  }
+  return out;
+}
+
 function getSundayStartDate(value) {
   if (!value) return null;
   const d = value instanceof Date ? new Date(value) : new Date(value);
@@ -12726,6 +12734,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
