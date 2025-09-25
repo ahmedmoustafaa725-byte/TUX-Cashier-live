@@ -115,16 +115,19 @@ const ONLINE_ORDER_COLLECTIONS = [
     name: "menu/onlineOrders",
     source: "menu",
     path: ["shops", SHOP_ID, "onlineOrders"],
+    constraints: [where("shopId", "==", SHOP_ID)],
   },
   {
     name: "menu/webOrders",
     source: "menu",
     path: ["shops", SHOP_ID, "webOrders"],
+    constraints: [where("shopId", "==", SHOP_ID)],
   },
   {
     name: "menu/orders",
     source: "menu",
     path: ["orders"],
+    constraints: [where("shopId", "==", SHOP_ID)],
   },
 ];
 const LS_KEY = "tux_pos_local_state_v1";
@@ -3258,19 +3261,26 @@ const db = useMemo(() => (fbReady ? ensureFirebase().db : null), [fbReady]);
     () => (db ? collection(db, "shops", SHOP_ID, "orders") : null),
     [db]
   );
+  
 const onlineOrderCollections = useMemo(() => {
     if (!db && !onlineDb) return [];
-    return ONLINE_ORDER_COLLECTIONS.flatMap(({ name, source, path }) => {
-      const targetDb = source === "menu" ? onlineDb : db;
-      if (!targetDb) return [];
-      try {
-        return [{ name, source, ref: collection(targetDb, ...path) }];
-      } catch (err) {
-        console.error(`Failed to build online order ref for ${name}`, err);
-        return [];
+    return ONLINE_ORDER_COLLECTIONS.flatMap(
+      ({ name, source, path, constraints = [] }) => {
+        const targetDb = source === "menu" ? onlineDb : db;
+        if (!targetDb) return [];
+        try {
+          const baseRef = collection(targetDb, ...path);
+          const ref = constraints.length ? query(baseRef, ...constraints) : baseRef;
+          return [{ name, source, ref }];
+        } catch (err) {
+          console.error(`Failed to build online order ref for ${name}`, err);
+          return [];
+        }
       }
-    });
+    );
   }, [db, onlineDb]);
+
+  
   const counterDocRef = useMemo(
     () => (db ? fsDoc(db, "shops", SHOP_ID, "state", "counters") : null),
     [db]
@@ -12114,6 +12124,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
