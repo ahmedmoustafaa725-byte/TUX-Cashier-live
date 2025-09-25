@@ -56,6 +56,7 @@ export function sanitizeForFirestore(value) {
   }
   return value;
 }
+
 const firebaseConfig = {
   apiKey: "AIzaSyAp1F6t8zgRiJI9xOzFkKJVsCQIT9BWXno",
   authDomain: "tux-cashier-system.firebaseapp.com",
@@ -64,14 +65,68 @@ const firebaseConfig = {
   messagingSenderId: "978379497015",
   appId: "1:978379497015:web:ea165dcb6873e0c65929b2",
 };
+
+const onlineFirebaseConfig = {
+  apiKey: "AIzaSyDqjdI3ZqFSVY_5Kmowak1DCOL5bZaCYoo",
+  authDomain: "tux-menu.firebaseapp.com",
+  projectId: "tux-menu",
+  storageBucket: "tux-menu.firebasestorage.app",
+  messagingSenderId: "326432857137",
+  appId: "1:326432857137:web:926cc2ffb364b2f5d44910",
+  measurementId: "G-1T1RRHCCDQ",
+};
+
+const ONLINE_FIREBASE_APP_NAME = "tux-menu-online";
+
 function ensureFirebase() {
   const theApp = getApps().length ? getApp() : initializeApp(firebaseConfig);
   const auth = getAuth(theApp);
   const db = getFirestore(theApp);
   return { auth, db };
 }
+
+function ensureOnlineFirebase() {
+  if (!onlineFirebaseConfig?.projectId) return null;
+  try {
+    return getApp(ONLINE_FIREBASE_APP_NAME);
+  } catch (err) {
+    try {
+      return initializeApp(onlineFirebaseConfig, ONLINE_FIREBASE_APP_NAME);
+    } catch (initErr) {
+      console.error("Failed to initialize online orders Firebase app", initErr);
+      return null;
+    }
+  }
+}
+
 const SHOP_ID = "tux";
-const ONLINE_ORDER_COLLECTIONS = ["onlineOrders", "webOrders"];
+const ONLINE_ORDER_COLLECTIONS = [
+  {
+    name: "pos/onlineOrders",
+    source: "pos",
+    path: ["shops", SHOP_ID, "onlineOrders"],
+  },
+  {
+    name: "pos/webOrders",
+    source: "pos",
+    path: ["shops", SHOP_ID, "webOrders"],
+  },
+  {
+    name: "menu/onlineOrders",
+    source: "menu",
+    path: ["shops", SHOP_ID, "onlineOrders"],
+  },
+  {
+    name: "menu/webOrders",
+    source: "menu",
+    path: ["shops", SHOP_ID, "webOrders"],
+  },
+  {
+    name: "menu/orders",
+    source: "menu",
+    path: ["orders"],
+  },
+];
 const LS_KEY = "tux_pos_local_state_v1";
 function loadLocal() {
 
@@ -3124,7 +3179,17 @@ useEffect(() => {
     return changed ? next : current;
   });
 }, [purchases, purchaseCategories, syncCostsFromPurchases]);
-  const db = useMemo(() => (fbReady ? ensureFirebase().db : null), [fbReady]);
+const db = useMemo(() => (fbReady ? ensureFirebase().db : null), [fbReady]);
+  const onlineDb = useMemo(() => {
+    if (!fbReady) return null;
+    try {
+      const app = ensureOnlineFirebase();
+      return app ? getFirestore(app) : null;
+    } catch (err) {
+      console.error("Failed to access online orders Firestore", err);
+      return null;
+    }
+  }, [fbReady]);
   const stateDocRef = useMemo(
     () => (db ? fsDoc(db, "shops", SHOP_ID, "state", "pos") : null),
     [db]
@@ -3133,13 +3198,19 @@ useEffect(() => {
     () => (db ? collection(db, "shops", SHOP_ID, "orders") : null),
     [db]
   );
- const onlineOrderCollections = useMemo(() => {
-    if (!db) return [];
-    return ONLINE_ORDER_COLLECTIONS.map((name) => ({
-      name,
-      ref: collection(db, "shops", SHOP_ID, name),
-    }));
-  }, [db]);
+  const onlineOrderCollections = useMemo(() => {
+    if (!db && !onlineDb) return [];
+    return ONLINE_ORDER_COLLECTIONS.flatMap(({ name, source, path }) => {
+      const targetDb = source === "menu" ? onlineDb : db;
+      if (!targetDb) return [];
+      try {
+        return [{ name, ref: collection(targetDb, ...path) }];
+      } catch (err) {
+        console.error(`Failed to build online order ref for ${name}`, err);
+        return [];
+      }
+    });
+  }, [db, onlineDb]);
   const counterDocRef = useMemo(
     () => (db ? fsDoc(db, "shops", SHOP_ID, "state", "counters") : null),
     [db]
@@ -11977,6 +12048,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
