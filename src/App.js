@@ -21,54 +21,6 @@ import {
   writeBatch,
   runTransaction, // <-- atomic counter
 } from "firebase/firestore";
-import { useEffect, useRef } from "react";
-import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore, collection, onSnapshot, query, orderBy } from "firebase/firestore";
-
-const firebaseConfig = {
-  apiKey: "AIzaSyDqjdI3ZqFSVY_5Kmowak1DCOL5bZaCYoo",
-  authDomain: "tux-menu.firebaseapp.com",
-  projectId: "tux-menu",
-  storageBucket: "tux-menu.firebasestorage.app",
-  messagingSenderId: "326432857137",
-  appId: "1:326432857137:web:926cc2ffb364b2f5d44910",
-  measurementId: "G-1T1RRHCCDQ",
-};
-
-const firebaseApp =
-  getApps().find((app) => app.name === "tux-menu-online") ??
-  initializeApp(firebaseConfig, "tux-menu-online");
-const db = getFirestore(firebaseApp);
-
-function App() {
-  const ordersRef = useRef([]);
-
-  useEffect(() => {
-    const colRef = collection(db, "shops", "tux", "webOrders");
-    const qy = query(colRef, orderBy("createdAt", "desc"));
-    const unsubscribe = onSnapshot(qy, (snapshot) => {
-      ordersRef.current = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      window.dispatchEvent(
-        new CustomEvent("tux-online-orders", {
-          detail: { orders: ordersRef.current },
-        })
-      );
-    });
-    return () => unsubscribe();
-  }, []);
-
-  return (
-    <>
-      {/* existing component code */}
-    </>
-  );
-}
-
-export default App;
-
 
 export const toIso = (v) => {
   if (!v) return null;
@@ -12131,6 +12083,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
