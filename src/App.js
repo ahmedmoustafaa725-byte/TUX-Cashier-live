@@ -73,7 +73,11 @@ function ensureFirebase() {
 const SHOP_ID = "tux";
 const ONLINE_ORDER_COLLECTIONS = ["onlineOrders", "webOrders"];
 const LS_KEY = "tux_pos_local_state_v1";
-  try { return JSON.parse(localStorage.getItem(LS_KEY) || "{}"); }
+function loadLocal() {
+
+  try { 
+    return JSON.parse(localStorage.getItem(LS_KEY) || "{}"); 
+  }
   catch { return {}; }
 }
 function saveLocalPartial(patch) {
@@ -11973,6 +11977,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
