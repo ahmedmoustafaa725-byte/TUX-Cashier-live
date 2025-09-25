@@ -1,26 +1,21 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
-import { db } from './firebase-init';
-
-const ordersQuery = query(collection(db, 'orders'), orderBy('createdAt', 'desc'));
-onSnapshot(ordersQuery, (snapshot) => {
-  const orders = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-  renderOrdersBoard(orders);
-});
-
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth, onAuthStateChanged, signInAnonymously } from "firebase/auth";
 import {
   getFirestore,
   serverTimestamp,
   Timestamp,
+  collection,
   addDoc,
   updateDoc,
   getDoc,
   setDoc,
   getDocs,
+  onSnapshot,
+  query,
+  orderBy,
   where,
   doc as fsDoc,
   writeBatch,
@@ -11917,17 +11912,6 @@ setExtraList((arr) => [
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
 
 
 
