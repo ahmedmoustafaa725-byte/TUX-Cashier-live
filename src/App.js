@@ -1088,7 +1088,6 @@ function onlineOrderFromDoc(id, data = {}) {
     if (value instanceof Timestamp) return value.toDate();
     if (value instanceof Date) return value;
     const parsed = new Date(value);
-    const parsed = new Date(value);
     return Number.isNaN(+parsed) ? null : parsed;
   };
   const asNumber = (value, fallback = 0) => {
@@ -12727,6 +12726,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
