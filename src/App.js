@@ -949,7 +949,7 @@ function orderFromCloudDoc(id, d) {
     v instanceof Timestamp ? v.toDate() : v ? new Date(v) : new Date();
   return {
     cloudId: id,
-    cloudId: id,
+
     orderNo: d.orderNo,
     worker: d.worker,
     payment: d.payment,
@@ -11912,6 +11912,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
