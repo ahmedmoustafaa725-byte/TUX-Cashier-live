@@ -71,8 +71,8 @@ function ensureFirebase() {
   return { auth, db };
 }
 const SHOP_ID = "tux";
+const ONLINE_ORDER_COLLECTIONS = ["onlineOrders", "webOrders"];
 const LS_KEY = "tux_pos_local_state_v1";
-function loadLocal() {
   try { return JSON.parse(localStorage.getItem(LS_KEY) || "{}"); }
   catch { return {}; }
 }
@@ -2566,7 +2566,7 @@ const [onlineViewCutoff, setOnlineViewCutoff] = useState(() => {
   return Number.isFinite(v) ? v : 0;
 });
 const [onlineOrdersRaw, setOnlineOrdersRaw] = useState([]);
-const [bankTx, setBankTx] = useState([]);
+const onlineOrderSourcesRef = useRef({});const [bankTx, setBankTx] = useState([]);
 const [reconCounts, setReconCounts] = useState({});
 const [reconSavedBy, setReconSavedBy] = useState("");
 const [reconHistory, setReconHistory] = useState([]); 
@@ -3129,10 +3129,13 @@ useEffect(() => {
     () => (db ? collection(db, "shops", SHOP_ID, "orders") : null),
     [db]
   );
-  const onlineOrdersColRef = useMemo(
-    () => (db ? collection(db, "shops", SHOP_ID, "onlineOrders") : null),
-    [db]
-  );
+ const onlineOrderCollections = useMemo(() => {
+    if (!db) return [];
+    return ONLINE_ORDER_COLLECTIONS.map((name) => ({
+      name,
+      ref: collection(db, "shops", SHOP_ID, name),
+    }));
+  }, [db]);
   const counterDocRef = useMemo(
     () => (db ? fsDoc(db, "shops", SHOP_ID, "state", "counters") : null),
     [db]
@@ -3452,28 +3455,83 @@ useEffect(() => {
     });
    return () => unsub();
   }, [realtimeOrders, ordersColRef, fbUser, startedAtMs, endedAtMs]);
-  useEffect(() => {
-    if (!onlineOrdersColRef || !fbUser) return;
-    const unsub = onSnapshot(
-      onlineOrdersColRef,
-      (snap) => {
-        const arr = [];
-        snap.forEach((doc) => {
-          try {
-            arr.push(onlineOrderFromDoc(doc.id, doc.data()));
-          } catch (err) {
-            console.error("Failed to parse online order", doc.id, err);
-          }
-        });
-        arr.sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
-        setOnlineOrdersRaw(arr);
-      },
-      (error) => {
-        console.error("Online orders listener error", error);
+const recomputeOnlineOrders = useCallback(() => {
+    const sources = onlineOrderSourcesRef.current || {};
+    const merged = Object.values(sources).flat();
+    const deduped = new Map();
+    for (const order of merged) {
+      if (!order) continue;
+      const keyBase = order.id || order.sourceDocId || "";
+      const key = `${order.sourceCollection || "default"}:${keyBase}`;
+      const prev = deduped.get(key);
+      if (
+        !prev ||
+        Number(order?.createdAtMs || 0) >= Number(prev?.createdAtMs || 0)
+      ) {
+        deduped.set(key, order);
       }
+    }
+    const next = Array.from(deduped.values()).sort(
+      (a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0)
     );
-    return () => unsub();
-  }, [onlineOrdersColRef, fbUser]);
+    setOnlineOrdersRaw(next);
+  }, []);
+  useEffect(() => {
+    if (!fbUser || onlineOrderCollections.length === 0) {
+      onlineOrderSourcesRef.current = {};
+      setOnlineOrdersRaw([]);
+      return undefined;
+    }
+
+    let active = true;
+    const unsubscribers = onlineOrderCollections.map(({ name, ref }) =>
+      onSnapshot(
+        ref,
+        (snap) => {
+          if (!active) return;
+          const arr = [];
+          snap.forEach((doc) => {
+            try {
+              const parsed = onlineOrderFromDoc(doc.id, doc.data());
+              arr.push({
+                ...parsed,
+                id: parsed?.id || doc.id,
+                sourceCollection: name,
+                sourceDocId: doc.id,
+              });
+            } catch (err) {
+              console.error(
+                "Failed to parse online order",
+                `${name}/${doc.id}`,
+                err
+              );
+            }
+          });
+          onlineOrderSourcesRef.current = {
+            ...onlineOrderSourcesRef.current,
+            [name]: arr,
+          };
+          recomputeOnlineOrders();
+        },
+        (error) => {
+          console.error(`Online orders listener error [${name}]`, error);
+        }
+      )
+    );
+
+    return () => {
+      active = false;
+      unsubscribers.forEach((fn) => {
+        try {
+          if (typeof fn === "function") fn();
+        } catch (err) {
+          console.error("Error cleaning up online order listener", err);
+        }
+      });
+      onlineOrderSourcesRef.current = {};
+      setOnlineOrdersRaw([]);
+    };
+  }, [onlineOrderCollections, fbUser, recomputeOnlineOrders]);
   const onlineOrders = useMemo(() => {
     const filtered = onlineOrdersRaw.filter((order) => {
       const ts = Number(order?.createdAtMs || 0);
@@ -8014,8 +8072,11 @@ const cogs = Number(
                             <strong>Note:</strong> {o.note}
                           </div>
                         )}
-                        <div style={{ fontSize: 12, opacity: 0.75, marginTop: 8 }}>
-                          Online order ID: {o.id}
+                       <div style={{ fontSize: 12, opacity: 0.75, marginTop: 8 }}>
+                          Online order ID:{" "}
+                          {o.sourceCollection
+                            ? `${o.sourceCollection}/${o.sourceDocId || o.id}`
+                            : o.id}
                         </div>
                       </li>
                     );
@@ -11912,6 +11973,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
