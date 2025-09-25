@@ -947,7 +947,8 @@ function normalizeOrderForCloud(order) {
 function orderFromCloudDoc(id, d) {
   const asDate = (v) =>
     v instanceof Timestamp ? v.toDate() : v ? new Date(v) : new Date();
- return {
+  return {
+    cloudId: id,
     cloudId: id,
     orderNo: d.orderNo,
     worker: d.worker,
@@ -974,7 +975,194 @@ function orderFromCloudDoc(id, d) {
     date: asDate(d.date || d.createdAt),
     restockedAt: d.restockedAt ? asDate(d.restockedAt) : undefined,
     cart: Array.isArray(d.cart) ? d.cart : [],
-    idemKey: d.idemKey || "",
+     idemKey: d.idemKey || "",
+  };
+}
+
+function onlineOrderFromDoc(id, data = {}) {
+  const asDate = (value) => {
+    if (!value) return null;
+    if (value instanceof Timestamp) return value.toDate();
+    if (value instanceof Date) return value;
+    const parsed = new Date(value);
+    return Number.isNaN(+parsed) ? null : parsed;
+  };
+  const asNumber = (value, fallback = 0) => {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : fallback;
+  };
+  const normalizeExtras = (list) => {
+    if (!Array.isArray(list)) return [];
+    return list.map((extra, idx) => ({
+      id:
+        extra?.id ||
+        extra?.extraId ||
+        extra?.optionId ||
+        extra?.uid ||
+        `extra-${idx}`,
+      name: String(extra?.name || extra?.title || extra?.label || "Extra"),
+      price: asNumber(extra?.price ?? extra?.amount ?? extra?.cost ?? 0),
+    }));
+  };
+  const normalizeCart = (list) => {
+    if (!Array.isArray(list)) return [];
+    return list.map((item, idx) => {
+      const qty = asNumber(
+        item?.qty ?? item?.quantity ?? item?.count ?? item?.amount ?? 1,
+        1
+      ) || 1;
+      const price = asNumber(
+        item?.price ?? item?.unitPrice ?? item?.amountPerUnit ?? item?.amount ?? 0,
+        0
+      );
+      const extrasSource =
+        item?.extras || item?.options || item?.addOns || item?.addons || [];
+      return {
+        id:
+          item?.id ||
+          item?.menuItemId ||
+          item?.itemId ||
+          item?.uid ||
+          `item-${idx}`,
+        name: String(item?.name || item?.title || item?.label || `Item ${idx + 1}`),
+        qty,
+        price,
+        extras: normalizeExtras(extrasSource),
+      };
+    });
+  };
+
+  const createdAt =
+    asDate(
+      data?.createdAt ||
+        data?.placedAt ||
+        data?.date ||
+        data?.submittedAt ||
+        data?.timestamp
+    ) || new Date();
+  const createdAtMs = createdAt.getTime();
+  const rawCart = Array.isArray(data?.cart)
+    ? data.cart
+    : Array.isArray(data?.items)
+    ? data.items
+    : [];
+  const cart = normalizeCart(rawCart);
+  const deliveryInfo = data?.delivery || {};
+  const deliveryFee = asNumber(
+    data?.deliveryFee ??
+      deliveryInfo?.fee ??
+      deliveryInfo?.fees ??
+      deliveryInfo?.price ??
+      0,
+    0
+  );
+  const itemsTotal = asNumber(
+    data?.itemsTotal ??
+      data?.itemsSubtotal ??
+      data?.subTotal ??
+      data?.subtotal ??
+      data?.productsTotal ??
+      data?.cartTotal ??
+      0,
+    0
+  );
+  const total = (() => {
+    const rawTotal = asNumber(
+      data?.total ??
+        data?.grandTotal ??
+        data?.amount ??
+        data?.orderTotal ??
+        data?.cartTotal ??
+        0,
+      0
+    );
+    if (rawTotal) return rawTotal;
+    if (itemsTotal || deliveryFee) return itemsTotal + deliveryFee;
+    const itemsSum = cart.reduce(
+      (sum, item) => sum + Number(item.price || 0) * Number(item.qty || 1),
+      0
+    );
+    const extrasSum = cart.reduce(
+      (sum, item) =>
+        sum +
+        (Array.isArray(item.extras)
+          ? item.extras.reduce(
+              (inner, ex) => inner + Number(ex.price || 0) * Number(item.qty || 1),
+              0
+            )
+          : 0),
+      0
+    );
+    return Number(itemsSum + extrasSum + deliveryFee);
+  })();
+  const orderType =
+    data?.orderType ||
+    data?.fulfillmentType ||
+    data?.fulfillment ||
+    (deliveryFee > 0 || data?.deliveryAddress || deliveryInfo?.address
+      ? "Delivery"
+      : "Pickup");
+  const orderNo =
+    data?.orderNo ||
+    data?.orderNumber ||
+    data?.ticket ||
+    data?.shortId ||
+    data?.displayId ||
+    data?.reference ||
+    null;
+  const payment =
+    data?.payment ||
+    data?.paymentMethod ||
+    data?.paymentType ||
+    (data?.paidOnline ? "Online" : "Unspecified");
+  const customerName =
+    data?.customerName ||
+    data?.name ||
+    data?.customer?.name ||
+    deliveryInfo?.name ||
+    "";
+  const customerPhone =
+    data?.customerPhone ||
+    data?.phone ||
+    data?.customer?.phone ||
+    deliveryInfo?.phone ||
+    "";
+  const customerAddress =
+    data?.deliveryAddress ||
+    data?.address ||
+    deliveryInfo?.address ||
+    "";
+  return {
+    id,
+    orderNo:
+      orderNo || `ONLINE-${String(id).slice(-6).toUpperCase().padStart(6, "0")}`,
+    worker: data?.handledBy || data?.worker || "Online Order",
+    payment: String(payment || "Unspecified"),
+    paymentParts: [],
+    orderType,
+    deliveryFee,
+    deliveryName: customerName,
+    deliveryPhone: customerPhone,
+    deliveryAddress: customerAddress,
+    notifyViaWhatsapp: false,
+    whatsappSentAt: null,
+    total,
+    itemsTotal: itemsTotal || total - deliveryFee,
+    cashReceived: null,
+    changeDue: null,
+    done: false,
+    voided: false,
+    voidReason: "",
+    note: data?.note || data?.notes || data?.specialInstructions || "",
+    date: createdAt,
+    restockedAt: undefined,
+    cart,
+    idemKey: data?.idemKey || "",
+    createdAt,
+    createdAtMs,
+    status: data?.status || data?.orderStatus || data?.state || "new",
+    source: "online",
+    raw: data,
   };
 }
 function dedupeOrders(list) {
@@ -2363,6 +2551,21 @@ const activeWorkers = useMemo(() => {
   return names;
 }, [workerSessions]);
 const [orders, setOrders] = useState([]);
+const [orderBoardFilter, setOrderBoardFilter] = useState(() => {
+  const l = loadLocal();
+  return l?.orderBoardFilter === "online" ? "online" : "onsite";
+});
+const [lastSeenOnlineOrderTs, setLastSeenOnlineOrderTs] = useState(() => {
+  const l = loadLocal();
+  const v = Number(l?.lastSeenOnlineOrderTs);
+  return Number.isFinite(v) ? v : 0;
+});
+const [onlineViewCutoff, setOnlineViewCutoff] = useState(() => {
+  const l = loadLocal();
+  const v = Number(l?.lastSeenOnlineOrderTs);
+  return Number.isFinite(v) ? v : 0;
+});
+const [onlineOrdersRaw, setOnlineOrdersRaw] = useState([]);
 const [bankTx, setBankTx] = useState([]);
 const [reconCounts, setReconCounts] = useState({});
 const [reconSavedBy, setReconSavedBy] = useState("");
@@ -2926,6 +3129,10 @@ useEffect(() => {
     () => (db ? collection(db, "shops", SHOP_ID, "orders") : null),
     [db]
   );
+  const onlineOrdersColRef = useMemo(
+    () => (db ? collection(db, "shops", SHOP_ID, "onlineOrders") : null),
+    [db]
+  );
   const counterDocRef = useMemo(
     () => (db ? fsDoc(db, "shops", SHOP_ID, "state", "counters") : null),
     [db]
@@ -3243,8 +3450,67 @@ useEffect(() => {
       snap.forEach((d) => arr.push(orderFromCloudDoc(d.id, d.data())));
       setOrders(dedupeOrders(arr));
     });
-    return () => unsub();
+   return () => unsub();
   }, [realtimeOrders, ordersColRef, fbUser, startedAtMs, endedAtMs]);
+  useEffect(() => {
+    if (!onlineOrdersColRef || !fbUser) return;
+    const unsub = onSnapshot(
+      onlineOrdersColRef,
+      (snap) => {
+        const arr = [];
+        snap.forEach((doc) => {
+          try {
+            arr.push(onlineOrderFromDoc(doc.id, doc.data()));
+          } catch (err) {
+            console.error("Failed to parse online order", doc.id, err);
+          }
+        });
+        arr.sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+        setOnlineOrdersRaw(arr);
+      },
+      (error) => {
+        console.error("Online orders listener error", error);
+      }
+    );
+    return () => unsub();
+  }, [onlineOrdersColRef, fbUser]);
+  const onlineOrders = useMemo(() => {
+    const filtered = onlineOrdersRaw.filter((order) => {
+      const ts = Number(order?.createdAtMs || 0);
+      if (startedAtMs && ts < startedAtMs) return false;
+      if (endedAtMs && ts > endedAtMs) return false;
+      return true;
+    });
+    filtered.sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+    return filtered;
+  }, [onlineOrdersRaw, startedAtMs, endedAtMs]);
+  const newOnlineOrderCount = useMemo(
+    () =>
+      onlineOrders.filter(
+        (order) => Number(order?.createdAtMs || 0) > Number(lastSeenOnlineOrderTs || 0)
+      ).length,
+    [onlineOrders, lastSeenOnlineOrderTs]
+  );
+  useEffect(() => {
+    saveLocalPartial({ orderBoardFilter });
+  }, [orderBoardFilter]);
+  useEffect(() => {
+    saveLocalPartial({ lastSeenOnlineOrderTs });
+  }, [lastSeenOnlineOrderTs]);
+  useEffect(() => {
+    if (orderBoardFilter === "online") {
+      setOnlineViewCutoff(lastSeenOnlineOrderTs);
+      const latest = onlineOrders.reduce(
+        (max, order) => Math.max(max, Number(order?.createdAtMs || 0)),
+        0
+      );
+      if (latest > Number(lastSeenOnlineOrderTs || 0)) {
+        setLastSeenOnlineOrderTs(latest);
+      }
+    } else {
+      setOnlineViewCutoff(lastSeenOnlineOrderTs);
+    }
+  }, [orderBoardFilter, onlineOrders, lastSeenOnlineOrderTs]);
   /* --------------------------- APP LOGIC --------------------------- */
   const toggleExtra = (extra) => {
     setSelectedExtras((prev) =>
@@ -5674,7 +5940,7 @@ const generatePurchasesPDF = () => {
     <div style={{ fontSize: 12 }}>{localDateTime}
 </div>
       {/* Low-stock alert button */}
-    <button
+     <button
       onClick={() => setShowLowStock(s => !s)}
       title={lowStockCount ? `${lowStockCount} item(s) low in stock` : "No low-stock items"}
       style={{
@@ -5688,7 +5954,7 @@ const generatePurchasesPDF = () => {
         fontWeight: 700,
       }}
     >
-      🔔 Low Stock
+     🔔 Low Stock
     {lowStockCount > 0 && (
   <span
     style={{
@@ -5714,6 +5980,58 @@ const generatePurchasesPDF = () => {
   </span>
 )}
 
+    </button>
+
+    <button
+      onClick={() => {
+        handleTabClick("board");
+        setOrderBoardFilter("online");
+      }}
+      title={
+        newOnlineOrderCount
+          ? `${newOnlineOrderCount} new online order${newOnlineOrderCount === 1 ? "" : "s"}`
+          : "No new online orders"
+      }
+      style={{
+        position: "relative",
+        padding: "6px 10px",
+        borderRadius: 6,
+        border: `1px solid ${btnBorder}`,
+        background: newOnlineOrderCount
+          ? (dark ? "#1e3a5f" : "#e3f2fd")
+          : dark
+          ? "#2c2c2c"
+          : "#f1f1f1",
+        color: newOnlineOrderCount ? (dark ? "#bbdefb" : "#0d47a1") : dark ? "#fff" : "#000",
+        cursor: "pointer",
+        fontWeight: 700,
+      }}
+    >
+      🌐 Online Orders
+      {newOnlineOrderCount > 0 && (
+        <span
+          style={{
+            position: "absolute",
+            top: -4,
+            right: -4,
+            minWidth: 16,
+            height: 16,
+            borderRadius: 8,
+            padding: "0 4px",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "#1565c0",
+            color: "#fff",
+            fontSize: 10,
+            fontWeight: 800,
+            lineHeight: 1,
+            border: "1.5px solid white",
+          }}
+        >
+          {newOnlineOrderCount > 99 ? "99+" : newOnlineOrderCount}
+        </span>
+      )}
     </button>
 
     <button
@@ -7522,75 +7840,257 @@ const cogs = Number(
       )}
 
       {/* ORDERS BOARD */}
-      {activeTab === "board" && (
+     {activeTab === "board" && (
         <div>
           <h2>Orders Board {realtimeOrders ? "(Live)" : ""}</h2>
-          {orders.length === 0 && <p>No orders yet.</p>}
-          <ul style={{ listStyle: "none", padding: 0 }}>
-            {orders.map((o) => (
-              <li
-                key={`${o.cloudId || "local"}_${o.orderNo}`}
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              margin: "8px 0 16px",
+              flexWrap: "wrap",
+            }}
+          >
+            {[
+              ["onsite", "On-site orders"],
+              ["online", "Online orders"],
+            ].map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setOrderBoardFilter(key)}
                 style={{
-                  border: `1px solid ${cardBorder}`,
+                  position: "relative",
+                  padding: "6px 12px",
                   borderRadius: 6,
-                  padding: 10,
-                  marginBottom: 8,
-                  background: o.voided
-                    ? dark
-                      ? "#4a2b2b"
-                      : "#ffebee"
-                    : o.done
-                    ? dark
-                      ? "#14331a"
-                      : "#e8f5e9"
-                    : dark
-                    ? "#333018"
-                    : "#fffde7",
+                  border: `1px solid ${btnBorder}`,
+                  background:
+                    orderBoardFilter === key
+                      ? dark
+                        ? "#5d4037"
+                        : "#fff59d"
+                      : dark
+                      ? "#2c2c2c"
+                      : "#f1f1f1",
+                  color: dark ? "#fff" : "#000",
+                  cursor: "pointer",
+                  fontWeight: 600,
                 }}
               >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <strong>
-                    Order #{o.orderNo} — E£{o.total.toFixed(2)}{" "}
-                    {o.cloudId ? "☁" : ""}
-                  </strong>
-                  <span>{fmtDate(o.date)}</span>
-                </div>
-                <div style={{ color: dark ? "#ccc" : "#555", marginTop: 4 }}>
-                  Worker: {o.worker} • Payment: {o.payment}
+                {label}
+                {key === "online" && newOnlineOrderCount > 0 && (
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: -4,
+                      right: -4,
+                      minWidth: 16,
+                      height: 16,
+                      borderRadius: 8,
+                      padding: "0 4px",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      background: "#1565c0",
+                      color: "#fff",
+                      fontSize: 10,
+                      fontWeight: 800,
+                      lineHeight: 1,
+                      border: "1.5px solid white",
+                    }}
+                  >
+                    {newOnlineOrderCount > 99 ? "99+" : newOnlineOrderCount}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+          {orderBoardFilter === "online" ? (
+            <>
+              {onlineOrders.length === 0 ? (
+                <p>No online orders yet.</p>
+              ) : (
+                <ul style={{ listStyle: "none", padding: 0 }}>
+                  {onlineOrders.map((o) => {
+                    const isNew =
+                      Number(o?.createdAtMs || 0) > Number(onlineViewCutoff || 0);
+                    const placedAt = o?.date || o?.createdAt || new Date();
+                    return (
+                      <li
+                        key={o.id}
+                        style={{
+                          border: `1px solid ${cardBorder}`,
+                          borderRadius: 6,
+                          padding: 10,
+                          marginBottom: 8,
+                          background: dark ? "#1f2a44" : "#e3f2fd",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 8,
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <strong>
+                              Online #{o.orderNo} — E£{Number(o.total || 0).toFixed(2)}
+                            </strong>
+                            {isNew && (
+                              <span
+                                style={{
+                                  background: "#ffeb3b",
+                                  color: "#1a237e",
+                                  borderRadius: 4,
+                                  padding: "2px 6px",
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                }}
+                              >
+                                NEW
+                              </span>
+                            )}
+                          </div>
+                          <span>{fmtDateTime(placedAt)}</span>
+                        </div>
+                        <div style={{ color: dark ? "#bbd0ff" : "#1a237e", marginTop: 4 }}>
+                          Payment: {o.payment || "—"} • Type: {o.orderType || "—"} • Status: {" "}
+                          {String(o.status || "pending")}
+                          {Number(o.deliveryFee || 0) > 0 && (
+                            <> • Delivery: E£{Number(o.deliveryFee || 0).toFixed(2)}</>
+                          )}
+                        </div>
+                        {(o.deliveryName || o.deliveryPhone || o.deliveryAddress) && (
+                          <div style={{ marginTop: 4, color: dark ? "#ddd" : "#555" }}>
+                            Customer: {o.deliveryName || "—"}
+                            {o.deliveryPhone
+                              ? ` (${formatPhoneForDisplay(o.deliveryPhone)})`
+                              : ""}
+                            {o.deliveryAddress ? ` • ${o.deliveryAddress}` : ""}
+                          </div>
+                        )}
+                        {Array.isArray(o.cart) && o.cart.length > 0 && (
+                          <ul style={{ marginTop: 8, marginBottom: 8 }}>
+                            {o.cart.map((ci, idx) => {
+                              const qty = Number(ci?.qty || ci?.quantity || 0) || 1;
+                              const priceEach = Number(ci?.price || 0);
+                              return (
+                                <li key={ci.id || idx} style={{ marginLeft: 12 }}>
+                                  • {ci.name || `Item ${idx + 1}`} × {qty} — E£
+                                  {priceEach.toFixed(2)} each
+                                  {Array.isArray(ci.extras) && ci.extras.length > 0 && (
+                                    <ul
+                                      style={{
+                                        margin: "2px 0 6px 18px",
+                                        color: dark ? "#bbb" : "#555",
+                                      }}
+                                    >
+                                      {ci.extras.map((ex, exIdx) => {
+                                        const extraPrice = Number(ex?.price || 0);
+                                        return (
+                                          <li key={ex.id || exIdx}>
+                                            + {ex.name || "Extra"} (E£{extraPrice.toFixed(2)}) × {qty}
+                                          </li>
+                                        );
+                                      })}
+                                    </ul>
+                                  )}
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                        {o.note && (
+                          <div
+                            style={{
+                              marginTop: 4,
+                              padding: "6px 8px",
+                              borderRadius: 6,
+                              background: dark ? "#273043" : "#fffde7",
+                              color: dark ? "#f3e5f5" : "#5d4037",
+                            }}
+                          >
+                            <strong>Note:</strong> {o.note}
+                          </div>
+                        )}
+                        <div style={{ fontSize: 12, opacity: 0.75, marginTop: 8 }}>
+                          Online order ID: {o.id}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </>
+          ) : (
+            <>
+              {orders.length === 0 && <p>No orders yet.</p>}
+              <ul style={{ listStyle: "none", padding: 0 }}>
+                {orders.map((o) => (
+                  <li
+                    key={`${o.cloudId || "local"}_${o.orderNo}`}
+                    style={{
+                      border: `1px solid ${cardBorder}`,
+                      borderRadius: 6,
+                      padding: 10,
+                      marginBottom: 8,
+                      background: o.voided
+                        ? dark
+                          ? "#4a2b2b"
+                          : "#ffebee"
+                        : o.done
+                        ? dark
+                          ? "#14331a"
+                          : "#e8f5e9"
+                        : dark
+                        ? "#333018"
+                        : "#fffde7",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 8,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <strong>
+                        Order #{o.orderNo} — E£{o.total.toFixed(2)}{" "}
+                        {o.cloudId ? "☁" : ""}
+                      </strong>
+                      <span>{fmtDate(o.date)}</span>
+                    </div>
+                    <div style={{ color: dark ? "#ccc" : "#555", marginTop: 4 }}>
+                      Worker: {o.worker} • Payment: {o.payment}
                       {Array.isArray(o.paymentParts) && o.paymentParts.length ? (
                         <> ({o.paymentParts.map(p => `${p.method}: E£${Number(p.amount||0).toFixed(2)}`).join(" + ")})</>
                       ) : null}
                        • Type: {o.orderType || "-"}
                {o.orderType === "Delivery" && (
-                    <> • Delivery: E£{Number(o.deliveryFee || 0).toFixed(2)}</>
-                  )}
-                  {(o.deliveryName || o.deliveryPhone) && (
-                    <>
-                      {" "}• Customer: {o.deliveryName || "—"}
-                      {o.deliveryPhone
-                        ? ` (${formatPhoneForDisplay(o.deliveryPhone)})`
-                        : ""}
-                    </>
-                  )}
-                  {o.notifyViaWhatsapp && (
-                    <>
-                      {" "}• WhatsApp:{" "}
-                      {o.whatsappSentAt
-                        ? `Sent ${fmtDateTime(o.whatsappSentAt)}`
-                        : "Pending"}
-                    </>
-                  )}
-                  {o.payment === "Cash" && o.cashReceived != null && (
-                    <> • Cash: E£{o.cashReceived.toFixed(2)} • Change: E£{(o.changeDue || 0).toFixed(2)}</>
-                  )}
-                  {" "}• Status:{" "}
+                        <> • Delivery: E£{Number(o.deliveryFee || 0).toFixed(2)}</>
+                      )}
+                      {(o.deliveryName || o.deliveryPhone) && (
+                        <>
+                          {" "}• Customer: {o.deliveryName || "—"}
+                          {o.deliveryPhone
+                            ? ` (${formatPhoneForDisplay(o.deliveryPhone)})`
+                            : ""}
+                        </>
+                      )}
+                      {o.notifyViaWhatsapp && (
+                        <>
+                          {" "}• WhatsApp:{" "}
+                          {o.whatsappSentAt
+                            ? `Sent ${fmtDateTime(o.whatsappSentAt)}`
+                            : "Pending"}
+                        </>
+                      )}
+                      {o.payment === "Cash" && o.cashReceived != null && (
+                        <> • Cash: E£{o.cashReceived.toFixed(2)} • Change: E£{(o.changeDue || 0).toFixed(2)}</>
+                      )}
+                      {" "}• Status:{" "}
                              <strong>
                                {o.voided
                                  ? (o.restockedAt ? "Cancelled" : "Returned")
@@ -7607,115 +8107,118 @@ const cogs = Number(
   </>
 )}
 
-                </div>
+                    </div>
 
-                <ul style={{ marginTop: 8, marginBottom: 8 }}>
-                  {o.cart.map((ci, idx) => (
-                    <li key={idx} style={{ marginLeft: 12 }}>
-                      • {ci.name} × {ci.qty || 1} — E£{ci.price} each
-                      {ci.extras?.length > 0 && (
-                        <ul
+                    <ul style={{ marginTop: 8, marginBottom: 8 }}>
+                      {o.cart.map((ci, idx) => (
+                        <li key={idx} style={{ marginLeft: 12 }}>
+                          • {ci.name} × {ci.qty || 1} — E£{ci.price} each
+                          {ci.extras?.length > 0 && (
+                            <ul
+                              style={{
+                                margin: "2px 0 6px 18px",
+                                color: dark ? "#bbb" : "#555",
+                              }}
+                            >
+                              {ci.extras.map((ex) => (
+                                <li key={ex.id}>
+                                  + {ex.name} (E£{ex.price}) × {ci.qty || 1}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {!o.done && !o.voided && (
+                        <button
+                          onClick={() => markOrderDone(o.orderNo)}
                           style={{
-                            margin: "2px 0 6px 18px",
-                            color: dark ? "#bbb" : "#555",
+                            background: "#43a047",
+                            color: "white",
+                            border: "none",
+                            borderRadius: 6,
+                            padding: "6px 10px",
+                            cursor: "pointer",
                           }}
                         >
-                          {ci.extras.map((ex) => (
-                            <li key={ex.id}>
-                              + {ex.name} (E£{ex.price}) × {ci.qty || 1}
-                            </li>
-                          ))}
-                        </ul>
+                          Mark DONE (locks)
+                        </button>
                       )}
-                    </li>
-                  ))}
-                </ul>
+                      {o.done && (
+                        <button
+                          disabled
+                          style={{
+                            background: "#9e9e9e",
+                            color: "white",
+                            border: "none",
+                            borderRadius: 6,
+                            padding: "6px 10px",
+                            cursor: "not-allowed",
+                          }}
+                        >
+                          DONE (locked)
+                        </button>
+                      )}
 
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {!o.done && !o.voided && (
-                    <button
-                      onClick={() => markOrderDone(o.orderNo)}
+                      {/* Single Print button (removed all other print options) */}
+                      <button
+                        onClick={() => printReceiptHTML(o, Number(preferredPaperWidthMm) || 80, "Customer")}
+                        disabled={o.voided}
+                        style={{
+                          background: o.voided ? "#039be588" : "#039be5",
+                          color: "white",
+                          border: "none",
+                          borderRadius: 6,
+                          padding: "6px 10px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Print
+                      </button>
+
+                      <button
+                       onClick={() => voidOrderAndRestock(o.orderNo)}
+                       disabled={o.done || o.voided}
+                        style={{
+                          background: o.done || o.voided ? "#ef9a9a" : "#c62828",
+                          color: "white",
+                          border: "none",
+                          borderRadius: 6,
+                          padding: "6px 10px",
+                          cursor: o.done || o.voided ? "not-allowed" : "pointer",
+                        }}
+                      >
+                         Cancel (restock)
+                      </button>
+
+                          {!o.done && !o.voided && isExpenseVoidEligible(o.orderType) && (
+                     <button
+                       onClick={() => voidOrderToExpense(o.orderNo)}
                       style={{
-                        background: "#43a047",
+                        background: "#fb8c00",        // orange
                         color: "white",
                         border: "none",
                         borderRadius: 6,
                         padding: "6px 10px",
                         cursor: "pointer",
                       }}
-                    >
-                      Mark DONE (locks)
-                    </button>
-                  )}
-                  {o.done && (
-                    <button
-                      disabled
-                      style={{
-                        background: "#9e9e9e",
-                        color: "white",
-                        border: "none",
-                        borderRadius: 6,
-                        padding: "6px 10px",
-                        cursor: "not-allowed",
-                      }}
-                    >
-                      DONE (locked)
-                    </button>
-                  )}
+      >
+        Returned
+      </button>
+    )}
 
-                  {/* Single Print button (removed all other print options) */}
-                  <button
-                    onClick={() => printReceiptHTML(o, Number(preferredPaperWidthMm) || 80, "Customer")}
-                    disabled={o.voided}
-                    style={{
-                      background: o.voided ? "#039be588" : "#039be5",
-                      color: "white",
-                      border: "none",
-                      borderRadius: 6,
-                      padding: "6px 10px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Print
-                  </button>
-
-                  <button
-                   onClick={() => voidOrderAndRestock(o.orderNo)}
-                   disabled={o.done || o.voided}
-                    style={{
-                      background: o.done || o.voided ? "#ef9a9a" : "#c62828",
-                      color: "white",
-                      border: "none",
-                      borderRadius: 6,
-                      padding: "6px 10px",
-                      cursor: o.done || o.voided ? "not-allowed" : "pointer",
-                    }}
-                  >
-                     Cancel (restock)
-                  </button>
-
-                      {!o.done && !o.voided && isExpenseVoidEligible(o.orderType) && (
-                 <button
-                   onClick={() => voidOrderToExpense(o.orderNo)}
-                  style={{
-                    background: "#fb8c00",        // orange
-                    color: "white",
-                    border: "none",
-                    borderRadius: 6,
-                    padding: "6px 10px",
-                    cursor: "pointer",
-                  }}
-  >
-    Returned
-  </button>
-)}
-
-                </div>
-              </li>
-            ))}
-          </ul>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </div>
       )}
+
 
       {/* INVENTORY */}
      {activeTab === "admin" && adminSubTab === "inventory" && (
@@ -11409,6 +11912,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
