@@ -1224,6 +1224,38 @@ function onlineOrderFromDoc(id, data = {}) {
     raw: data,
   };
 }
+
+function pickFirstTruthyKey(...values) {
+  for (const value of values) {
+    if (value === undefined || value === null) continue;
+    const str = String(value).trim();
+    if (str) return str;
+  }
+  return null;
+}
+
+function getOnlineOrderDedupeKey(order) {
+  if (!order) return "";
+  const raw = order.raw || {};
+  const key =
+    pickFirstTruthyKey(
+      order.idemKey,
+      raw.idemKey,
+      raw.idempotencyKey,
+      raw.idempotency_key,
+      raw.cartId,
+      order.orderNo,
+      raw.orderNo,
+      raw.orderNumber,
+      raw.ticket,
+      raw.shortId,
+      raw.displayId
+    ) ||
+    [order.sourceCollection || "default", order.id || "", order.sourceDocId || ""]
+      .filter(Boolean)
+      .join(":");
+  return key;
+}
 function dedupeOrders(list) {
   const byNo = new Map();
   for (const o of list || []) {
@@ -3564,8 +3596,7 @@ const recomputeOnlineOrders = useCallback(() => {
     const deduped = new Map();
     for (const order of merged) {
       if (!order) continue;
-      const keyBase = order.id || order.sourceDocId || "";
-      const key = `${order.sourceCollection || "default"}:${keyBase}`;
+      const key = getOnlineOrderDedupeKey(order);
       const prev = deduped.get(key);
       if (
         !prev ||
@@ -12083,6 +12114,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
