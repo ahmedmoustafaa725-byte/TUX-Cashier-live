@@ -1090,6 +1090,43 @@ function orderFromCloudDoc(id, d) {
   };
 }
 
+function ensureOnlineOrderNo(rawNo, fallbackId, createdAtMs) {
+  const extractDigits = (value) => {
+    if (value == null) return "";
+    const matches = String(value)
+      .toUpperCase()
+      .match(/\d+/g);
+    if (!matches) return "";
+    const combined = matches.join("");
+    const trimmed = combined.replace(/^0+/, "");
+    return trimmed || "0";
+  };
+
+  const fromRaw = extractDigits(rawNo);
+  if (fromRaw) return `O${fromRaw}`;
+
+  const fromIdDigits = extractDigits(fallbackId);
+  if (fromIdDigits) return `O${fromIdDigits}`;
+
+  const sanitizedId = String(fallbackId || "").replace(/[^a-z0-9]/gi, "");
+  if (sanitizedId) {
+    const parsed = parseInt(sanitizedId.slice(-10), 36);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return `O${String(parsed)}`;
+    }
+  }
+
+  const ts = Number(createdAtMs || Date.now());
+  if (Number.isFinite(ts) && ts > 0) {
+    const suffix = String(Math.floor(ts)).slice(-6) || "0";
+    const trimmed = suffix.replace(/^0+/, "");
+    return `O${trimmed || suffix || "0"}`;
+  }
+
+  const fallback = Math.floor(Math.random() * 900000) + 100000;
+  return `O${fallback}`;
+}
+
 function onlineOrderFromDoc(id, data = {}) {
   const asDate = (value) => {
     if (!value) return null;
@@ -1244,9 +1281,8 @@ function onlineOrderFromDoc(id, data = {}) {
     deliveryInfo?.address ||
     "";
   return {
-    id,
-    orderNo:
-      orderNo || `ONLINE-${String(id).slice(-6).toUpperCase().padStart(6, "0")}`,
+ id,
+    orderNo: ensureOnlineOrderNo(orderNo, id, createdAtMs),
     worker: data?.handledBy || data?.worker || "Online Order",
     payment: String(payment || "Unspecified"),
     paymentParts: [],
@@ -2827,8 +2863,67 @@ const [onlineOrderStatus, setOnlineOrderStatus] = useState(() => {
 });
 const [reconCounts, setReconCounts] = useState({});
 const [reconSavedBy, setReconSavedBy] = useState("");
-const [reconHistory, setReconHistory] = useState([]); 
-const rawInflowByMethod = useMemo(() => sumPaymentsByMethod(orders), [orders]);
+const [reconHistory, setReconHistory] = useState([]);
+const accountedOnlineOrders = useMemo(() => {
+  const seen = new Set();
+  for (const ord of orders || []) {
+    if (!ord) continue;
+    if (ord.onlineOrderKey) seen.add(ord.onlineOrderKey);
+    if (ord.onlineOrderId) seen.add(`id:${ord.onlineOrderId}`);
+    if (ord.onlineSourceCollection && ord.onlineSourceDocId) {
+      seen.add(`${ord.onlineSourceCollection}/${ord.onlineSourceDocId}`);
+    }
+  }
+
+  const startMs = dayMeta?.startedAt ? new Date(dayMeta.startedAt).getTime() : null;
+  const endMs = dayMeta?.endedAt ? new Date(dayMeta.endedAt).getTime() : null;
+  const shouldSkipStatus = (status) => {
+    const key = normalizeNameKey(status);
+    if (!key) return false;
+    return (
+      key.includes("cancel") ||
+      key.includes("void") ||
+      key.includes("reject") ||
+      key.includes("fail") ||
+      key.includes("refund") ||
+      key.includes("return")
+    );
+  };
+
+  const eligible = [];
+  for (const ord of onlineOrdersRaw || []) {
+    if (!ord) continue;
+    if (shouldSkipStatus(ord.status)) continue;
+    const ts = Number(ord.createdAtMs || (ord.createdAt ? +new Date(ord.createdAt) : NaN));
+    if (startMs && (!Number.isFinite(ts) || ts < startMs)) continue;
+    if (endMs && (!Number.isFinite(ts) || ts > endMs)) continue;
+
+    const candidates = [
+      getOnlineOrderDedupeKey(ord),
+      ord.id ? `id:${ord.id}` : null,
+      ord.sourceCollection && ord.sourceDocId
+        ? `${ord.sourceCollection}/${ord.sourceDocId}`
+        : null,
+    ].filter(Boolean);
+    if (candidates.some((key) => seen.has(key))) continue;
+
+    const total = Number(ord.total || 0);
+    if (!Number.isFinite(total) || total <= 0) continue;
+
+    eligible.push(ord);
+  }
+
+  return eligible;
+}, [onlineOrdersRaw, orders, dayMeta]);
+const rawInflowByMethod = useMemo(() => {
+  const onsite = sumPaymentsByMethod(orders);
+  const online = sumPaymentsByMethod(accountedOnlineOrders);
+  const merged = { ...onsite };
+  for (const [method, value] of Object.entries(online)) {
+    merged[method] = (merged[method] || 0) + Number(value || 0);
+  }
+  return merged;
+}, [orders, accountedOnlineOrders]);
 const expectedByMethod = useMemo(() => {
   const out = {};
   for (const m of paymentMethods || []) {
@@ -3909,13 +4004,41 @@ const unsubscribers = onlineOrderCollections.map(({ name, ref, pathSegments, sou
     },
     [posOrdersByOnlineKey]
   );
-  const newOnlineOrderCount = useMemo(
-    () =>
-      onlineOrders.filter(
-        (order) => Number(order?.createdAtMs || 0) > Number(lastSeenOnlineOrderTs || 0)
-      ).length,
-    [onlineOrders, lastSeenOnlineOrderTs]
+ const newOnlineOrderCount = useMemo(
+  () =>
+    onlineOrders.filter(
+      (order) => Number(order?.createdAtMs || 0) > Number(lastSeenOnlineOrderTs || 0)
+    ).length,
+  [onlineOrders, lastSeenOnlineOrderTs]
+);
+const onlineAlertInitializedRef = useRef(false);
+const lastAlertedOnlineOrderTsRef = useRef(0);
+useEffect(() => {
+  if (!Array.isArray(onlineOrders) || onlineOrders.length === 0) return;
+  const latestTs = onlineOrders.reduce((max, order) => {
+    const ts = Number(order?.createdAtMs || 0);
+    return Number.isFinite(ts) && ts > max ? ts : max;
+  }, 0);
+  if (!latestTs) return;
+  if (!onlineAlertInitializedRef.current) {
+    onlineAlertInitializedRef.current = true;
+    lastAlertedOnlineOrderTsRef.current = latestTs;
+    return;
+  }
+  const prevTs = Number(lastAlertedOnlineOrderTsRef.current || 0);
+  if (latestTs <= prevTs) return;
+  const newOrders = onlineOrders.filter(
+    (order) => Number(order?.createdAtMs || 0) > prevTs
   );
+  if (newOrders.length > 0) {
+    const message =
+      newOrders.length === 1
+        ? "New online order received!"
+        : `${newOrders.length} new online orders received!`;
+    alert(message);
+  }
+  lastAlertedOnlineOrderTsRef.current = latestTs;
+}, [onlineOrders]);
   useEffect(() => {
     saveLocalPartial({ orderBoardFilter });
   }, [orderBoardFilter]);
@@ -5683,7 +5806,11 @@ const voidOrderToExpense = async (orderNo) => {
 
       const inRange = (d) => d >= start && d <= end;
 
-      for (const order of mergeRows(orders, historicalOrders)) {
+    const allOrders = [
+        ...mergeRows(orders, historicalOrders),
+        ...accountedOnlineOrders,
+      ];
+      for (const order of allOrders) {
         if (!order || order.voided) continue;
         const when = toDate(order.date);
         if (!when || !inRange(when)) continue;
@@ -5737,13 +5864,14 @@ const voidOrderToExpense = async (orderNo) => {
           };
         });
     },
-    [
+ [
       orders,
       purchases,
       expenses,
       historicalOrders,
       historicalPurchases,
       historicalExpenses,
+      accountedOnlineOrders,
       dayMeta,
     ]
   );
@@ -5776,16 +5904,31 @@ const voidOrderToExpense = async (orderNo) => {
     const includeHistorical =
       !shiftStart || start < shiftStart || end > shiftEnd;
 
-    const sourceOrders = includeHistorical
+  const sourceOrders = includeHistorical
       ? [...(historicalOrders || []), ...(orders || [])]
       : orders || [];
 
- return sourceOrders.filter((order) => {
+    const onsite = sourceOrders.filter((order) => {
       if (!order || order.voided) return false;
       const when = toDate(order.date);
       return when && when >= start && when <= end;
     });
-  }, [orders, historicalOrders, reportStart, reportEnd, dayMeta]);
+
+    const online = accountedOnlineOrders.filter((order) => {
+      if (!order) return false;
+      const when = toDate(order.date);
+      return when && when >= start && when <= end;
+    });
+
+    return [...onsite, ...online];
+  }, [
+    orders,
+    historicalOrders,
+    accountedOnlineOrders,
+    reportStart,
+    reportEnd,
+    dayMeta,
+  ]);
 
   const totals = useMemo(() => {
     const makeEmptyMaps = () => {
@@ -5846,11 +5989,19 @@ const voidOrderToExpense = async (orderNo) => {
         ? [...(historicalRows || []), ...(liveRows || [])]
         : liveRows || [];
 
-    const filteredOrders = mergeRows(orders, historicalOrders).filter((order) => {
+   const onsiteOrders = mergeRows(orders, historicalOrders).filter((order) => {
       if (!order || order.voided) return false;
       const when = toDate(order.date);
       return when && when >= start && when <= end;
     });
+
+    const onlineOrdersForTotals = accountedOnlineOrders.filter((order) => {
+      if (!order) return false;
+      const when = toDate(order.date);
+      return when && when >= start && when <= end;
+    });
+
+    const filteredOrders = [...onsiteOrders, ...onlineOrdersForTotals];
 
     const revenueTotal = filteredOrders.reduce(
       (sum, order) =>
@@ -5950,6 +6101,7 @@ const voidOrderToExpense = async (orderNo) => {
     historicalExpenses,
     paymentMethods,
     orderTypes,
+    accountedOnlineOrders,
     dayMeta,
   ]);
 
@@ -12734,6 +12886,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
