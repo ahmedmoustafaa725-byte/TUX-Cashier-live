@@ -1030,9 +1030,14 @@ function normalizeOrderForCloud(order) {
     voidReason: order.voidReason || "",
     note: order.note || "",
     date: toIso(order.date) || new Date().toISOString(),
-    restockedAt: toIso(order.restockedAt),
+   restockedAt: toIso(order.restockedAt),
     cart: order.cart || [],
     idemKey: order.idemKey || "",
+    source: order.source || "",
+    onlineOrderId: order.onlineOrderId || "",
+    onlineOrderKey: order.onlineOrderKey || "",
+    onlineSourceCollection: order.onlineSourceCollection || "",
+    onlineSourceDocId: order.onlineSourceDocId || "",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -1060,7 +1065,7 @@ function orderFromCloudDoc(id, d) {
     total: Number(d.total || 0),
     itemsTotal: Number(d.itemsTotal || 0),
     cashReceived: d.cashReceived != null ? Number(d.cashReceived) : null,
-    changeDue: d.changeDue != null ? Number(d.changeDue) : null,
+  changeDue: d.changeDue != null ? Number(d.changeDue) : null,
     done: !!d.done,
     voided: !!d.voided,
     voidReason: d.voidReason || "",
@@ -1069,6 +1074,11 @@ function orderFromCloudDoc(id, d) {
     restockedAt: d.restockedAt ? asDate(d.restockedAt) : undefined,
     cart: Array.isArray(d.cart) ? d.cart : [],
      idemKey: d.idemKey || "",
+    source: d.source || "",
+    onlineOrderId: d.onlineOrderId || "",
+    onlineOrderKey: d.onlineOrderKey || "",
+    onlineSourceCollection: d.onlineSourceCollection || "",
+    onlineSourceDocId: d.onlineSourceDocId || "",
   };
 }
 
@@ -1077,6 +1087,7 @@ function onlineOrderFromDoc(id, data = {}) {
     if (!value) return null;
     if (value instanceof Timestamp) return value.toDate();
     if (value instanceof Date) return value;
+    const parsed = new Date(value);
     const parsed = new Date(value);
     return Number.isNaN(+parsed) ? null : parsed;
   };
@@ -1255,8 +1266,113 @@ function onlineOrderFromDoc(id, data = {}) {
     createdAtMs,
     status: data?.status || data?.orderStatus || data?.state || "new",
     source: "online",
-    raw: data,
+   raw: data,
   };
+}
+
+const normalizeNameKey = (value) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "")
+    .trim();
+
+function normalizeOnlineOrderType(type, availableTypes = []) {
+  const normalized = normalizeNameKey(type);
+  const options = availableTypes.map((t) => [normalizeNameKey(t), t]);
+  for (const [key, original] of options) {
+    if (key && key === normalized) return original;
+  }
+  if (normalized === "pickup" || normalized === "takeaway" || normalized === "takeout") {
+    const takeAway = availableTypes.find((t) => /take[- ]?away/i.test(String(t)));
+    if (takeAway) return takeAway;
+  }
+  if (normalized === "delivery") {
+    const delivery = availableTypes.find((t) => /delivery/i.test(String(t)));
+    if (delivery) return delivery;
+  }
+  if (normalized === "dinein" || normalized === "dining" || normalized === "dine") {
+    const dine = availableTypes.find((t) => /dine/i.test(String(t)));
+    if (dine) return dine;
+  }
+  return availableTypes[0] || String(type || "Take-Away");
+}
+
+function buildCartWithUsesFromOnline(order, menu = [], extras = []) {
+  if (!order || !Array.isArray(order.cart)) return [];
+  const menuById = new Map();
+  const menuByName = new Map();
+  for (const item of menu || []) {
+    if (!item) continue;
+    const idKey = String(item.id);
+    if (idKey) menuById.set(idKey, item);
+    const nameKey = normalizeNameKey(item.name);
+    if (nameKey) menuByName.set(nameKey, item);
+  }
+  const extraById = new Map();
+  const extraByName = new Map();
+  for (const extra of extras || []) {
+    if (!extra) continue;
+    const idKey = String(extra.id);
+    if (idKey) extraById.set(idKey, extra);
+    const nameKey = normalizeNameKey(extra.name);
+    if (nameKey) extraByName.set(nameKey, extra);
+  }
+
+  const toQty = (value) => {
+    const num = Number(value);
+    return Number.isFinite(num) && num > 0 ? num : 1;
+  };
+  const toPrice = (value) => {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : 0;
+  };
+
+  return (order.cart || []).map((line, idx) => {
+    const qty = toQty(line?.qty ?? line?.quantity ?? 1);
+    const price = toPrice(line?.price ?? line?.unitPrice ?? 0);
+    const idKey = line?.id != null ? String(line.id) : line?.menuItemId != null ? String(line.menuItemId) : "";
+    const nameKey = normalizeNameKey(line?.name || line?.title || line?.label);
+    const matchedMenu = (idKey && menuById.get(idKey)) || (nameKey && menuByName.get(nameKey)) || null;
+    const unitUses = { ...(matchedMenu?.uses || {}) };
+
+    const normalizedExtras = Array.isArray(line?.extras)
+      ? line.extras.map((extra, exIdx) => {
+          const exIdKey = extra?.id != null ? String(extra.id) : extra?.extraId != null ? String(extra.extraId) : "";
+          const exNameKey = normalizeNameKey(extra?.name || extra?.title || extra?.label);
+          const matchedExtra =
+            (exIdKey && extraById.get(exIdKey)) || (exNameKey && extraByName.get(exNameKey)) || null;
+          const extraUses = matchedExtra?.uses || {};
+          for (const key of Object.keys(extraUses)) {
+            unitUses[key] = (unitUses[key] || 0) + Number(extraUses[key] || 0);
+          }
+          return {
+            id: extra?.id || extra?.extraId || extra?.optionId || extra?.uid || `extra-${idx}-${exIdx}`,
+            name: extra?.name || extra?.title || extra?.label || "Extra",
+            price: toPrice(extra?.price ?? extra?.amount ?? extra?.cost ?? 0),
+          };
+        })
+      : [];
+
+    return {
+      id: line?.id || line?.menuItemId || line?.itemId || line?.uid || `item-${idx}`,
+      name: line?.name || line?.title || line?.label || `Item ${idx + 1}`,
+      qty,
+      price,
+      extras: normalizedExtras,
+      uses: multiplyUses(unitUses, qty),
+    };
+  });
+}
+
+function computeInventoryRequirement(cartWithUses = []) {
+  const required = {};
+  for (const line of cartWithUses || []) {
+    const uses = line?.uses || {};
+    for (const key of Object.keys(uses)) {
+      required[key] = (required[key] || 0) + Number(uses[key] || 0);
+    }
+  }
+  return required;
 }
 
 function pickFirstTruthyKey(...values) {
@@ -2692,6 +2808,16 @@ const [onlineViewCutoff, setOnlineViewCutoff] = useState(() => {
 });
 const [onlineOrdersRaw, setOnlineOrdersRaw] = useState([]);
 const onlineOrderSourcesRef = useRef({});const [bankTx, setBankTx] = useState([]);
+const [onlineOrderStatus, setOnlineOrderStatus] = useState(() => {
+  const raw = loadLocal()?.onlineOrderStatus;
+  if (!raw || typeof raw !== "object") return {};
+  const out = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (!key) continue;
+    out[key] = { ...value };
+  }
+  return out;
+});
 const [reconCounts, setReconCounts] = useState({});
 const [reconSavedBy, setReconSavedBy] = useState("");
 const [reconHistory, setReconHistory] = useState([]); 
@@ -3302,7 +3428,7 @@ const onlineOrderCollections = useMemo(() => {
         try {
           const baseRef = collection(targetDb, ...path);
           const ref = constraints.length ? query(baseRef, ...constraints) : baseRef;
-          return [{ name, source, ref }];
+          return [{ name, source, ref, pathSegments: [...path] }];
         } catch (err) {
           console.error(`Failed to build online order ref for ${name}`, err);
           return [];
@@ -3649,8 +3775,30 @@ const recomputeOnlineOrders = useCallback(() => {
     const next = Array.from(deduped.values()).sort(
       (a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0)
     );
-    setOnlineOrdersRaw(next);
+     setOnlineOrdersRaw(next);
   }, []);
+  const updateOnlineOrderDoc = useCallback(
+    async (onlineOrder, patch) => {
+      if (!onlineOrder || !patch) return;
+      const segments = Array.isArray(onlineOrder.sourcePathSegments)
+        ? [...onlineOrder.sourcePathSegments]
+        : [];
+      const docId = onlineOrder.sourceDocId || onlineOrder.id;
+      if (!segments.length || !docId) return;
+      const origin = onlineOrder.sourceOrigin || onlineOrder.sourceCollection || "";
+      const targetDb = origin === "menu" ? onlineDb : db;
+      if (!targetDb) return;
+      try {
+        const ref = fsDoc(targetDb, ...segments, docId);
+        const body = { ...patch };
+        if (body.updatedAt === undefined) body.updatedAt = serverTimestamp();
+        await updateDoc(ref, sanitizeForFirestore(body));
+      } catch (err) {
+        console.error("Failed to update online order doc", err);
+      }
+    },
+    [db, onlineDb]
+  );
  useEffect(() => {
     const requiresOnlineAuth = onlineOrderCollections.some(
       (col) => col.source === "menu"
@@ -3666,10 +3814,10 @@ const recomputeOnlineOrders = useCallback(() => {
     }
 
     let active = true;
-    const unsubscribers = onlineOrderCollections.map(({ name, ref }) =>
+const unsubscribers = onlineOrderCollections.map(({ name, ref, pathSegments, source }) =>
       onSnapshot(
         ref,
-        (snap) => {  
+        (snap) => {
           if (!active) return;
           const arr = [];
           snap.forEach((doc) => {
@@ -3680,6 +3828,8 @@ const recomputeOnlineOrders = useCallback(() => {
                 id: parsed?.id || doc.id,
                 sourceCollection: name,
                 sourceDocId: doc.id,
+                sourcePathSegments: Array.isArray(pathSegments) ? [...pathSegments] : [],
+                sourceOrigin: source,
               });
             } catch (err) {
               console.error(
@@ -3714,7 +3864,7 @@ const recomputeOnlineOrders = useCallback(() => {
       setOnlineOrdersRaw([]);
     };
   }, [onlineOrderCollections, fbUser, onlineFbUser, recomputeOnlineOrders]);
-  const onlineOrders = useMemo(() => {
+ const onlineOrders = useMemo(() => {
     const filtered = onlineOrdersRaw.filter((order) => {
       const ts = Number(order?.createdAtMs || 0);
       if (startedAtMs && ts < startedAtMs) return false;
@@ -3724,6 +3874,34 @@ const recomputeOnlineOrders = useCallback(() => {
     filtered.sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
     return filtered;
   }, [onlineOrdersRaw, startedAtMs, endedAtMs]);
+  const posOrdersByOnlineKey = useMemo(() => {
+    const map = new Map();
+    for (const ord of orders || []) {
+      if (!ord) continue;
+      if (ord.onlineOrderKey) map.set(ord.onlineOrderKey, ord);
+      if (ord.onlineOrderId) map.set(`id:${ord.onlineOrderId}`, ord);
+      if (ord.onlineSourceCollection && ord.onlineSourceDocId) {
+        map.set(`${ord.onlineSourceCollection}/${ord.onlineSourceDocId}`, ord);
+      }
+    }
+    return map;
+  }, [orders]);
+  const findPosOrderForOnline = useCallback(
+    (onlineOrder) => {
+      if (!onlineOrder) return null;
+      const key = getOnlineOrderDedupeKey(onlineOrder);
+      if (key && posOrdersByOnlineKey.get(key)) return posOrdersByOnlineKey.get(key);
+      const idKey = onlineOrder.id ? `id:${onlineOrder.id}` : null;
+      if (idKey && posOrdersByOnlineKey.get(idKey)) return posOrdersByOnlineKey.get(idKey);
+      const docKey =
+        onlineOrder.sourceCollection && onlineOrder.sourceDocId
+          ? `${onlineOrder.sourceCollection}/${onlineOrder.sourceDocId}`
+          : null;
+      if (docKey && posOrdersByOnlineKey.get(docKey)) return posOrdersByOnlineKey.get(docKey);
+      return null;
+    },
+    [posOrdersByOnlineKey]
+  );
   const newOnlineOrderCount = useMemo(
     () =>
       onlineOrders.filter(
@@ -3737,6 +3915,12 @@ const recomputeOnlineOrders = useCallback(() => {
   useEffect(() => {
     saveLocalPartial({ lastSeenOnlineOrderTs });
   }, [lastSeenOnlineOrderTs]);
+ useEffect(() => {
+    saveLocalPartial({ lastSeenOnlineOrderTs });
+  }, [lastSeenOnlineOrderTs]);
+  useEffect(() => {
+    saveLocalPartial({ onlineOrderStatus });
+  }, [onlineOrderStatus]);
   useEffect(() => {
     if (orderBoardFilter === "online") {
       setOnlineViewCutoff(lastSeenOnlineOrderTs);
@@ -3751,6 +3935,62 @@ const recomputeOnlineOrders = useCallback(() => {
       setOnlineViewCutoff(lastSeenOnlineOrderTs);
     }
   }, [orderBoardFilter, onlineOrders, lastSeenOnlineOrderTs]);
+  useEffect(() => {
+    setOnlineOrderStatus((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const ord of orders || []) {
+        if (!ord || ord.source !== "online") continue;
+        const candidates = [
+          ord.onlineOrderKey,
+          ord.onlineOrderId ? `id:${ord.onlineOrderId}` : null,
+          ord.onlineSourceCollection && ord.onlineSourceDocId
+            ? `${ord.onlineSourceCollection}/${ord.onlineSourceDocId}`
+            : null,
+        ].filter(Boolean);
+        if (!candidates.length) continue;
+        const state = ord.voided ? "voided" : ord.done ? "done" : "imported";
+        for (const key of candidates) {
+          const existing = next[key] || {};
+          let entryChanged = false;
+          const entry = { ...existing };
+          if (entry.state !== state) {
+            entry.state = state;
+            entryChanged = true;
+          }
+          if (entry.posOrderNo !== ord.orderNo) {
+            entry.posOrderNo = ord.orderNo;
+            entryChanged = true;
+          }
+          const cloudId = ord.cloudId || null;
+          if ((entry.cloudId || null) !== cloudId) {
+            entry.cloudId = cloudId;
+            entryChanged = true;
+          }
+          if (
+            ord.onlineSourceCollection &&
+            entry.sourceCollection !== ord.onlineSourceCollection
+          ) {
+            entry.sourceCollection = ord.onlineSourceCollection;
+            entryChanged = true;
+          }
+          if (
+            ord.onlineSourceDocId &&
+            entry.sourceDocId !== ord.onlineSourceDocId
+          ) {
+            entry.sourceDocId = ord.onlineSourceDocId;
+            entryChanged = true;
+          }
+          if (entryChanged) {
+            entry.lastUpdateAt = Date.now();
+            next[key] = entry;
+            changed = true;
+          }
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [orders]);
   /* --------------------------- APP LOGIC --------------------------- */
   const toggleExtra = (extra) => {
     setSelectedExtras((prev) =>
@@ -4936,9 +5176,168 @@ const checkout = async () => {
     setPayA(""); setPayB("");
     setAmtA(0); setAmtB(0);
     setCashReceivedSplit(0);
-  } finally {
+ } finally {
     setIsCheckingOut(false);
   }
+};
+const integrateOnlineOrder = async (onlineOrder) => {
+  if (!onlineOrder) return null;
+  if (!dayMeta.startedAt || dayMeta.endedAt) {
+    alert("Start a shift first (Shift → Start Shift) before processing online orders.");
+    return null;
+  }
+  const existing = findPosOrderForOnline(onlineOrder);
+  if (existing) return existing;
+
+  const cartWithUses = buildCartWithUsesFromOnline(onlineOrder, menu, extraList);
+  const required = computeInventoryRequirement(cartWithUses);
+  for (const invId of Object.keys(required)) {
+    const invItem = invById[invId];
+    if (!invItem) continue;
+    if ((invItem.qty || 0) < required[invId]) {
+      alert(
+        `Not enough ${invItem.name} in stock. Need ${required[invId]} ${invItem.unit}, have ${invItem.qty} ${invItem.unit}.`
+      );
+      return null;
+    }
+  }
+
+  const key = getOnlineOrderDedupeKey(onlineOrder);
+  setOnlineOrderStatus((prev) => {
+    const entry = { ...(prev[key] || {}) };
+    entry.state = "importing";
+    entry.sourceCollection = onlineOrder.sourceCollection || entry.sourceCollection || null;
+    entry.sourceDocId = onlineOrder.sourceDocId || entry.sourceDocId || null;
+    entry.lastUpdateAt = Date.now();
+    return { ...prev, [key]: entry };
+  });
+
+  setInventory((inv) =>
+    inv.map((item) => {
+      const need = Number(required[item.id] || 0);
+      if (!need) return item;
+      const nextQty = Number(item.qty || 0) - need;
+      return { ...item, qty: Number(nextQty.toFixed(4)) };
+    })
+  );
+
+  const deliveryFee = Number(onlineOrder.deliveryFee || 0);
+  const computedItemsTotal = cartWithUses.reduce((sum, line) => {
+    const extrasSum = (line.extras || []).reduce(
+      (inner, ex) => inner + Number(ex.price || 0),
+      0
+    );
+    return (
+      sum +
+      (Number(line.price || 0) + extrasSum) * Math.max(1, Number(line.qty || 1))
+    );
+  }, 0);
+  const providedItemsTotal = Number(onlineOrder.itemsTotal || 0);
+  const itemsTotal = Number.isFinite(providedItemsTotal) && providedItemsTotal > 0
+    ? providedItemsTotal
+    : Number(computedItemsTotal.toFixed(2));
+  let total = Number(onlineOrder.total || 0);
+  if (!Number.isFinite(total) || total <= 0) {
+    total = Number((itemsTotal + deliveryFee).toFixed(2));
+  }
+
+  let optimisticNo = nextOrderNo;
+  let orderNo = optimisticNo;
+  setNextOrderNo(optimisticNo + 1);
+  if (cloudEnabled && counterDocRef && fbUser && db) {
+    try {
+      const allocated = await allocateOrderNoAtomic(db, counterDocRef);
+      orderNo = allocated;
+      if (allocated !== optimisticNo) {
+        setNextOrderNo(allocated + 1);
+      }
+    } catch (err) {
+      console.warn("Atomic order number allocation failed for online order.", err);
+    }
+  }
+
+  const normalizedType = normalizeOnlineOrderType(onlineOrder.orderType, orderTypes);
+  const paymentLabel = String(onlineOrder.payment || "Online");
+  const paymentParts = [{ method: paymentLabel, amount: total }];
+  const phoneDigits = normalizePhone(
+    onlineOrder.deliveryPhone || onlineOrder.customerPhone
+  );
+  const shouldWhatsapp = hasWhatsappNumberLength(phoneDigits);
+
+  const posOrder = {
+    orderNo,
+    date: new Date(),
+    worker: dayMeta.currentWorker || "Online",
+    payment: paymentLabel,
+    paymentParts,
+    orderType: normalizedType,
+    deliveryFee: Math.max(0, deliveryFee),
+    deliveryName: onlineOrder.deliveryName || "",
+    deliveryPhone: phoneDigits,
+    deliveryAddress: onlineOrder.deliveryAddress || "",
+    deliveryZoneId: "",
+    notifyViaWhatsapp: shouldWhatsapp,
+    whatsappSentAt: null,
+    total,
+    itemsTotal,
+    cashReceived: null,
+    changeDue: null,
+    cart: cartWithUses,
+    done: false,
+    voided: false,
+    restockedAt: undefined,
+    note: onlineOrder.note || "",
+    idemKey:
+      onlineOrder.idemKey ||
+      `online_${onlineOrder.id || onlineOrder.orderNo || key || Date.now()}`,
+    source: "online",
+    onlineOrderId: onlineOrder.id || "",
+    onlineOrderKey: key,
+    onlineSourceCollection: onlineOrder.sourceCollection || "",
+    onlineSourceDocId: onlineOrder.sourceDocId || "",
+  };
+
+  recordCustomerFromOrder(posOrder);
+
+  if (!realtimeOrders) setOrders((o) => [posOrder, ...o]);
+
+  if (cloudEnabled && ordersColRef && fbUser) {
+    try {
+      const ref = await addDoc(ordersColRef, normalizeOrderForCloud(posOrder));
+      posOrder.cloudId = ref.id;
+      if (!realtimeOrders) {
+        setOrders((prev) =>
+          prev.map((ord) =>
+            ord.orderNo === posOrder.orderNo ? { ...ord, cloudId: ref.id } : ord
+          )
+        );
+      }
+    } catch (err) {
+      console.warn("Cloud write failed for online order integration:", err);
+    }
+  }
+
+  setOnlineOrderStatus((prev) => {
+    const entry = { ...(prev[key] || {}) };
+    entry.state = "imported";
+    entry.posOrderNo = posOrder.orderNo;
+    entry.sourceCollection = onlineOrder.sourceCollection || entry.sourceCollection || null;
+    entry.sourceDocId = onlineOrder.sourceDocId || entry.sourceDocId || null;
+    entry.lastUpdateAt = Date.now();
+    return { ...prev, [key]: entry };
+  });
+
+  try {
+    await updateOnlineOrderDoc(onlineOrder, {
+      status: "accepted",
+      posOrderNo: posOrder.orderNo,
+      posIntegratedAt: serverTimestamp(),
+    });
+  } catch (err) {
+    console.warn("Failed to update online order status in source", err);
+  }
+
+  return posOrder;
 };
 const markOrderDone = async (orderNo) => {
   const ord = orders.find((o) => o.orderNo === orderNo);
@@ -4984,6 +5383,59 @@ const markOrderDone = async (orderNo) => {
     }
   } catch (e) {
     console.warn("Cloud update (done) failed:", e);
+   }
+};
+const markOnlineOrderDone = async (onlineOrder) => {
+  const posOrder = findPosOrderForOnline(onlineOrder) || (await integrateOnlineOrder(onlineOrder));
+  if (!posOrder) return;
+  await markOrderDone(posOrder.orderNo);
+  try {
+    await updateOnlineOrderDoc(onlineOrder, {
+      status: "completed",
+      posCompletedAt: serverTimestamp(),
+    });
+  } catch (err) {
+    console.warn("Failed to update online order to completed", err);
+  }
+};
+const printOnlineOrder = (onlineOrder) => {
+  const posOrder = findPosOrderForOnline(onlineOrder);
+  if (!posOrder) {
+    alert("Make the online order in POS before printing.");
+    return;
+  }
+  printReceiptHTML(posOrder, Number(preferredPaperWidthMm) || 80, "Customer");
+};
+const voidOnlineOrderAndRestock = async (onlineOrder) => {
+  const posOrder = findPosOrderForOnline(onlineOrder);
+  if (!posOrder) {
+    alert("Make the online order in POS before cancelling.");
+    return;
+  }
+  await voidOrderAndRestock(posOrder.orderNo);
+  try {
+    await updateOnlineOrderDoc(onlineOrder, {
+      status: "cancelled",
+      posCancelledAt: serverTimestamp(),
+    });
+  } catch (err) {
+    console.warn("Failed to update online order cancel status", err);
+  }
+};
+const voidOnlineOrderToExpense = async (onlineOrder) => {
+  const posOrder = findPosOrderForOnline(onlineOrder);
+  if (!posOrder) {
+    alert("Make the online order in POS before returning it.");
+    return;
+  }
+  await voidOrderToExpense(posOrder.orderNo);
+  try {
+    await updateOnlineOrderDoc(onlineOrder, {
+      status: "cancelled",
+      posCancelledAt: serverTimestamp(),
+    });
+  } catch (err) {
+    console.warn("Failed to update online order return status", err);
   }
 };
 const voidOrderAndRestock = async (orderNo) => {
@@ -8150,10 +8602,20 @@ const cogs = Number(
                 <p>No online orders yet.</p>
               ) : (
                 <ul style={{ listStyle: "none", padding: 0 }}>
-                  {onlineOrders.map((o) => {
+                   {onlineOrders.map((o) => {
                     const isNew =
                       Number(o?.createdAtMs || 0) > Number(onlineViewCutoff || 0);
                     const placedAt = o?.date || o?.createdAt || new Date();
+                    const key = getOnlineOrderDedupeKey(o);
+                    const statusEntry = onlineOrderStatus[key] || {};
+                    const posOrder = findPosOrderForOnline(o);
+                    const isIntegrated = !!posOrder;
+                    const isProcessing =
+                      !isIntegrated &&
+                      (statusEntry.state === "importing" || statusEntry.state === "imported");
+                    const posOrderNo = posOrder?.orderNo || statusEntry.posOrderNo;
+                    const isDone = posOrder?.done;
+                    const isVoided = posOrder?.voided;
                     return (
                       <li
                         key={o.id}
@@ -8241,7 +8703,7 @@ const cogs = Number(
                             })}
                           </ul>
                         )}
-                        {o.note && (
+                      {o.note && (
                           <div
                             style={{
                               marginTop: 4,
@@ -8254,7 +8716,117 @@ const cogs = Number(
                             <strong>Note:</strong> {o.note}
                           </div>
                         )}
-                       <div style={{ fontSize: 12, opacity: 0.75, marginTop: 8 }}>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                          <button
+                            onClick={() => integrateOnlineOrder(o)}
+                            disabled={isIntegrated || isProcessing}
+                            style={{
+                              background: isIntegrated ? "#9e9e9e" : "#6d4c41",
+                              color: "white",
+                              border: "none",
+                              borderRadius: 6,
+                              padding: "6px 10px",
+                              cursor: isIntegrated || isProcessing ? "not-allowed" : "pointer",
+                            }}
+                          >
+                            Make
+                          </button>
+                          <button
+                            onClick={() => markOnlineOrderDone(o)}
+                            disabled={!isIntegrated || isDone || isVoided}
+                            style={{
+                              background: !isIntegrated || isDone || isVoided ? "#9e9e9e" : "#43a047",
+                              color: "white",
+                              border: "none",
+                              borderRadius: 6,
+                              padding: "6px 10px",
+                              cursor:
+                                !isIntegrated || isDone || isVoided ? "not-allowed" : "pointer",
+                            }}
+                          >
+                            Mark DONE (locks)
+                          </button>
+                          <button
+                            onClick={() => printOnlineOrder(o)}
+                            disabled={!isIntegrated || isVoided}
+                            style={{
+                              background: !isIntegrated || isVoided ? "#039be588" : "#039be5",
+                              color: "white",
+                              border: "none",
+                              borderRadius: 6,
+                              padding: "6px 10px",
+                              cursor: !isIntegrated || isVoided ? "not-allowed" : "pointer",
+                            }}
+                          >
+                            Print
+                          </button>
+                          <button
+                            onClick={() => voidOnlineOrderAndRestock(o)}
+                            disabled={!isIntegrated || isDone || isVoided}
+                            style={{
+                              background:
+                                !isIntegrated || isDone || isVoided ? "#ef9a9a" : "#c62828",
+                              color: "white",
+                              border: "none",
+                              borderRadius: 6,
+                              padding: "6px 10px",
+                              cursor:
+                                !isIntegrated || isDone || isVoided ? "not-allowed" : "pointer",
+                            }}
+                          >
+                            Cancel (restock)
+                          </button>
+                          <button
+                            onClick={() => voidOnlineOrderToExpense(o)}
+                            disabled={
+                              !isIntegrated ||
+                              isDone ||
+                              isVoided ||
+                              !isExpenseVoidEligible(posOrder?.orderType)
+                            }
+                            style={{
+                              background:
+                                !isIntegrated ||
+                                isDone ||
+                                isVoided ||
+                                !isExpenseVoidEligible(posOrder?.orderType)
+                                  ? "#ffb74d"
+                                  : "#fb8c00",
+                              color: "white",
+                              border: "none",
+                              borderRadius: 6,
+                              padding: "6px 10px",
+                              cursor:
+                                !isIntegrated ||
+                                isDone ||
+                                isVoided ||
+                                !isExpenseVoidEligible(posOrder?.orderType)
+                                  ? "not-allowed"
+                                  : "pointer",
+                            }}
+                          >
+                            Returned
+                          </button>
+                        </div>
+                        {(isIntegrated || isProcessing || statusEntry.state === "done" || statusEntry.state === "voided") && (
+                          <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>
+                            {isProcessing && "Processing… waiting for POS sync."}
+                            {isIntegrated && (
+                              <>
+                                Linked POS order #{posOrderNo || "?"}
+                                {isDone && " • Done"}
+                                {isVoided && " • Cancelled"}
+                              </>
+                            )}
+                            {!isIntegrated && !isProcessing && statusEntry.state === "done" && (
+                              <>Completed in POS (order #{statusEntry.posOrderNo || "?"})</>
+                            )}
+                            {!isIntegrated && !isProcessing && statusEntry.state === "voided" && (
+                              <>Cancelled in POS (order #{statusEntry.posOrderNo || "?"})</>
+                            )}
+                          </div>
+                        )}
+                        <div style={{ fontSize: 12, opacity: 0.75, marginTop: 8 }}>
                           Online order ID:{" "}
                           {o.sourceCollection
                             ? `${o.sourceCollection}/${o.sourceDocId || o.id}`
@@ -12155,6 +12727,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
