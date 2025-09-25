@@ -2610,7 +2610,7 @@ const activeWorkers = useMemo(() => {
   return names;
 }, [workerSessions]);
 const [orders, setOrders] = useState([]);
-const [orderBoardFilter, setOrderBoardFilter] = useState(() => {
+const [onlineFbUser, setOnlineFbUser] = useState(null);const [orderBoardFilter, setOrderBoardFilter] = useState(() => {
   const l = loadLocal();
   return l?.orderBoardFilter === "online" ? "online" : "onsite";
 });
@@ -3180,16 +3180,44 @@ useEffect(() => {
   });
 }, [purchases, purchaseCategories, syncCostsFromPurchases]);
 const db = useMemo(() => (fbReady ? ensureFirebase().db : null), [fbReady]);
+  const onlineFirebaseApp = useMemo(
+    () => (fbReady ? ensureOnlineFirebase() : null),
+    [fbReady]
+  );
   const onlineDb = useMemo(() => {
-    if (!fbReady) return null;
+    if (!onlineFirebaseApp) return null;
     try {
-      const app = ensureOnlineFirebase();
-      return app ? getFirestore(app) : null;
+      return getFirestore(onlineFirebaseApp);
     } catch (err) {
       console.error("Failed to access online orders Firestore", err);
       return null;
     }
-  }, [fbReady]);
+  }, [onlineFirebaseApp]);
+  useEffect(() => {
+    if (!onlineFirebaseApp) {
+      setOnlineFbUser(null);
+      return undefined;
+    }
+    const auth = getAuth(onlineFirebaseApp);
+    let active = true;
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!active) return;
+      if (user) {
+        setOnlineFbUser(user);
+      } else {
+        try {
+          await signInAnonymously(auth);
+        } catch (err) {
+          console.error("Failed to sign in to online orders Firebase auth", err);
+        }
+      }
+    });
+    return () => {
+      active = false;
+      setOnlineFbUser(null);
+      unsubscribe();
+    };
+  }, [onlineFirebaseApp]);
   const stateDocRef = useMemo(
     () => (db ? fsDoc(db, "shops", SHOP_ID, "state", "pos") : null),
     [db]
@@ -3198,13 +3226,13 @@ const db = useMemo(() => (fbReady ? ensureFirebase().db : null), [fbReady]);
     () => (db ? collection(db, "shops", SHOP_ID, "orders") : null),
     [db]
   );
-  const onlineOrderCollections = useMemo(() => {
+const onlineOrderCollections = useMemo(() => {
     if (!db && !onlineDb) return [];
     return ONLINE_ORDER_COLLECTIONS.flatMap(({ name, source, path }) => {
       const targetDb = source === "menu" ? onlineDb : db;
       if (!targetDb) return [];
       try {
-        return [{ name, ref: collection(targetDb, ...path) }];
+        return [{ name, source, ref: collection(targetDb, ...path) }];
       } catch (err) {
         console.error(`Failed to build online order ref for ${name}`, err);
         return [];
@@ -3551,8 +3579,15 @@ const recomputeOnlineOrders = useCallback(() => {
     );
     setOnlineOrdersRaw(next);
   }, []);
-  useEffect(() => {
-    if (!fbUser || onlineOrderCollections.length === 0) {
+ useEffect(() => {
+    const requiresOnlineAuth = onlineOrderCollections.some(
+      (col) => col.source === "menu"
+    );
+    if (
+      !fbUser ||
+      onlineOrderCollections.length === 0 ||
+      (requiresOnlineAuth && !onlineFbUser)
+    ) {
       onlineOrderSourcesRef.current = {};
       setOnlineOrdersRaw([]);
       return undefined;
@@ -3562,7 +3597,7 @@ const recomputeOnlineOrders = useCallback(() => {
     const unsubscribers = onlineOrderCollections.map(({ name, ref }) =>
       onSnapshot(
         ref,
-        (snap) => {
+        (snap) => {  
           if (!active) return;
           const arr = [];
           snap.forEach((doc) => {
@@ -3606,7 +3641,7 @@ const recomputeOnlineOrders = useCallback(() => {
       onlineOrderSourcesRef.current = {};
       setOnlineOrdersRaw([]);
     };
-  }, [onlineOrderCollections, fbUser, recomputeOnlineOrders]);
+  }, [onlineOrderCollections, fbUser, onlineFbUser, recomputeOnlineOrders]);
   const onlineOrders = useMemo(() => {
     const filtered = onlineOrdersRaw.filter((order) => {
       const ts = Number(order?.createdAtMs || 0);
@@ -12048,6 +12083,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
