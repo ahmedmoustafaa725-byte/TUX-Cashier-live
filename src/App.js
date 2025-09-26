@@ -4384,7 +4384,7 @@ const unsubscribers = onlineOrderCollections.map(({ name, ref, pathSegments, sou
       setOnlineOrdersRaw([]);
     };
   }, [onlineOrderCollections, fbUser, onlineFbUser, recomputeOnlineOrders]);
- const onlineOrders = useMemo(() => {
+const onlineOrders = useMemo(() => {
     const filtered = onlineOrdersRaw.filter((order) => {
       const ts = Number(order?.createdAtMs || 0);
       if (startedAtMs && ts < startedAtMs) return false;
@@ -4392,7 +4392,12 @@ const unsubscribers = onlineOrderCollections.map(({ name, ref, pathSegments, sou
       return true;
     });
     filtered.sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
-    return filtered;
+
+    const total = filtered.length;
+    return filtered.map((order, index) => ({
+      ...order,
+      displayOrderNo: `O${total - index}`,
+    }));
   }, [onlineOrdersRaw, startedAtMs, endedAtMs]);
   const posOrdersByOnlineKey = useMemo(() => {
     const map = new Map();
@@ -9377,7 +9382,6 @@ const cogs = Number(
                     const isProcessing =
                       !isIntegrated &&
                       (statusEntry.state === "importing" || statusEntry.state === "imported");
-                    const posOrderNo = posOrder?.orderNo || statusEntry.posOrderNo;
                     const isDone = posOrder?.done;
                     const isVoided = posOrder?.voided;
                     return (
@@ -9400,8 +9404,9 @@ const cogs = Number(
                           }}
                         >
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <strong>
-                              Online #{o.orderNo} — E£{Number(o.total || 0).toFixed(2)}
+                             <strong>
+                              Online #{o.displayOrderNo || o.orderNo} — E£
+                              {Number(o.total || 0).toFixed(2)}
                             </strong>
                             {isNew && (
                               <span
@@ -9572,33 +9577,17 @@ const cogs = Number(
                             Returned
                           </button>
                         </div>
-                        {(isIntegrated || isProcessing || statusEntry.state === "done" || statusEntry.state === "voided") && (
+      {(isProcessing || (!isIntegrated && (statusEntry.state === "done" || statusEntry.state === "voided"))) && (
                           <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>
                             {isProcessing && "Processing… waiting for POS sync."}
-                            {isIntegrated && (
-                              <>
-                                Linked POS order #{posOrderNo || "?"}
-                                {isDone && " • Done"}
-                                {isVoided && " • Cancelled"}
-                              </>
-                            )}
-                            {!isIntegrated && !isProcessing && statusEntry.state === "done" && (
+                            {!isIntegrated && statusEntry.state === "done" && (
                               <>Completed in POS (order #{statusEntry.posOrderNo || "?"})</>
                             )}
-                            {!isIntegrated && !isProcessing && statusEntry.state === "voided" && (
+                            {!isIntegrated && statusEntry.state === "voided" && (
                               <>Cancelled in POS (order #{statusEntry.posOrderNo || "?"})</>
                             )}
                           </div>
                         )}
-                       <div style={{ fontSize: 12, opacity: 0.75, marginTop: 8 }}>
-                          Channel ref: {o.channelOrderNo || "—"}
-                        </div>
-                        <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
-                          Online order ID:{" "}
-                          {o.sourceCollection
-                            ? `${o.sourceCollection}/${o.sourceDocId || o.id}`
-                            : o.id}
-                        </div>
                       </li>
                     );
                   })}
@@ -9644,10 +9633,7 @@ const cogs = Number(
                       </strong>
                       <span>{fmtDate(o.date)}</span>
                     </div>
-                    <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
-                      Channel ref: {o.channelOrderNo || formatOnsiteChannelOrderNo(o.orderNo)}
-                    </div>
-                    <div style={{ color: dark ? "#ccc" : "#555", marginTop: 4 }}>       
+                   <div style={{ color: dark ? "#ccc" : "#555", marginTop: 4 }}>
 
                       Worker: {o.worker} • Payment: {o.payment}
                       {Array.isArray(o.paymentParts) && o.paymentParts.length ? (
@@ -13585,6 +13571,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
