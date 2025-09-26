@@ -1693,7 +1693,7 @@ function onlineOrderFromDoc(id, data = {}) {
   return {
     id,
     orderNo: normalizedOrderNo,
-   worker: data?.handledBy || data?.worker || "Online Order",␊
+   worker: data?.handledBy || data?.worker || "Online Order",
     payment: String(paymentLabel || payment || "Unspecified"),
     paymentParts,
     orderType,
@@ -13590,6 +13590,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
