@@ -18,11 +18,9 @@ import {
   orderBy,
   where,
   doc as fsDoc,
- writeBatch,
+  writeBatch,
   runTransaction, // <-- atomic counter
 } from "firebase/firestore";
-import { sendOnlineOrderConfirmationEmail } from "./onlineOrderEmail";
-
 
 export const toIso = (v) => {
   if (!v) return null;
@@ -2999,8 +2997,14 @@ const accountedOnlineOrders = useMemo(() => {
   return eligible;
 }, [onlineOrdersRaw, orders, dayMeta]);
 const rawInflowByMethod = useMemo(() => {
-  return sumPaymentsByMethod(orders);
-}, [orders]);
+  const onsite = sumPaymentsByMethod(orders);
+  const online = sumPaymentsByMethod(accountedOnlineOrders);
+  const merged = { ...onsite };
+  for (const [method, value] of Object.entries(online)) {
+    merged[method] = (merged[method] || 0) + Number(value || 0);
+  }
+  return merged;
+}, [orders, accountedOnlineOrders]);
 const expectedByMethod = useMemo(() => {
   const out = {};
   for (const m of paymentMethods || []) {
@@ -5519,7 +5523,7 @@ const onlineFallbackId =
 
   recordCustomerFromOrder(posOrder);
 
-setOrders((o) => [posOrder, ...o]);
+  if (!realtimeOrders) setOrders((o) => [posOrder, ...o]);
 
   if (cloudEnabled && ordersColRef && fbUser) {
     try {
@@ -5537,7 +5541,17 @@ setOrders((o) => [posOrder, ...o]);
     }
   }
 
-try {
+  setOnlineOrderStatus((prev) => {
+    const entry = { ...(prev[key] || {}) };
+    entry.state = "imported";
+    entry.posOrderNo = posOrder.orderNo;
+    entry.sourceCollection = onlineOrder.sourceCollection || entry.sourceCollection || null;
+    entry.sourceDocId = onlineOrder.sourceDocId || entry.sourceDocId || null;
+    entry.lastUpdateAt = Date.now();
+    return { ...prev, [key]: entry };
+  });
+
+  try {
     await updateOnlineOrderDoc(onlineOrder, {
       status: "accepted",
       posOrderNo: posOrder.orderNo,
@@ -5546,34 +5560,6 @@ try {
   } catch (err) {
     console.warn("Failed to update online order status in source", err);
   }
-
-  let emailResult = { status: "skipped", reason: "missing-config" };
-  try {
-    emailResult = await sendOnlineOrderConfirmationEmail(posOrder, onlineOrder);
-    if (emailResult.status === "failed") {
-      console.warn("Order confirmation email failed", emailResult.error);
-    }
-  } catch (err) {
-    const fallbackError = err?.message || String(err);
-    emailResult = { status: "failed", error: fallbackError };
-    console.warn("Order confirmation email threw", err);
-  }
-
-  setOnlineOrderStatus((prev) => {
-    const entry = { ...(prev[key] || {}) };
-    entry.state = "imported";
-    entry.posOrderNo = posOrder.orderNo;
-    entry.sourceCollection = onlineOrder.sourceCollection || entry.sourceCollection || null;
-    entry.sourceDocId = onlineOrder.sourceDocId || entry.sourceDocId || null;
-    entry.lastUpdateAt = Date.now();
-    entry.emailStatus = emailResult.status;
-    if (emailResult.error || emailResult.reason) {
-      entry.emailError = emailResult.error || emailResult.reason;
-    } else if (entry.emailError) {
-      delete entry.emailError;
-    }
-    return { ...prev, [key]: entry };
-  });
 
   return posOrder;
 };
@@ -13108,25 +13094,6 @@ setExtraList((arr) => [
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
