@@ -29,6 +29,15 @@ export const toIso = (v) => {
   const d = new Date(v);
   return isNaN(d) ? null : d.toISOString();
 };
+
+function toMillis(value) {
+  if (!value) return undefined;
+  if (value instanceof Date) return value.getTime();
+  if (value instanceof Timestamp) return value.toMillis();
+  const parsed = new Date(value);
+  return Number.isNaN(+parsed) ? undefined : parsed.getTime();
+}
+
 const FIRESTORE_SENTINEL_KEY = "_methodName";
 export function sanitizeForFirestore(value) {
   if (value === undefined) return undefined;
@@ -1013,39 +1022,41 @@ if (Array.isArray(data.workerSessions)) {
 }
 
 function normalizeOrderForCloud(order) {
+  const normalized = enrichOrderWithChannel(order);
   return sanitizeForFirestore({
-    orderNo: order.orderNo,
-    worker: order.worker,
-    payment: order.payment,
-    paymentParts: Array.isArray(order.paymentParts)
-      ? order.paymentParts.map((p) => ({ method: p.method, amount: Number(p.amount || 0) }))
+    orderNo: normalized.orderNo,
+    worker: normalized.worker,
+    payment: normalized.payment,
+    paymentParts: Array.isArray(normalized.paymentParts)
+      ? normalized.paymentParts.map((p) => ({ method: p.method, amount: Number(p.amount || 0) }))
       : [],
-    orderType: order.orderType,
-    deliveryFee: order.deliveryFee,
-    deliveryName: order.deliveryName || "",
-   deliveryPhone: order.deliveryPhone || "",
-    deliveryAddress: order.deliveryAddress || "",
-    deliveryZoneId: order.deliveryZoneId || "",
-    notifyViaWhatsapp: !!order.notifyViaWhatsapp,
-    whatsappSentAt: toIso(order.whatsappSentAt),
-    total: order.total,
-
-    itemsTotal: order.itemsTotal,
-    cashReceived: order.cashReceived ?? null,
-    changeDue: order.changeDue ?? null,
-    done: !!order.done,
-    voided: !!order.voided,
-    voidReason: order.voidReason || "",
-    note: order.note || "",
-    date: toIso(order.date) || new Date().toISOString(),
-   restockedAt: toIso(order.restockedAt),
-    cart: order.cart || [],
-    idemKey: order.idemKey || "",
-    source: order.source || "",
-    onlineOrderId: order.onlineOrderId || "",
-    onlineOrderKey: order.onlineOrderKey || "",
-    onlineSourceCollection: order.onlineSourceCollection || "",
-    onlineSourceDocId: order.onlineSourceDocId || "",
+    orderType: normalized.orderType,
+    deliveryFee: normalized.deliveryFee,
+    deliveryName: normalized.deliveryName || "",
+    deliveryPhone: normalized.deliveryPhone || "",
+    deliveryAddress: normalized.deliveryAddress || "",
+    deliveryZoneId: normalized.deliveryZoneId || "",
+    notifyViaWhatsapp: !!normalized.notifyViaWhatsapp,
+    whatsappSentAt: toIso(normalized.whatsappSentAt),
+    total: normalized.total,
+    itemsTotal: normalized.itemsTotal,
+    cashReceived: normalized.cashReceived ?? null,
+    changeDue: normalized.changeDue ?? null,
+    done: !!normalized.done,
+    voided: !!normalized.voided,
+    voidReason: normalized.voidReason || "",
+    note: normalized.note || "",
+    date: toIso(normalized.date) || new Date().toISOString(),
+    restockedAt: toIso(normalized.restockedAt),
+    cart: normalized.cart || [],
+    idemKey: normalized.idemKey || "",
+    source: normalized.source || "",
+    onlineOrderId: normalized.onlineOrderId || "",
+    onlineOrderKey: normalized.onlineOrderKey || "",
+    onlineSourceCollection: normalized.onlineSourceCollection || "",
+    onlineSourceDocId: normalized.onlineSourceDocId || "",
+    channel: normalized.channel || "",
+    channelOrderNo: normalized.channelOrderNo || "",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -1053,7 +1064,7 @@ function normalizeOrderForCloud(order) {
 function orderFromCloudDoc(id, d) {
   const asDate = (v) =>
     v instanceof Timestamp ? v.toDate() : v ? new Date(v) : new Date();
-  return {
+  const order = {
     cloudId: id,
 
     orderNo: d.orderNo,
@@ -1084,10 +1095,11 @@ function orderFromCloudDoc(id, d) {
      idemKey: d.idemKey || "",
     source: d.source || "",
     onlineOrderId: d.onlineOrderId || "",
-    onlineOrderKey: d.onlineOrderKey || "",
+ onlineOrderKey: d.onlineOrderKey || "",
     onlineSourceCollection: d.onlineSourceCollection || "",
     onlineSourceDocId: d.onlineSourceDocId || "",
   };
+  return enrichOrderWithChannel(order);
 }
 
 function ensureOnlineOrderNo(rawNo, fallbackId, createdAtMs) {
@@ -1123,8 +1135,60 @@ function ensureOnlineOrderNo(rawNo, fallbackId, createdAtMs) {
     return `O${trimmed || suffix || "0"}`;
   }
 
-  const fallback = Math.floor(Math.random() * 900000) + 100000;
+ const fallback = Math.floor(Math.random() * 900000) + 100000;
   return `O${fallback}`;
+}
+
+function formatOnsiteChannelOrderNo(orderNo) {
+  const numeric = Number(orderNo);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    const safe = Math.floor(numeric);
+    return `POS-${String(safe).padStart(4, "0")}`;
+  }
+  const sanitized = String(orderNo || "")
+    .replace(/[^a-z0-9]/gi, "")
+    .toUpperCase();
+  return sanitized ? `POS-${sanitized}` : "POS-0000";
+}
+
+function formatOnlineChannelOrderNo(orderNo, fallbackId, createdAtMs) {
+  const normalized = ensureOnlineOrderNo(orderNo, fallbackId, createdAtMs);
+  const digits = String(normalized || "")
+    .replace(/^O+/i, "")
+    .replace(/[^0-9]/g, "");
+  const trimmed = digits ? digits.slice(-6) : "";
+  const padded = (trimmed || "0").padStart(4, "0");
+  return `ON-${padded}`;
+}
+
+function deriveOrderChannel(order) {
+  if (!order) return "onsite";
+  const raw = String(order.channel || order.source || "")
+    .toLowerCase()
+    .trim();
+  if (raw === "online") return "online";
+  if (raw === "onsite") return "onsite";
+  if (order.onlineOrderId || order.onlineOrderKey) return "online";
+  return "onsite";
+}
+
+function enrichOrderWithChannel(order) {
+  if (!order) return order;
+  const channel = deriveOrderChannel(order);
+  let channelOrderNo = order.channelOrderNo;
+  if (channel === "onsite") {
+    const baseNo = order.orderNo != null ? order.orderNo : channelOrderNo;
+    channelOrderNo = formatOnsiteChannelOrderNo(baseNo);
+  } else {
+    const createdAtMs =
+      Number(order.createdAtMs) ||
+      toMillis(order.createdAt) ||
+      toMillis(order.date);
+    const fallbackId = order.onlineOrderId || order.onlineOrderKey || order.id;
+    channelOrderNo =
+      channelOrderNo || formatOnlineChannelOrderNo(order.orderNo, fallbackId, createdAtMs);
+  }
+  return { ...order, channel, channelOrderNo };
 }
 
 function onlineOrderFromDoc(id, data = {}) {
@@ -1250,7 +1314,7 @@ function onlineOrderFromDoc(id, data = {}) {
     (deliveryFee > 0 || data?.deliveryAddress || deliveryInfo?.address
       ? "Delivery"
       : "Pickup");
-  const orderNo =
+ const orderNo =
     data?.orderNo ||
     data?.orderNumber ||
     data?.ticket ||
@@ -1280,9 +1344,16 @@ function onlineOrderFromDoc(id, data = {}) {
     data?.address ||
     deliveryInfo?.address ||
     "";
+ const normalizedOrderNo = ensureOnlineOrderNo(orderNo, id, createdAtMs);
+  const channelOrderNo = formatOnlineChannelOrderNo(
+    normalizedOrderNo,
+    id,
+    createdAtMs
+  );
+
   return {
- id,
-    orderNo: ensureOnlineOrderNo(orderNo, id, createdAtMs),
+    id,
+    orderNo: normalizedOrderNo,
     worker: data?.handledBy || data?.worker || "Online Order",
     payment: String(payment || "Unspecified"),
     paymentParts: [],
@@ -1309,7 +1380,9 @@ function onlineOrderFromDoc(id, data = {}) {
     createdAtMs,
     status: data?.status || data?.orderStatus || data?.state || "new",
     source: "online",
-   raw: data,
+    channel: "online",
+    channelOrderNo,
+    raw: data,
   };
 }
 
@@ -2541,7 +2614,15 @@ const [cogsSort, setCogsSort] = useState({ key: "margin", dir: "asc" });
 const [inlinePriceDrafts, setInlinePriceDrafts] = useState({});
   const [historicalOrders, setHistoricalOrders] = useState(() => {
   const l = loadLocal();
-  return l.historicalOrders || [];
+  const raw = Array.isArray(l.historicalOrders) ? l.historicalOrders : [];
+  return raw.map((order) => {
+    const converted = {
+      ...order,
+      date: order?.date ? new Date(order.date) : order?.date,
+      restockedAt: order?.restockedAt ? new Date(order.restockedAt) : order?.restockedAt,
+    };
+    return enrichOrderWithChannel(converted);
+  });
 });
 const [historicalExpenses, setHistoricalExpenses] = useState(() => {
   const l = loadLocal();
@@ -3331,14 +3412,16 @@ if (Array.isArray(l.deliveryZones)) setDeliveryZones(l.deliveryZones);
   if (typeof l.preferredPaperWidthMm === "number") setPreferredPaperWidthMm(l.preferredPaperWidthMm);
   if (typeof l.cloudEnabled === "boolean") setCloudEnabled(l.cloudEnabled);
   if (typeof l.realtimeOrders === "boolean") setRealtimeOrders(l.realtimeOrders);
-  if (typeof l.nextOrderNo === "number") setNextOrderNo(l.nextOrderNo);
+if (typeof l.nextOrderNo === "number") setNextOrderNo(l.nextOrderNo);
   if (Array.isArray(l.orders)) {
     setOrders(
-      l.orders.map((o) => ({
-        ...o,
-        date: o.date ? new Date(o.date) : new Date(),
-        restockedAt: o.restockedAt ? new Date(o.restockedAt) : undefined,
-      }))
+      l.orders.map((o) =>
+        enrichOrderWithChannel({
+          ...o,
+          date: o.date ? new Date(o.date) : new Date(),
+          restockedAt: o.restockedAt ? new Date(o.restockedAt) : undefined,
+        })
+      )
     );
   }
   setLocalHydrated(true);
@@ -3855,7 +3938,7 @@ useEffect(() => {
     const unsub = onSnapshot(qy, (snap) => {
       const arr = [];
       snap.forEach((d) => arr.push(orderFromCloudDoc(d.id, d.data())));
-      setOrders(dedupeOrders(arr));
+      setOrders(dedupeOrders(arr).map(enrichOrderWithChannel));
     });
    return () => unsub();
   }, [realtimeOrders, ordersColRef, fbUser, startedAtMs, endedAtMs]);
@@ -4026,28 +4109,22 @@ useEffect(() => {
     return;
   }
   const prevTs = Number(lastAlertedOnlineOrderTsRef.current || 0);
-  if (latestTs <= prevTs) return;
-  const newOrders = onlineOrders.filter(
-    (order) => Number(order?.createdAtMs || 0) > prevTs
-  );
-  if (newOrders.length > 0) {
-    const message =
-      newOrders.length === 1
-        ? "New online order received!"
-        : `${newOrders.length} new online orders received!`;
-    alert(message);
-  }
+ if (latestTs <= prevTs) return;
   lastAlertedOnlineOrderTsRef.current = latestTs;
 }, [onlineOrders]);
+  
   useEffect(() => {
     saveLocalPartial({ orderBoardFilter });
   }, [orderBoardFilter]);
+  
   useEffect(() => {
     saveLocalPartial({ lastSeenOnlineOrderTs });
   }, [lastSeenOnlineOrderTs]);
+  
  useEffect(() => {
     saveLocalPartial({ lastSeenOnlineOrderTs });
   }, [lastSeenOnlineOrderTs]);
+  
   useEffect(() => {
     saveLocalPartial({ onlineOrderStatus });
   }, [onlineOrderStatus]);
@@ -5228,7 +5305,7 @@ const checkout = async () => {
    const hasWhatsappPhone =
       orderType !== "Delivery" && hasWhatsappNumberLength(orderCustomerPhone);
     const shouldWhatsapp = hasWhatsappPhone && !!syncWhatsappReady;
-    const order = {
+    let order = enrichOrderWithChannel({
       orderNo: optimisticNo,
       date: new Date(),
       worker,
@@ -5254,7 +5331,8 @@ const checkout = async () => {
       idemKey: `idk_${fbUser ? fbUser.uid : "anon"}_${Date.now()}_${Math.random()
         .toString(36)
         .slice(2)}`,
- };
+      source: "onsite",
+    });
     recordCustomerFromOrder(order);
     if (autoPrintOnCheckout) {
       printReceiptHTML(order, Number(preferredPaperWidthMm) || 80, "Customer");
@@ -5263,9 +5341,13 @@ const checkout = async () => {
     let allocatedNo = optimisticNo;
     if (cloudEnabled && counterDocRef && fbUser && db) {
       try {
-        allocatedNo = await allocateOrderNoAtomic(db, counterDocRef);
+      allocatedNo = await allocateOrderNoAtomic(db, counterDocRef);
         if (allocatedNo !== optimisticNo) {
-          order.orderNo = allocatedNo;
+          order = {
+            ...order,
+            orderNo: allocatedNo,
+            channelOrderNo: formatOnsiteChannelOrderNo(allocatedNo),
+          };
           setNextOrderNo(allocatedNo + 1);
         }
       } catch (e) {
@@ -5394,7 +5476,17 @@ const integrateOnlineOrder = async (onlineOrder) => {
   );
   const shouldWhatsapp = hasWhatsappNumberLength(phoneDigits);
 
-  const posOrder = {
+const onlineFallbackId =
+    onlineOrder.id ||
+    onlineOrder.onlineOrderId ||
+    onlineOrder.onlineOrderKey ||
+    onlineOrder.sourceDocId ||
+    key;
+  const channelRef =
+    onlineOrder.channelOrderNo ||
+    formatOnlineChannelOrderNo(onlineOrder.orderNo, onlineFallbackId, onlineOrder.createdAtMs);
+
+  let posOrder = enrichOrderWithChannel({
     orderNo,
     date: new Date(),
     worker: dayMeta.currentWorker || "Online",
@@ -5421,11 +5513,13 @@ const integrateOnlineOrder = async (onlineOrder) => {
       onlineOrder.idemKey ||
       `online_${onlineOrder.id || onlineOrder.orderNo || key || Date.now()}`,
     source: "online",
+    channel: "online",
+    channelOrderNo: channelRef,
     onlineOrderId: onlineOrder.id || "",
     onlineOrderKey: key,
     onlineSourceCollection: onlineOrder.sourceCollection || "",
     onlineSourceDocId: onlineOrder.sourceDocId || "",
-  };
+  });
 
   recordCustomerFromOrder(posOrder);
 
@@ -5470,14 +5564,24 @@ const integrateOnlineOrder = async (onlineOrder) => {
   return posOrder;
 };
 const markOrderDone = async (orderNo) => {
-  const ord = orders.find((o) => o.orderNo === orderNo);
+const ord = orders.find((o) => o.orderNo === orderNo);
   const phoneDigits = ord ? normalizePhone(ord.deliveryPhone) : "";
+  const isOnlineOrder =
+    !!(
+      ord &&
+      (ord.channel === "online" ||
+        ord.source === "online" ||
+        ord.onlineOrderId ||
+        ord.onlineOrderKey)
+    );
+  const typeKey = normalizeNameKey(ord?.orderType);
+  const isDeliveryType = typeKey === "delivery";
   const shouldNotify =
     ord &&
-    ord.orderType !== "Delivery" &&
     ord.notifyViaWhatsapp &&
     !ord.whatsappSentAt &&
-    hasWhatsappNumberLength(phoneDigits);
+    hasWhatsappNumberLength(phoneDigits) &&
+    (!isDeliveryType || isOnlineOrder);
   let notifiedAt = null;
   if (shouldNotify) {
     notifiedAt = new Date();
@@ -5920,7 +6024,7 @@ const voidOrderToExpense = async (orderNo) => {
       return when && when >= start && when <= end;
     });
 
-    return [...onsite, ...online];
+ return [...onsite, ...online].map(enrichOrderWithChannel);
   }, [
     orders,
     historicalOrders,
@@ -5929,6 +6033,16 @@ const voidOrderToExpense = async (orderNo) => {
     reportEnd,
     dayMeta,
   ]);
+
+  const reportOrdersDetailed = useMemo(() => {
+    const toMs = (value) => {
+      const ms = toMillis(value);
+      return Number.isFinite(ms) ? ms : 0;
+    };
+    return [...reportOrders]
+      .map(enrichOrderWithChannel)
+      .sort((a, b) => toMs(b.date) - toMs(a.date));
+  }, [reportOrders]);
 
   const totals = useMemo(() => {
     const makeEmptyMaps = () => {
@@ -8985,7 +9099,10 @@ const cogs = Number(
                             )}
                           </div>
                         )}
-                        <div style={{ fontSize: 12, opacity: 0.75, marginTop: 8 }}>
+                       <div style={{ fontSize: 12, opacity: 0.75, marginTop: 8 }}>
+                          Channel ref: {o.channelOrderNo || "—"}
+                        </div>
+                        <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
                           Online order ID:{" "}
                           {o.sourceCollection
                             ? `${o.sourceCollection}/${o.sourceDocId || o.id}`
@@ -9022,7 +9139,7 @@ const cogs = Number(
                         : "#fffde7",
                     }}
                   >
-                    <div
+                   <div
                       style={{
                         display: "flex",
                         justifyContent: "space-between",
@@ -9036,7 +9153,11 @@ const cogs = Number(
                       </strong>
                       <span>{fmtDate(o.date)}</span>
                     </div>
-                    <div style={{ color: dark ? "#ccc" : "#555", marginTop: 4 }}>
+                    <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
+                      Channel ref: {o.channelOrderNo || formatOnsiteChannelOrderNo(o.orderNo)}
+                    </div>
+                    <div style={{ color: dark ? "#ccc" : "#555", marginTop: 4 }}>       
+
                       Worker: {o.worker} • Payment: {o.payment}
                       {Array.isArray(o.paymentParts) && o.paymentParts.length ? (
                         <> ({o.paymentParts.map(p => `${p.method}: E£${Number(p.amount||0).toFixed(2)}`).join(" + ")})</>
@@ -11715,7 +11836,7 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
           </div>
           {/* Totals overview */}
           <>
-       <div
+ <div
               style={{
                 marginBottom: 12,
                 padding: 10,
@@ -11743,7 +11864,7 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
                 label: "Margin:",
                 value: totals.margin.toFixed(2),
               }].map(({ label, value }) => (
-     <div
+             <div
                   key={label}
                   style={{
                     display: "flex",
@@ -11757,6 +11878,93 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
                   <span style={{ fontWeight: 700 }}>E£{value}</span>
                 </div>
               ))}
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <h3 style={{ margin: "16px 0 8px" }}>Orders in Period</h3>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Date / Time</th>
+                      <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Order Ref</th>
+                      <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Channel</th>
+                      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>POS #</th>
+                      <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Worker</th>
+                      <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Payment</th>
+                      <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Type</th>
+                      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Items (E£)</th>
+                      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Delivery (E£)</th>
+                      <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Total (E£)</th>
+                      <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reportOrdersDetailed.map((order, idx) => {
+                      const channelLabel = order.channel === "online" ? "Online" : "On-site";
+                      const rawItemsOnly = Number(
+                        order.itemsTotal != null
+                          ? order.itemsTotal
+                          : (order.total || 0) - (order.deliveryFee || 0)
+                      );
+                      const itemsOnly = Number.isFinite(rawItemsOnly) ? rawItemsOnly : 0;
+                      const rawDelivery = Number(order.deliveryFee || 0);
+                      const deliveryFeeValue = Number.isFinite(rawDelivery) ? rawDelivery : 0;
+                      const rawTotal = Number(
+                        order.total != null ? order.total : itemsOnly + deliveryFeeValue
+                      );
+                      const totalValue = Number.isFinite(rawTotal)
+                        ? rawTotal
+                        : itemsOnly + deliveryFeeValue;
+                      const paymentDisplay = Array.isArray(order.paymentParts) && order.paymentParts.length
+                        ? order.paymentParts
+                            .map((part) => `${part.method}: E£${Number(part.amount || 0).toFixed(2)}`)
+                            .join(" + ")
+                        : order.payment || "—";
+                      const posDisplay = Number.isFinite(Number(order.orderNo))
+                        ? String(Math.floor(Number(order.orderNo)))
+                        : "—";
+                      const normalizeStatusText = (value) =>
+                        String(value || "")
+                          .replace(/[_-]+/g, " ")
+                          .replace(/\b\w/g, (ch) => ch.toUpperCase());
+                      const statusLabel = order.voided
+                        ? order.restockedAt
+                          ? "Cancelled"
+                          : "Returned"
+                        : order.done
+                        ? "Done"
+                        : order.channel === "online" && order.status
+                        ? normalizeStatusText(order.status)
+                        : "Pending";
+                      const key =
+                        order.channelOrderNo ||
+                        `${order.orderNo || "order"}_${order.idemKey || order.onlineOrderKey || order.onlineOrderId || idx}`;
+                      return (
+                        <tr key={key}>
+                          <td style={{ padding: 6 }}>{fmtDateTime(order.date)}</td>
+                          <td style={{ padding: 6 }}>{order.channelOrderNo || formatOnsiteChannelOrderNo(order.orderNo)}</td>
+                          <td style={{ padding: 6 }}>{channelLabel}</td>
+                          <td style={{ padding: 6, textAlign: "right" }}>{posDisplay}</td>
+                          <td style={{ padding: 6 }}>{order.worker || "—"}</td>
+                          <td style={{ padding: 6 }}>{paymentDisplay}</td>
+                          <td style={{ padding: 6 }}>{order.orderType || "—"}</td>
+                          <td style={{ padding: 6, textAlign: "right" }}>{itemsOnly.toFixed(2)}</td>
+                          <td style={{ padding: 6, textAlign: "right" }}>{deliveryFeeValue.toFixed(2)}</td>
+                          <td style={{ padding: 6, textAlign: "right" }}>{totalValue.toFixed(2)}</td>
+                          <td style={{ padding: 6 }}>{statusLabel}</td>
+                        </tr>
+                      );
+                    })}
+                    {reportOrdersDetailed.length === 0 && (
+                      <tr>
+                        <td colSpan={11} style={{ padding: 8, opacity: 0.8 }}>
+                          No orders recorded for the selected period.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
             <div style={{ marginBottom: 16 }}>
               <div
@@ -12886,6 +13094,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
