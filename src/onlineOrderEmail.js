@@ -95,16 +95,40 @@ const getEmailConfig = () => {
   if (typeof document === "undefined") return null;
   const rootEl = document.getElementById("root");
   if (!rootEl || !rootEl.dataset) return null;
-  const { emailService, emailTemplate, emailPublic, emailFrom } = rootEl.dataset;
+   const {
+    emailService,
+    emailTemplate,
+    emailPublic,
+    emailPrivate,
+    emailFrom,
+  } = rootEl.dataset;
   if (!emailService || !emailTemplate || !emailPublic) return null;
   return {
     serviceId: emailService,
     templateId: emailTemplate,
     publicKey: emailPublic,
+    privateKey: emailPrivate || "",
     fromEmail: emailFrom || "",
   };
 };
-
+const resolveConfirmationCode = (posOrder = {}, onlineOrder = {}) => {
+  const candidates = [
+    onlineOrder.confirmationCode,
+    onlineOrder.confirmation_code,
+    onlineOrder?.raw?.confirmationCode,
+    onlineOrder?.raw?.confirmation_code,
+    onlineOrder.channelOrderNo,
+    posOrder.channelOrderNo,
+    posOrder.orderNo,
+    onlineOrder.orderNo,
+  ];
+  for (const candidate of candidates) {
+    if (candidate == null) continue;
+    const trimmed = String(candidate).trim();
+    if (trimmed) return trimmed;
+  }
+  return "";
+};
 const buildTemplateParams = (posOrder = {}, onlineOrder = {}) => {
   const toName = onlineOrder.deliveryName || onlineOrder?.raw?.customer?.name || "Customer";
   const orderId = posOrder.channelOrderNo || posOrder.orderNo || onlineOrder.orderNo || "";
@@ -129,6 +153,8 @@ const buildTemplateParams = (posOrder = {}, onlineOrder = {}) => {
     to_email: extractCustomerEmail(onlineOrder),
     order_id: orderId ? `#${orderId}` : "Your order",
     order_total: formatMoney(posOrder.total),
+        confirmation_code: resolveConfirmationCode(posOrder, onlineOrder),
+
     order_subtotal: formatMoney(subtotal),
     delivery_fee: formatMoney(posOrder.deliveryFee),
     order_details: orderDetails,
@@ -149,6 +175,9 @@ export const sendOnlineOrderConfirmationEmail = async (posOrder, onlineOrder) =>
   if (!config) {
     return { status: "skipped", reason: "missing-config" };
   }
+  if (!config.privateKey) {
+    return { status: "skipped", reason: "missing-access-token" };
+  }
   const templateParams = buildTemplateParams(posOrder, onlineOrder);
   if (!templateParams.to_email) {
     return { status: "skipped", reason: "missing-recipient" };
@@ -162,7 +191,7 @@ export const sendOnlineOrderConfirmationEmail = async (posOrder, onlineOrder) =>
         service_id: config.serviceId,
         template_id: config.templateId,
         user_id: config.publicKey,
-        accessToken: config.publicKey,
+        accessToken: config.privateKey,
         template_params: templateParams,
       }),
     });
