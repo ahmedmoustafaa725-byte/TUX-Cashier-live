@@ -2684,8 +2684,14 @@ function printReceiptHTML(order, widthMm = 80, copy = "Customer", images) {
   setTimeout(() => { try { if (document.body.contains(ifr)) ifr.remove(); } catch {} }, 12000);
 }
 const normalizePhone = (s) => {
-  const digits = String(s || "").replace(/\D/g, "");
+  let digits = String(s || "").replace(/\D/g, "");
+  if (digits.startsWith("00")) {
+    digits = digits.slice(2);
+  }
   if (digits.startsWith("20")) {
+    return digits.slice(0, 12);
+  }
+  if (digits.startsWith("2") && digits.length > 11) {
     return digits.slice(0, 12);
   }
   return digits.slice(0, 11);
@@ -13571,6 +13577,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
