@@ -4322,8 +4322,11 @@ useEffect(() => {
   equipmentList,
   dayMeta,
   bankTx,
-  realtimeOrders,
+ realtimeOrders,
   reconHistory,
+  onlineOrdersRaw,
+  onlineOrderStatus,
+  lastSeenOnlineOrderTs,
 ]);
   const startedAtMs = dayMeta?.startedAt
     ? new Date(dayMeta.startedAt).getTime()
@@ -13643,6 +13646,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
