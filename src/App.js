@@ -66,6 +66,283 @@ export function sanitizeForFirestore(value) {
   return value;
 }
 
+const PAYMENT_METHOD_ALIASES = [
+  { test: /(cash|cod|on[-\s]?delivery)/i, label: "Cash" },
+  { test: /(insta\s*pay|instapay|bank\s*transfer|transfer|iban|wallet|vodafone|aman|meeza|valu)/i, label: "Instapay" },
+  { test: /(card|visa|master|mada|credit|debit|pos)/i, label: "Card" },
+  { test: /fawry/i, label: "Fawry" },
+  { test: /wallet/i, label: "Wallet" },
+];
+
+function normalizePaymentMethodName(method) {
+  if (method == null) return "";
+  const raw = String(method || "").trim();
+  if (!raw) return "";
+  for (const { test, label } of PAYMENT_METHOD_ALIASES) {
+    if (test.test(raw)) return label;
+  }
+  return raw
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function parseNumericAmount(value) {
+  if (value == null) return null;
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === "string") {
+    const match = value.match(/-?\d+(?:[.,]\d+)?/g);
+    if (!match) return null;
+    for (const fragment of match) {
+      const normalized = Number(fragment.replace(/,/g, ""));
+      if (Number.isFinite(normalized)) return normalized;
+    }
+    return null;
+  }
+  return null;
+}
+
+function addPaymentPart(parts, method, amount) {
+  const label = normalizePaymentMethodName(method);
+  const numeric = parseNumericAmount(amount);
+  if (!label || numeric == null) return;
+  const fixed = Number(numeric.toFixed(2));
+  if (!fixed && fixed !== 0) return;
+  const existing = parts.find((p) => p.method === label);
+  if (existing) {
+    existing.amount = Number((Number(existing.amount || 0) + fixed).toFixed(2));
+  } else {
+    parts.push({ method: label, amount: fixed });
+  }
+}
+
+function extractPaymentPartsFromSource(source = {}, total, fallbackMethod) {
+  const parts = [];
+  const structuralKeyPattern =
+    /^(amount|value|total|price|qty|quantity|payment|due|method|type|name|label|title|mode|note|notes)$/i;
+
+  const considerEntry = (methodLike, amountLike) => {
+    addPaymentPart(parts, methodLike, amountLike);
+  };
+
+  const considerPrimitiveEntry = (key, value) => {
+    if (value == null) return;
+    const normalizedKey = normalizePaymentMethodName(key);
+    if (!normalizedKey) {
+      if (typeof value === "string") considerString(value);
+      return;
+    }
+    const lowerRawKey = String(key || "").toLowerCase();
+    const lowerNormalized = normalizedKey.toLowerCase();
+    const isStructural =
+      structuralKeyPattern.test(lowerNormalized) ||
+      (!/(cash|insta|card|visa|master|wallet|fawry|valu|bank|transfer)/i.test(lowerRawKey) &&
+        /(amount|value|total|price|qty|quantity|payment|due)/i.test(lowerRawKey));
+    if (isStructural) {
+      if (typeof value === "string") considerString(value);
+      return;
+    }
+    addPaymentPart(parts, normalizedKey, value);
+  };
+
+  const considerObject = (value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return;
+    for (const [key, val] of Object.entries(value)) {
+      if (val && typeof val === "object") {
+        const candidateMethod =
+          val.method ??
+          val.type ??
+          val.name ??
+          val.label ??
+          val.title ??
+          key;
+        const candidateAmount =
+          val.amount ??
+          val.value ??
+          val.total ??
+          val.price ??
+          val.qty ??
+          val.quantity ??
+          val.paymentAmount ??
+          val.amountDue;
+        const numeric = parseNumericAmount(candidateAmount);
+        const methodNormalized = normalizePaymentMethodName(candidateMethod);
+        if (methodNormalized && numeric != null) {
+          addPaymentPart(parts, methodNormalized, numeric);
+        }
+        considerObject(val);
+      } else {
+        if (typeof val === "string") considerString(val);
+        considerPrimitiveEntry(key, val);
+      }
+    }
+  };
+
+  const considerArray = (value) => {
+    if (!Array.isArray(value)) return;
+    for (const item of value) {
+      if (item && typeof item === "object") {
+        const candidateMethod =
+          item.method ??
+          item.type ??
+          item.name ??
+          item.label ??
+          item.title ??
+          item.mode ??
+          item.paymentMethod ??
+          item.paymentType;
+        const candidateAmount =
+          item.amount ??
+          item.value ??
+          item.total ??
+          item.price ??
+          item.qty ??
+          item.quantity ??
+          item.paymentAmount ??
+          item.amountDue;
+        const numeric = parseNumericAmount(candidateAmount);
+        const methodNormalized = normalizePaymentMethodName(candidateMethod);
+        if (methodNormalized && numeric != null) {
+          addPaymentPart(parts, methodNormalized, numeric);
+        }
+        considerObject(item);
+      } else if (typeof item === "string") {
+        considerString(item);
+      }
+    }
+  };
+
+  const considerString = (value) => {
+    if (typeof value !== "string") return;
+    const pattern = /(cash|insta\s*pay|instapay|card|visa|master(?:\s*card)?|mada|meeza|wallet|fawry|valu|bank\s*transfer|transfer|vodafone(?:\s*cash)?|aman)\s*[:=]?\s*(-?\d+(?:[.,]\d+)?)/gi;
+    let match;
+    while ((match = pattern.exec(value))) {
+      considerEntry(match[1], match[2]);
+    }
+  };
+
+  const sources = [
+    source?.paymentParts,
+    source?.payment?.parts,
+    source?.payment?.breakdown,
+    source?.paymentBreakdown,
+    source?.paymentDetails?.parts,
+    source?.paymentDetails?.breakdown,
+    source?.paymentDetails,
+    source?.paymentInfo,
+    source?.paymentAmounts,
+    source?.payments,
+    source?.splitPayment,
+    source?.splitPayments,
+    source?.paymentOptions,
+    source?.paymentSelections,
+    source?.paymentAllocation,
+  ];
+
+  for (const candidate of sources) {
+    considerArray(candidate);
+    considerObject(candidate);
+  }
+
+  const directFields = {
+    Cash: [
+      source?.cash,
+      source?.cashAmount,
+      source?.cashToPay,
+      source?.cashPayment,
+      source?.cashPaid,
+      source?.cashValue,
+      source?.cashDue,
+      source?.cashPart,
+      source?.paymentCash,
+      source?.paymentCashAmount,
+    ],
+    Instapay: [
+      source?.instapay,
+      source?.instaPay,
+      source?.instapayAmount,
+      source?.instaPayAmount,
+      source?.bank,
+      source?.bankAmount,
+      source?.bankTransfer,
+      source?.bankTransferAmount,
+      source?.transfer,
+      source?.transferAmount,
+      source?.onlinePayment,
+      source?.onlineAmount,
+      source?.digitalPayment,
+      source?.digitalAmount,
+    ],
+    Card: [
+      source?.card,
+      source?.cardAmount,
+      source?.cardPayment,
+      source?.cardPaid,
+      source?.visa,
+      source?.visaAmount,
+      source?.mastercard,
+      source?.mastercardAmount,
+      source?.credit,
+      source?.creditAmount,
+      source?.pos,
+      source?.posAmount,
+    ],
+  };
+
+  for (const [method, values] of Object.entries(directFields)) {
+    for (const value of values) considerEntry(method, value);
+  }
+
+  const stringSources = [
+    source?.payment,
+    source?.paymentMethod,
+    source?.paymentType,
+    source?.paymentNote,
+    source?.paymentNotes,
+    source?.paymentDescription,
+    source?.paymentText,
+    source?.note,
+    source?.notes,
+  ];
+  for (const text of stringSources) considerString(text);
+
+  const fallbackLabel =
+    fallbackMethod ||
+    source?.payment ||
+    source?.paymentMethod ||
+    source?.paymentType ||
+    (source?.paidOnline ? "Online" : "");
+
+  if (!parts.length) {
+    const fallbackAmount = parseNumericAmount(total);
+    if (fallbackAmount != null) {
+      addPaymentPart(parts, fallbackLabel || "Online", fallbackAmount);
+    }
+  } else {
+    const totalAmount = parseNumericAmount(total);
+    if (totalAmount != null) {
+      const sum = parts.reduce((acc, cur) => acc + Number(cur.amount || 0), 0);
+      const diff = Number((totalAmount - sum).toFixed(2));
+      if (diff > 0.01 && parts.length) {
+        parts[0].amount = Number((Number(parts[0].amount || 0) + diff).toFixed(2));
+      }
+    }
+  }
+
+  return parts.map((p) => ({ method: p.method, amount: Number(p.amount.toFixed(2)) }));
+}
+
+function summarizePaymentParts(parts = [], fallbackMethod = "Online") {
+  if (Array.isArray(parts) && parts.length) {
+    if (parts.length === 1) return parts[0].method;
+    const label = parts.map((p) => p.method).join(" + ");
+    return label || fallbackMethod;
+  }
+  return normalizePaymentMethodName(fallbackMethod) || fallbackMethod || "Online";
+}
 const firebaseConfig = {
   apiKey: "AIzaSyAp1F6t8zgRiJI9xOzFkKJVsCQIT9BWXno",
   authDomain: "tux-cashier-system.firebaseapp.com",
@@ -1363,11 +1640,13 @@ function onlineOrderFromDoc(id, data = {}) {
     data?.displayId ||
     data?.reference ||
     null;
-  const payment =
+   const payment =
     data?.payment ||
     data?.paymentMethod ||
     data?.paymentType ||
     (data?.paidOnline ? "Online" : "Unspecified");
+  const paymentParts = extractPaymentPartsFromSource(data, total, payment);
+  const paymentLabel = summarizePaymentParts(paymentParts, payment);
   const customerName =
     data?.customerName ||
     data?.name ||
@@ -1414,9 +1693,9 @@ function onlineOrderFromDoc(id, data = {}) {
   return {
     id,
     orderNo: normalizedOrderNo,
-    worker: data?.handledBy || data?.worker || "Online Order",
-    payment: String(payment || "Unspecified"),
-    paymentParts: [],
+   worker: data?.handledBy || data?.worker || "Online Order",␊
+    payment: String(paymentLabel || payment || "Unspecified"),
+    paymentParts,
     orderType,
     deliveryFee,
     deliveryName: customerName,
@@ -5529,9 +5808,31 @@ const integrateOnlineOrder = async (onlineOrder) => {
     }
   }
 
-  const normalizedType = normalizeOnlineOrderType(onlineOrder.orderType, orderTypes);
-  const paymentLabel = String(onlineOrder.payment || "Online");
-  const paymentParts = [{ method: paymentLabel, amount: total }];
+ const normalizedType = normalizeOnlineOrderType(onlineOrder.orderType, orderTypes);
+  const paymentSource = {
+    ...(onlineOrder.raw || {}),
+    ...(onlineOrder.paymentParts && onlineOrder.paymentParts.length
+      ? { paymentParts: onlineOrder.paymentParts }
+      : {}),
+    payment: onlineOrder.payment || (onlineOrder.raw && onlineOrder.raw.payment),
+    paymentMethod:
+      onlineOrder.paymentMethod || (onlineOrder.raw && onlineOrder.raw.paymentMethod),
+    paymentType:
+      onlineOrder.paymentType || (onlineOrder.raw && onlineOrder.raw.paymentType),
+  };
+  const normalizedPaymentParts = extractPaymentPartsFromSource(
+    paymentSource,
+    total,
+    paymentSource.payment
+  );
+  const paymentLabel = summarizePaymentParts(
+    normalizedPaymentParts,
+    paymentSource.payment || "Online"
+  );
+  const paymentParts =
+    normalizedPaymentParts.length > 0
+      ? normalizedPaymentParts
+      : [{ method: paymentLabel, amount: total }];
   const phoneDigits = normalizePhone(
     onlineOrder.deliveryPhone || onlineOrder.customerPhone
   );
@@ -13289,6 +13590,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
