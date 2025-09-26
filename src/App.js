@@ -5519,7 +5519,7 @@ const onlineFallbackId =
 
   recordCustomerFromOrder(posOrder);
 
-  if (!realtimeOrders) setOrders((o) => [posOrder, ...o]);
+  if  setOrders((o) => [posOrder, ...o]);
 
   if (cloudEnabled && ordersColRef && fbUser) {
     try {
@@ -13108,6 +13108,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
