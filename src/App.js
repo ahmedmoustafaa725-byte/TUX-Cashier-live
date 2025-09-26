@@ -87,6 +87,45 @@ const onlineFirebaseConfig = {
 
 const ONLINE_FIREBASE_APP_NAME = "tux-menu-online";
 
+const EMAILJS_SERVICE_ID = "service_418s1uk";
+const EMAILJS_TEMPLATE_ID = "template_582daeb";
+const EMAILJS_PUBLIC_KEY = "f4N1IL_5lRvJ6--3K";
+
+async function sendEmailJsEmail(templateParams = {}) {
+  const fetchFn =
+    typeof fetch === "function"
+      ? fetch
+      : typeof window !== "undefined" && typeof window.fetch === "function"
+      ? window.fetch.bind(window)
+      : null;
+  if (!fetchFn) {
+    throw new Error("Fetch API unavailable for EmailJS request");
+  }
+
+  const response = await fetchFn("https://api.emailjs.com/api/v1.0/email/send", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      service_id: EMAILJS_SERVICE_ID,
+      template_id: EMAILJS_TEMPLATE_ID,
+      user_id: EMAILJS_PUBLIC_KEY,
+      template_params: templateParams,
+    }),
+  });
+
+  if (!response.ok) {
+    let errorBody = "";
+    try {
+      errorBody = await response.text();
+    } catch (err) {
+      errorBody = "";
+    }
+    throw new Error(
+      `EmailJS request failed with status ${response.status}${errorBody ? `: ${errorBody}` : ""}`
+    );
+  }
+}
+
 function ensureFirebase() {
   const theApp = getApps().length ? getApp() : initializeApp(firebaseConfig);
   const auth = getAuth(theApp);
@@ -1032,8 +1071,9 @@ function normalizeOrderForCloud(order) {
       : [],
     orderType: normalized.orderType,
     deliveryFee: normalized.deliveryFee,
-    deliveryName: normalized.deliveryName || "",
+   deliveryName: normalized.deliveryName || "",
     deliveryPhone: normalized.deliveryPhone || "",
+    deliveryEmail: normalized.deliveryEmail || "",
     deliveryAddress: normalized.deliveryAddress || "",
     deliveryZoneId: normalized.deliveryZoneId || "",
     notifyViaWhatsapp: !!normalized.notifyViaWhatsapp,
@@ -1075,8 +1115,9 @@ function orderFromCloudDoc(id, d) {
       : [],
     orderType: d.orderType,
     deliveryFee: Number(d.deliveryFee || 0),
-    deliveryName: d.deliveryName || "",
+      deliveryName: d.deliveryName || "",
     deliveryPhone: d.deliveryPhone || "",
+    deliveryEmail: d.deliveryEmail || "",
     deliveryAddress: d.deliveryAddress || "",
     deliveryZoneId: d.deliveryZoneId || "",
     notifyViaWhatsapp: !!d.notifyViaWhatsapp,
@@ -1339,6 +1380,14 @@ function onlineOrderFromDoc(id, data = {}) {
     data?.customer?.phone ||
     deliveryInfo?.phone ||
     "";
+  const customerEmail =
+    pickFirstTruthyKey(
+      data?.customerEmail,
+      data?.email,
+      data?.customer?.email,
+      deliveryInfo?.email,
+      data?.contact?.email
+    ) || "";
   const customerAddress =
     data?.deliveryAddress ||
     data?.address ||
@@ -1361,6 +1410,7 @@ function onlineOrderFromDoc(id, data = {}) {
     deliveryFee,
     deliveryName: customerName,
     deliveryPhone: customerPhone,
+    deliveryEmail: customerEmail,
     deliveryAddress: customerAddress,
     notifyViaWhatsapp: false,
     whatsappSentAt: null,
@@ -5496,6 +5546,7 @@ const onlineFallbackId =
     deliveryFee: Math.max(0, deliveryFee),
     deliveryName: onlineOrder.deliveryName || "",
     deliveryPhone: phoneDigits,
+    deliveryEmail: onlineOrder.deliveryEmail || "",
     deliveryAddress: onlineOrder.deliveryAddress || "",
     deliveryZoneId: "",
     notifyViaWhatsapp: shouldWhatsapp,
@@ -5521,10 +5572,133 @@ const onlineFallbackId =
     onlineSourceDocId: onlineOrder.sourceDocId || "",
   });
 
-  recordCustomerFromOrder(posOrder);
+ recordCustomerFromOrder(posOrder);
+
+  const targetEmail = pickFirstTruthyKey(
+    onlineOrder.deliveryEmail,
+    onlineOrder.raw?.customerEmail,
+    onlineOrder.raw?.customer?.email,
+    onlineOrder.raw?.email,
+    onlineOrder.raw?.contact?.email
+  );
+
+  if (targetEmail) {
+    const formatMoney = (value) => {
+      const num = Number(value);
+      if (!Number.isFinite(num)) return "0.00";
+      return num.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+    };
+
+    const orderDetailsList = (posOrder.cart || []).map((line) => {
+      if (!line) return null;
+      const qty = Math.max(1, Number(line.qty || 1));
+      const unitPrice = formatMoney(line.price || 0);
+      const base = `${qty} × ${line.name || "Item"} (${unitPrice})`;
+      const extras = Array.isArray(line.extras)
+        ? line.extras
+            .filter(Boolean)
+            .map((ex) => {
+              const exPriceValue = Number(ex?.price);
+              const hasPrice = Number.isFinite(exPriceValue) && exPriceValue !== 0;
+              const exPrice = hasPrice ? formatMoney(exPriceValue) : "";
+              return `  + ${ex?.name || "Extra"}${exPrice ? ` (${exPrice})` : ""}`;
+            })
+            .join("\n")
+        : "";
+      return extras ? `${base}\n${extras}` : base;
+    });
+    const orderDetails = orderDetailsList.filter(Boolean).join("\n") || "No items";
+
+    const instructions =
+      pickFirstTruthyKey(
+        posOrder.note,
+        onlineOrder.note,
+        onlineOrder.raw?.note,
+        onlineOrder.raw?.notes,
+        onlineOrder.raw?.specialInstructions
+      ) || "";
+
+    const placedAtSource =
+      onlineOrder.createdAt ||
+      (onlineOrder.createdAtMs ? new Date(onlineOrder.createdAtMs) : null) ||
+      posOrder.date ||
+      new Date();
+    const placedAtDate =
+      placedAtSource instanceof Date
+        ? placedAtSource
+        : new Date(placedAtSource || Date.now());
+    const placedAt = Number.isNaN(+placedAtDate)
+      ? new Date().toLocaleString()
+      : placedAtDate.toLocaleString();
+
+    const templateParams = {
+      to_email: targetEmail,
+      to_name:
+        pickFirstTruthyKey(
+          posOrder.deliveryName,
+          onlineOrder.deliveryName,
+          onlineOrder.raw?.customer?.name,
+          onlineOrder.raw?.customerName
+        ) || "Customer",
+      order_no: String(posOrder.orderNo),
+      order_details: orderDetails,
+      fulfillment:
+        pickFirstTruthyKey(
+          posOrder.orderType,
+          onlineOrder.orderType,
+          onlineOrder.raw?.fulfillmentType,
+          onlineOrder.raw?.fulfillment
+        ) || "",
+      payment_method:
+        pickFirstTruthyKey(
+          posOrder.payment,
+          onlineOrder.payment,
+          onlineOrder.raw?.paymentMethod,
+          onlineOrder.raw?.paymentType
+        ) || "",
+      delivery_zone:
+        pickFirstTruthyKey(
+          onlineOrder.raw?.deliveryZone,
+          onlineOrder.raw?.delivery?.zone,
+          onlineOrder.raw?.delivery?.zoneName,
+          onlineOrder.raw?.delivery?.area,
+          onlineOrder.deliveryZoneId
+        ) || "",
+      delivery_fee: formatMoney(posOrder.deliveryFee),
+      address:
+        pickFirstTruthyKey(
+          posOrder.deliveryAddress,
+          onlineOrder.deliveryAddress,
+          onlineOrder.raw?.deliveryAddress,
+          onlineOrder.raw?.address,
+          onlineOrder.raw?.delivery?.address
+        ) || "",
+      phone:
+        pickFirstTruthyKey(
+          posOrder.deliveryPhone,
+          onlineOrder.deliveryPhone,
+          onlineOrder.raw?.customerPhone,
+          onlineOrder.raw?.phone,
+          onlineOrder.raw?.customer?.phone,
+          onlineOrder.raw?.delivery?.phone
+        ) || "",
+      instructions,
+      order_subtotal: formatMoney(posOrder.itemsTotal),
+      order_total: formatMoney(posOrder.total),
+      placed_at: placedAt,
+    };
+
+    try {
+      await sendEmailJsEmail(templateParams);
+    } catch (err) {
+      console.warn("Unable to send online order confirmation email", err);
+    }
+  }
 
   if (!realtimeOrders) setOrders((o) => [posOrder, ...o]);
-
   if (cloudEnabled && ordersColRef && fbUser) {
     try {
       const ref = await addDoc(ordersColRef, normalizeOrderForCloud(posOrder));
@@ -13094,6 +13268,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
