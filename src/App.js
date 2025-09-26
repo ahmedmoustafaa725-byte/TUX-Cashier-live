@@ -5585,12 +5585,22 @@ const onlineFallbackId =
 
  recordCustomerFromOrder(posOrder);
 
-  const targetEmail = pickFirstTruthyKey(
+const targetEmail = pickFirstTruthyKey(
+    posOrder.deliveryEmail,
     onlineOrder.deliveryEmail,
     onlineOrder.raw?.customerEmail,
     onlineOrder.raw?.customer?.email,
+    onlineOrder.raw?.customer?.emailAddress,
+    onlineOrder.raw?.customer?.email_address,
+    onlineOrder.raw?.customer?.contactEmail,
+    onlineOrder.raw?.customer?.contact?.email,
+    onlineOrder.raw?.customer?.contact?.emailAddress,
+    onlineOrder.raw?.customer?.contact?.email_address,
     onlineOrder.raw?.email,
-    onlineOrder.raw?.contact?.email
+    onlineOrder.raw?.contactEmail,
+    onlineOrder.raw?.contact?.email,
+    onlineOrder.raw?.contact?.emailAddress,
+    onlineOrder.raw?.contact?.email_address
   );
 
   if (targetEmail) {
@@ -13279,6 +13289,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
