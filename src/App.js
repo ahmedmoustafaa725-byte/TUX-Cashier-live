@@ -1106,7 +1106,7 @@ export function packStateForCloud(state) {
     orderTypes,
     defaultDeliveryFee,
     expenses,
-    dayMeta,
+     dayMeta,
     bankTx,
     reconHistory,
     realtimeOrders,
@@ -1189,7 +1189,7 @@ export function packStateForCloud(state) {
             : [],
         }
       : {},
- bankTx: (bankTx || []).map((t) => ({
+   bankTx: (bankTx || []).map((t) => ({
       ...t,
       date: toIso(t.date),
     })),
@@ -1236,6 +1236,7 @@ export function packStateForCloud(state) {
   };
   return sanitizeForFirestore(payload);
 }
+
 function computeCostBreakdown(def, invMap, ctx = {}) {
   const round2 = (v) => Number((Number.isFinite(v) ? v : 0).toFixed(2));
   const uses = def?.uses || {};
@@ -1366,7 +1367,7 @@ if (Array.isArray(data.workerSessions)) {
     }));
   }
   if (typeof data.realtimeOrders === "boolean") out.realtimeOrders = data.realtimeOrders;
-  if (data.utilityBills) out.utilityBills = data.utilityBills;
+ if (data.utilityBills) out.utilityBills = data.utilityBills;
   if (data.laborProfile) out.laborProfile = data.laborProfile;
   if (Array.isArray(data.equipmentList)) out.equipmentList = data.equipmentList;
   if (Array.isArray(data.onlineOrders)) {
@@ -4057,7 +4058,7 @@ const onlineOrderCollections = useMemo(() => {
             setInventoryLocked(unpacked.inventoryLocked);
           if (unpacked.inventorySnapshot)
             setInventorySnapshot(unpacked.inventorySnapshot);
-  if (unpacked.inventoryLockedAt != null)
+          if (unpacked.inventoryLockedAt != null)
             setInventoryLockedAt(unpacked.inventoryLockedAt);
           if (unpacked.adminPins)
             setAdminPins({ ...DEFAULT_ADMIN_PINS, ...unpacked.adminPins });
@@ -4123,23 +4124,8 @@ if (ts && lastLocalEditAt && ts < lastLocalEditAt) return;
       if (unpacked.adminPins) setAdminPins({ ...DEFAULT_ADMIN_PINS, ...unpacked.adminPins });
       if (unpacked.orderTypes) setOrderTypes(unpacked.orderTypes);
       if (unpacked.defaultDeliveryFee != null) setDefaultDeliveryFee(unpacked.defaultDeliveryFee);
-  if (unpacked.expenses) setExpenses(unpacked.expenses);
-      if (unpacked.dayMeta) setDayMeta(unpacked.dayMeta);
-      if (unpacked.bankTx) setBankTx(unpacked.bankTx);
-       if (unpacked.purchases) setPurchases(unpacked.purchases);
-      if (unpacked.purchaseCategories) {
-   setPurchaseCategories(normalizePurchaseCategories(unpacked.purchaseCategories));
- }
-      if (unpacked.customers) setCustomers(dedupeCustomers(unpacked.customers));
-      if (unpacked.deliveryZones) setDeliveryZones(unpacked.deliveryZones);
-      if (unpacked.onlineOrdersRaw)
-        setOnlineOrdersRaw(unpacked.onlineOrdersRaw);
-      if (unpacked.onlineOrderStatus)
-        setOnlineOrderStatus(unpacked.onlineOrderStatus);
-      if (unpacked.lastSeenOnlineOrderTs != null)
-        setLastSeenOnlineOrderTs(unpacked.lastSeenOnlineOrderTs);
+      if (unpacked.expenses) setExpenses(unpacked.expenses);
 
-      setLastAppliedCloudAt(ts || Date.now());
     } catch (e) {
       console.warn("Realtime state apply failed:", e);
     }
@@ -4178,7 +4164,7 @@ if (unpacked.workerSessions) setWorkerSessions(unpacked.workerSessions);
         setDefaultDeliveryFee(unpacked.defaultDeliveryFee);
       if (unpacked.expenses) setExpenses(unpacked.expenses);
       if (unpacked.dayMeta) setDayMeta(unpacked.dayMeta);
-     if (unpacked.bankTx) setBankTx(unpacked.bankTx);
+       if (unpacked.bankTx) setBankTx(unpacked.bankTx);
       if (unpacked.customers) setCustomers(dedupeCustomers(unpacked.customers));
 
        if (unpacked.purchases) setPurchases(unpacked.purchases);
@@ -4202,7 +4188,7 @@ if (unpacked.workerSessions) setWorkerSessions(unpacked.workerSessions);
  const saveToCloudNow = async () => {
   if (!stateDocRef || !fbUser) return alert("Firebase not ready.");
   try {
-  const bodyBase = packStateForCloud({
+    const bodyBase = packStateForCloud({
       menu,
       extraList,
       orders: realtimeOrders ? [] : orders,
@@ -4235,7 +4221,6 @@ if (unpacked.workerSessions) setWorkerSessions(unpacked.workerSessions);
       onlineOrderStatus,
       lastSeenOnlineOrderTs,
     });
-    
     writeSeqRef.current += 1;
     const body = {
       ...bodyBase,
@@ -4258,7 +4243,7 @@ useEffect(() => {
   if (!cloudEnabled || !stateDocRef || !fbUser || !hydrated) return;
   const t = setTimeout(async () => {
     try {
-      const bodyBase = packStateForCloud({
+ const bodyBase = packStateForCloud({
         menu,
         extraList,
         orders: realtimeOrders ? [] : orders,
@@ -13658,13 +13643,6 @@ setExtraList((arr) => [
     </div>
   );
 }
-
-
-
-
-
-
-
 
 
 
