@@ -18,9 +18,11 @@ import {
   orderBy,
   where,
   doc as fsDoc,
-  writeBatch,
+ writeBatch,
   runTransaction, // <-- atomic counter
 } from "firebase/firestore";
+import { sendOnlineOrderConfirmationEmail } from "./onlineOrderEmail";
+
 
 export const toIso = (v) => {
   if (!v) return null;
@@ -5535,17 +5537,7 @@ const onlineFallbackId =
     }
   }
 
-  setOnlineOrderStatus((prev) => {
-    const entry = { ...(prev[key] || {}) };
-    entry.state = "imported";
-    entry.posOrderNo = posOrder.orderNo;
-    entry.sourceCollection = onlineOrder.sourceCollection || entry.sourceCollection || null;
-    entry.sourceDocId = onlineOrder.sourceDocId || entry.sourceDocId || null;
-    entry.lastUpdateAt = Date.now();
-    return { ...prev, [key]: entry };
-  });
-
-  try {
+try {
     await updateOnlineOrderDoc(onlineOrder, {
       status: "accepted",
       posOrderNo: posOrder.orderNo,
@@ -5554,6 +5546,34 @@ const onlineFallbackId =
   } catch (err) {
     console.warn("Failed to update online order status in source", err);
   }
+
+  let emailResult = { status: "skipped", reason: "missing-config" };
+  try {
+    emailResult = await sendOnlineOrderConfirmationEmail(posOrder, onlineOrder);
+    if (emailResult.status === "failed") {
+      console.warn("Order confirmation email failed", emailResult.error);
+    }
+  } catch (err) {
+    const fallbackError = err?.message || String(err);
+    emailResult = { status: "failed", error: fallbackError };
+    console.warn("Order confirmation email threw", err);
+  }
+
+  setOnlineOrderStatus((prev) => {
+    const entry = { ...(prev[key] || {}) };
+    entry.state = "imported";
+    entry.posOrderNo = posOrder.orderNo;
+    entry.sourceCollection = onlineOrder.sourceCollection || entry.sourceCollection || null;
+    entry.sourceDocId = onlineOrder.sourceDocId || entry.sourceDocId || null;
+    entry.lastUpdateAt = Date.now();
+    entry.emailStatus = emailResult.status;
+    if (emailResult.error || emailResult.reason) {
+      entry.emailError = emailResult.error || emailResult.reason;
+    } else if (entry.emailError) {
+      delete entry.emailError;
+    }
+    return { ...prev, [key]: entry };
+  });
 
   return posOrder;
 };
@@ -13088,6 +13108,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
