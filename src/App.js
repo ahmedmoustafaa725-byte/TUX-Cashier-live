@@ -1384,9 +1384,20 @@ function onlineOrderFromDoc(id, data = {}) {
     pickFirstTruthyKey(
       data?.customerEmail,
       data?.email,
+      data?.contactEmail,
       data?.customer?.email,
+      data?.customer?.emailAddress,
+      data?.customer?.email_address,
+      data?.customer?.contactEmail,
+      data?.customer?.contact?.email,
+      data?.customer?.contact?.emailAddress,
+      data?.customer?.contact?.email_address,
       deliveryInfo?.email,
-      data?.contact?.email
+      deliveryInfo?.emailAddress,
+      deliveryInfo?.email_address,
+      data?.contact?.email,
+      data?.contact?.emailAddress,
+      data?.contact?.email_address
     ) || "";
   const customerAddress =
     data?.deliveryAddress ||
@@ -13268,6 +13279,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
