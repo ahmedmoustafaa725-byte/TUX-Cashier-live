@@ -2997,14 +2997,8 @@ const accountedOnlineOrders = useMemo(() => {
   return eligible;
 }, [onlineOrdersRaw, orders, dayMeta]);
 const rawInflowByMethod = useMemo(() => {
-  const onsite = sumPaymentsByMethod(orders);
-  const online = sumPaymentsByMethod(accountedOnlineOrders);
-  const merged = { ...onsite };
-  for (const [method, value] of Object.entries(online)) {
-    merged[method] = (merged[method] || 0) + Number(value || 0);
-  }
-  return merged;
-}, [orders, accountedOnlineOrders]);
+  return sumPaymentsByMethod(orders);
+}, [orders]);
 const expectedByMethod = useMemo(() => {
   const out = {};
   for (const m of paymentMethods || []) {
@@ -13094,6 +13088,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
