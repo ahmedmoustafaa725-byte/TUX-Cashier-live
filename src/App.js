@@ -344,29 +344,31 @@ function summarizePaymentParts(parts = [], fallbackMethod = "Online") {
   return normalizePaymentMethodName(fallbackMethod) || fallbackMethod || "Online";
 }
 const firebaseConfig = {
-  apiKey: "AIzaSyAp1F6t8zgRiJI9xOzFkKJVsCQIT9BWXno",
-  authDomain: "tux-cashier-system.firebaseapp.com",
-  projectId: "tux-cashier-system",
-  storageBucket: "tux-cashier-system.appspot.com",
-  messagingSenderId: "978379497015",
-  appId: "1:978379497015:web:ea165dcb6873e0c65929b2",
+  apiKey: process.env.REACT_APP_CASHIER_FIREBASE_API_KEY,
+  authDomain: process.env.REACT_APP_CASHIER_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.REACT_APP_CASHIER_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.REACT_APP_CASHIER_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.REACT_APP_CASHIER_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.REACT_APP_CASHIER_FIREBASE_APP_ID,
 };
 
 const onlineFirebaseConfig = {
-  apiKey: "AIzaSyDqjdI3ZqFSVY_5Kmowak1DCOL5bZaCYoo",
-  authDomain: "tux-menu.firebaseapp.com",
-  projectId: "tux-menu",
-  storageBucket: "tux-menu.firebasestorage.app",
-  messagingSenderId: "326432857137",
-  appId: "1:326432857137:web:926cc2ffb364b2f5d44910",
-  measurementId: "G-1T1RRHCCDQ",
+  apiKey: process.env.REACT_APP_MENU_FIREBASE_API_KEY,
+  authDomain: process.env.REACT_APP_MENU_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.REACT_APP_MENU_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.REACT_APP_MENU_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.REACT_APP_MENU_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.REACT_APP_MENU_FIREBASE_APP_ID,
+  measurementId: process.env.REACT_APP_MENU_FIREBASE_MEASUREMENT_ID,
 };
 
-const ONLINE_FIREBASE_APP_NAME = "tux-menu-online";
+const ONLINE_FIREBASE_APP_NAME = process.env.REACT_APP_ONLINE_FIREBASE_APP_NAME;
 
-const EMAILJS_SERVICE_ID = "service_418s1uk";
-const EMAILJS_TEMPLATE_ID = "template_582daeb";
-const EMAILJS_PUBLIC_KEY = "f4N1IL_5lRvJ6--3K";
+// For EmailJS
+const EMAILJS_SERVICE_ID = process.env.REACT_APP_EMAILJS_SERVICE_ID;
+const EMAILJS_TEMPLATE_ID = process.env.REACT_APP_EMAILJS_TEMPLATE_ID;
+const EMAILJS_PUBLIC_KEY = process.env.REACT_APP_EMAILJS_PUBLIC_KEY;
+
 
 async function sendEmailJsEmail(templateParams = {}) {
   const fetchFn =
@@ -13646,6 +13648,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
