@@ -2,8 +2,12 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getAuth, onAuthStateChanged, signInAnonymously } from "firebase/auth";
 import {
+  getAuth,
+  onAuthStateChanged,
+  signInAnonymously,
+  signInWithEmailAndPassword,
+} from "firebase/auth";import {
   getFirestore,
   serverTimestamp,
   Timestamp,
@@ -364,6 +368,20 @@ const onlineFirebaseConfig = {
 
 const ONLINE_FIREBASE_APP_NAME = "tux-menu-online";
 
+const ONLINE_FIREBASE_AUTH_EMAIL =
+  process.env.REACT_APP_ONLINE_FIREBASE_AUTH_EMAIL ||
+  process.env.REACT_APP_TUX_MENU_AUTH_EMAIL ||
+  "";
+const ONLINE_FIREBASE_AUTH_PASSWORD =
+  process.env.REACT_APP_ONLINE_FIREBASE_AUTH_PASSWORD ||
+  process.env.REACT_APP_TUX_MENU_AUTH_PASSWORD ||
+  "";
+const HAS_ONLINE_FIREBASE_SERVICE_LOGIN = Boolean(
+  ONLINE_FIREBASE_AUTH_EMAIL && ONLINE_FIREBASE_AUTH_PASSWORD
+);
+
+const ONLINE_FIREBASE_APP_NAME = "tux-menu-online";
+
 const EMAILJS_SERVICE_ID = "service_418s1uk";
 const EMAILJS_TEMPLATE_ID = "template_582daeb";
 const EMAILJS_PUBLIC_KEY = "f4N1IL_5lRvJ6--3K";
@@ -636,23 +654,7 @@ function SundayWeekPicker({ selectedSunday, onSelect, dark = false, btnBorder = 
   });
 const [onlineFbUser, setOnlineFbUser] = useState(null);
 
-useEffect(() => {
-  const { onlineAuth } = getOnlineServices();
-  if (!onlineAuth) return;
 
-  // Keep session observed
-  const unsub = onAuthStateChanged(onlineAuth, (u) => {
-    setOnlineFbUser(u || null);
-    if (u) console.log("✅ tux-menu anonymous user:", u.uid);
-  });
-
-  // Ensure we are signed in anonymously
-  signInAnonymously(onlineAuth).catch((err) => {
-    console.error("❌ Anonymous sign-in to tux-menu failed:", err);
-  });
-
-  return () => unsub();
-}, []);
 function getDbForSource(source) {
   if (source === "menu") {
     const { onlineDb } = getOnlineServices();
@@ -3656,6 +3658,7 @@ const [lastLocalEditAt, setLastLocalEditAt] = useState(0);
   // Prevent our own cloud writes from boomeranging back
 const clientIdRef = useRef(`cli_${Math.random().toString(36).slice(2)}`);
 const writeSeqRef = useRef(0);
+const onlineAuthAttemptRef = useRef({ inFlight: false, lastErrorCode: null });
   // Printing preferences (kept)
   const [autoPrintOnCheckout, setAutoPrintOnCheckout] = useState(true);
   const [preferredPaperWidthMm, setPreferredPaperWidthMm] = useState(80);
@@ -3970,35 +3973,77 @@ const [syncCostsFromPurchases, setSyncCostsFromPurchases] = useState(() => {
 });
 useEffect(() => { saveLocalPartial({ syncCostsFromPurchases }); }, [syncCostsFromPurchases]);
 useEffect(() => {
-  if (!purchases?.length || !syncCostsFromPurchases) return;
-  setInventory(current => {
-    let changed = false;
-    const next = current.map(it => {
-      const last = getLatestPurchaseForInv(it, purchases, purchaseCategories);
-      if (!last) return it;
-      const cpu = unitPriceToInventoryCost(last.unitPrice, last.unit, it.unit);
-      if (cpu == null) return it;
-      const v = Number(cpu.toFixed(4));
-      if (Number(it.costPerUnit || 0) === v) return it;
-      changed = true;
-      return { ...it, costPerUnit: v };
-    });
-    return changed ? next : current;
-  });
-}, [purchases, purchaseCategories, syncCostsFromPurchases]);
-const db = useMemo(() => (fbReady ? ensureFirebase().db : null), [fbReady]);
-  const onlineFirebaseApp = useMemo(
-    () => (fbReady ? ensureOnlineFirebase() : null),
-    [fbReady]
-  );
-  const onlineDb = useMemo(() => {
-    if (!onlineFirebaseApp) return null;
-    try {
-      return getFirestore(onlineFirebaseApp);
-    } catch (err) {
-      console.error("Failed to access online orders Firestore", err);
-      return null;
+    if (!onlineFirebaseApp) {
+      setOnlineFbUser(null);
+      return undefined;
     }
+
+    const auth = getAuth(onlineFirebaseApp);
+    let active = true;
+
+    onlineAuthAttemptRef.current = { inFlight: false, lastErrorCode: null };
+
+    const attemptSignIn = async () => {
+      const attemptState = onlineAuthAttemptRef.current;
+      if (!active || attemptState.inFlight) return;
+
+      attemptState.inFlight = true;
+
+      try {
+        if (HAS_ONLINE_FIREBASE_SERVICE_LOGIN) {
+          await signInWithEmailAndPassword(
+            auth,
+            ONLINE_FIREBASE_AUTH_EMAIL,
+            ONLINE_FIREBASE_AUTH_PASSWORD
+          );
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (err) {
+        if (!active) return;
+        const code = err?.code || err?.message || "unknown";
+        if (attemptState.lastErrorCode !== code) {
+          attemptState.lastErrorCode = code;
+          if (HAS_ONLINE_FIREBASE_SERVICE_LOGIN) {
+            console.error(
+              "Failed to sign in to online orders Firebase auth with service credentials",
+              err
+            );
+          } else if (
+            err?.code === "auth/admin-restricted-operation" ||
+            err?.code === "auth/operation-not-allowed"
+          ) {
+            console.error(
+              "Failed to sign in to online orders Firebase auth anonymously. Configure REACT_APP_ONLINE_FIREBASE_AUTH_EMAIL/REACT_APP_ONLINE_FIREBASE_AUTH_PASSWORD (or the TUX_MENU equivalents) to use a service user, or enable anonymous access for the tux-menu project.",
+              err
+            );
+          } else {
+            console.error("Failed to sign in to online orders Firebase auth", err);
+          }
+        }
+      } finally {
+        attemptState.inFlight = false;
+      }
+    };
+
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (!active) return;
+      if (user) {
+        onlineAuthAttemptRef.current.lastErrorCode = null;
+        setOnlineFbUser(user);
+      } else {
+        setOnlineFbUser(null);
+        attemptSignIn();
+      }
+    });
+
+    attemptSignIn();
+
+    return () => {
+      active = false;
+      setOnlineFbUser(null);
+      unsubscribe();
+    };
   }, [onlineFirebaseApp]);
   useEffect(() => {
     if (!onlineFirebaseApp) {
@@ -13680,6 +13725,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
