@@ -3642,7 +3642,37 @@ const removeBankTx = (id) => {
   const [newExtraPrice, setNewExtraPrice] = useState(0);
   const [localHydrated, setLocalHydrated] = useState(false);
 const [lastLocalEditAt, setLastLocalEditAt] = useState(0);
-  /* --------------------------- FIREBASE STATE --------------------------- */
+ /* --------------------------- FIREBASE STATE --------------------------- */
+  const primaryFirebase = useMemo(() => {
+    try {
+      return ensureFirebase();
+    } catch (err) {
+      console.error("Failed to initialize primary Firebase app", err);
+      return { auth: null, db: null };
+    }
+  }, []);
+
+  const db = primaryFirebase.db;
+
+  const onlineFirebaseApp = useMemo(() => {
+    try {
+      return ensureOnlineFirebase();
+    } catch (err) {
+      console.error("Failed to initialize online Firebase app", err);
+      return null;
+    }
+  }, []);
+
+  const onlineDb = useMemo(() => {
+    if (!onlineFirebaseApp) return null;
+    try {
+      return getFirestore(onlineFirebaseApp);
+    } catch (err) {
+      console.error("Failed to resolve Firestore for online Firebase app", err);
+      return null;
+    }
+  }, [onlineFirebaseApp]);
+
   const [fbReady, setFbReady] = useState(false);
   const [fbUser, setFbUser] = useState(null);
   const [cloudEnabled, setCloudEnabled] = useState(true);
@@ -13724,6 +13754,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
