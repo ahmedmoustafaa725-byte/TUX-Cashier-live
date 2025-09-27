@@ -434,18 +434,14 @@ function getOnlineServices() {
 
 
 const SHOP_ID = "tux";
-
-const ONLINE_ORDERS_COLLECTION_PATH = ["shops", SHOP_ID, "onlineOrders"];
+// In your React POS app code (App.js)
 
 const ONLINE_ORDER_COLLECTIONS = [
   {
     name: "pos/onlineOrders",
     source: "menu", // This correctly uses the 'tux-menu' Firebase project
-    path: ONLINE_ORDERS_COLLECTION_PATH, // This is the path we are writing to
-    // The sub-collection already scopes the data to the active shop, so filtering
-    // on `shopId` is redundant and caused us to miss orders that were written
-    // without this field set.
-    constraints: [],
+    path: ["shops", SHOP_ID, "onlineOrders"], // This is the path we are writing to
+    constraints: [where("shopId", "==", SHOP_ID)], // This filter remains correct
   },
 ];
 const LS_KEY = "tux_pos_local_state_v1";
@@ -4326,11 +4322,8 @@ useEffect(() => {
   equipmentList,
   dayMeta,
   bankTx,
- realtimeOrders,
+  realtimeOrders,
   reconHistory,
-  onlineOrdersRaw,
-  onlineOrderStatus,
-  lastSeenOnlineOrderTs,
 ]);
   const startedAtMs = dayMeta?.startedAt
     ? new Date(dayMeta.startedAt).getTime()
@@ -13650,9 +13643,6 @@ setExtraList((arr) => [
     </div>
   );
 }
-
-
-
 
 
 
