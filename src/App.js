@@ -2,15 +2,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { initializeApp, getApps, getApp } from "firebase/app";
+import { getAuth, onAuthStateChanged, signInAnonymously } from "firebase/auth";
 import {
-  getAuth,
-  onAuthStateChanged,
-  signInAnonymously,
-  signInWithEmailAndPassword,
-} from "firebase/auth";import {
   getFirestore,
   serverTimestamp,
-  Timestamp, 
+  Timestamp,
   collection,
   addDoc,
   updateDoc,
@@ -366,19 +362,6 @@ const onlineFirebaseConfig = {
   measurementId: "G-1T1RRHCCDQ",
 };
 
-
-const ONLINE_FIREBASE_AUTH_EMAIL =
-  process.env.REACT_APP_ONLINE_FIREBASE_AUTH_EMAIL ||
-  process.env.REACT_APP_TUX_MENU_AUTH_EMAIL ||
-  "";
-const ONLINE_FIREBASE_AUTH_PASSWORD =
-  process.env.REACT_APP_ONLINE_FIREBASE_AUTH_PASSWORD ||
-  process.env.REACT_APP_TUX_MENU_AUTH_PASSWORD ||
-  "";
-const HAS_ONLINE_FIREBASE_SERVICE_LOGIN = Boolean(
-  ONLINE_FIREBASE_AUTH_EMAIL && ONLINE_FIREBASE_AUTH_PASSWORD
-);
-
 const ONLINE_FIREBASE_APP_NAME = "tux-menu-online";
 
 const EMAILJS_SERVICE_ID = "service_418s1uk";
@@ -440,7 +423,14 @@ function ensureOnlineFirebase() {
     }
   }
 }
-
+function getOnlineServices() {
+  const app = ensureOnlineFirebase();
+  if (!app) return { onlineAuth: null, onlineDb: null };
+  return {
+    onlineAuth: getAuth(app),
+    onlineDb: getFirestore(app),
+  };
+}
 
 
 const SHOP_ID = "tux";
@@ -451,41 +441,9 @@ const ONLINE_ORDER_COLLECTIONS = [
     name: "pos/onlineOrders",
     source: "menu", // This correctly uses the 'tux-menu' Firebase project
     path: ["shops", SHOP_ID, "onlineOrders"], // This is the path we are writing to
-    // Filtering by shopId is redundant because the collection already lives
-    // underneath the specific shop document. Some upstream payloads stopped
-    // including the `shopId` field which caused the query to return nothing.
-    // By omitting the constraint we accept both shapes.
+    constraints: [where("shopId", "==", SHOP_ID)], // This filter remains correct
   },
 ];
-
-const normalizeShopId = (value) => {
-  if (value == null) return null;
-  const str = String(value).trim();
-  return str ? str.toLowerCase() : null;
-};
-
-const matchesShopId = (data, expected) => {
-  const normalizedExpected = normalizeShopId(expected);
-  if (!normalizedExpected) return true;
-
-  const candidates = [
-    data?.shopId,
-    data?.shopID,
-    data?.shop?.id,
-    data?.shop?.shopId,
-    data?.shop?.shopID,
-    data?.shop?.identifier,
-  ];
-
-  for (const candidate of candidates) {
-    const normalizedCandidate = normalizeShopId(candidate);
-    if (!normalizedCandidate) continue;
-    return normalizedCandidate === normalizedExpected;
-  }
-
-  // If the payload no longer carries a shop identifier, trust the path scoping.
-  return true;
-};
 const LS_KEY = "tux_pos_local_state_v1";
 function loadLocal() {
 
@@ -644,6 +602,48 @@ function SundayWeekPicker({ selectedSunday, onSelect, dark = false, btnBorder = 
     const base = selectedStart || new Date();
     return new Date(base.getFullYear(), base.getMonth(), 1);
   });
+const [onlineFbUser, setOnlineFbUser] = useState(null);
+
+useEffect(() => {
+  const { onlineAuth } = getOnlineServices();
+  if (!onlineAuth) return;
+
+  // Keep session observed
+  const unsub = onAuthStateChanged(onlineAuth, (u) => {
+    setOnlineFbUser(u || null);
+    if (u) console.log("✅ tux-menu anonymous user:", u.uid);
+  });
+
+  // Ensure we are signed in anonymously
+  signInAnonymously(onlineAuth).catch((err) => {
+    console.error("❌ Anonymous sign-in to tux-menu failed:", err);
+  });
+
+  return () => unsub();
+}, []);
+function getDbForSource(source) {
+  if (source === "menu") {
+    const { onlineDb } = getOnlineServices();
+    return onlineDb;        // tux-menu Firestore
+  }
+  const { db } = ensureFirebase();
+  return db;                // primary POS Firestore
+}
+
+// Example when wiring listeners:
+ONLINE_ORDER_COLLECTIONS.forEach((def) => {
+  const dbForThis = getDbForSource(def.source);
+  if (!dbForThis) return;
+
+  // (Optional) gate menu listeners until anonymous auth is ready
+  if (def.source === "menu" && !onlineFbUser) return;
+
+  const colRef = collection(dbForThis, ...def.path);
+  const q = query(colRef, orderBy("createdAt", "desc"));
+  onSnapshot(q, (snap) => {
+    // merge/dedupe as you already do
+  });
+});
 
   useEffect(() => {
     if (!selectedStart) return;
@@ -2312,6 +2312,25 @@ function convertToInventoryUnit(qty, purchaseUnit, invUnit) {
   const inBase = Number(qty || 0) * p.factor;
   return inBase / i.factor;           // in inventory units
 }
+function getLatestPurchaseForInv(inventoryItem, purchases, purchaseCategories) {
+  let best = null;
+  const invName = String(inventoryItem?.name || "").toLowerCase();
+
+  for (const p of purchases || []) {
+    const when = p?.date instanceof Date ? p.date : new Date(p?.date);
+    if (p.ingredientId && p.ingredientId === inventoryItem.id) {
+      if (!best || when > best._when) best = { ...p, _when: when };
+      continue;
+    }
+    if (!p.ingredientId) {
+      const catName = (purchaseCategories.find(c => c.id === p.categoryId)?.name || "").toLowerCase();
+      if (catName && catName === invName) {
+        if (!best || when > best._when) best = { ...p, _when: when };
+      }
+    }
+  }
+  return best;
+}
 const getNextMenuId = (menu=[]) =>
   (menu.reduce((m, it) => Math.max(m, Number(it?.id ?? 0)), 0) || 0) + 1;
 function sumPaymentsByMethod(orders = []) {
@@ -3590,37 +3609,8 @@ const removeBankTx = (id) => {
   const [newExtraPrice, setNewExtraPrice] = useState(0);
   const [localHydrated, setLocalHydrated] = useState(false);
 const [lastLocalEditAt, setLastLocalEditAt] = useState(0);
- /* --------------------------- FIREBASE STATE --------------------------- */
-  const primaryFirebase = useMemo(() => {
-    try {
-      return ensureFirebase();
-    } catch (err) {
-      console.error("Failed to initialize primary Firebase app", err);
-      return { auth: null, db: null };
-    }
-  }, []);
-
-  const db = primaryFirebase.db;
-
-  const onlineFirebaseApp = useMemo(() => {
-    try {
-      return ensureOnlineFirebase();
-    } catch (err) {
-      console.error("Failed to initialize online Firebase app", err);
-      return null;
-    }
-  }, []);
-
-  const onlineDb = useMemo(() => {
-    if (!onlineFirebaseApp) return null;
-    try {
-      return getFirestore(onlineFirebaseApp);
-    } catch (err) {
-      console.error("Failed to resolve Firestore for online Firebase app", err);
-      return null;
-    }
-  }, [onlineFirebaseApp]);
-
+  /* --------------------------- FIREBASE STATE --------------------------- */
+  const [fbReady, setFbReady] = useState(false);
   const [fbUser, setFbUser] = useState(null);
   const [cloudEnabled, setCloudEnabled] = useState(true);
   const [realtimeOrders, setRealtimeOrders] = useState(true);
@@ -3634,7 +3624,6 @@ const [lastLocalEditAt, setLastLocalEditAt] = useState(0);
   // Prevent our own cloud writes from boomeranging back
 const clientIdRef = useRef(`cli_${Math.random().toString(36).slice(2)}`);
 const writeSeqRef = useRef(0);
-const onlineAuthAttemptRef = useRef({ inFlight: false, lastErrorCode: null });
   // Printing preferences (kept)
   const [autoPrintOnCheckout, setAutoPrintOnCheckout] = useState(true);
   const [preferredPaperWidthMm, setPreferredPaperWidthMm] = useState(80);
@@ -3648,8 +3637,9 @@ const onlineAuthAttemptRef = useRef({ inFlight: false, lastErrorCode: null });
   setReconCounts((prev) => ({ ...init, ...prev }));
 }, [dayMeta.startedAt, paymentMethods]);
   useEffect(() => {
-  try {
+    try {
       const { auth } = ensureFirebase();
+      setFbReady(true);
       const unsub = onAuthStateChanged(auth, async (u) => {
         if (!u) {
           try {
@@ -3948,77 +3938,35 @@ const [syncCostsFromPurchases, setSyncCostsFromPurchases] = useState(() => {
 });
 useEffect(() => { saveLocalPartial({ syncCostsFromPurchases }); }, [syncCostsFromPurchases]);
 useEffect(() => {
-    if (!onlineFirebaseApp) {
-      setOnlineFbUser(null);
-      return undefined;
-    }
-
-    const auth = getAuth(onlineFirebaseApp);
-    let active = true;
-
-    onlineAuthAttemptRef.current = { inFlight: false, lastErrorCode: null };
-
-    const attemptSignIn = async () => {
-      const attemptState = onlineAuthAttemptRef.current;
-      if (!active || attemptState.inFlight) return;
-
-      attemptState.inFlight = true;
-
-      try {
-        if (HAS_ONLINE_FIREBASE_SERVICE_LOGIN) {
-          await signInWithEmailAndPassword(
-            auth,
-            ONLINE_FIREBASE_AUTH_EMAIL,
-            ONLINE_FIREBASE_AUTH_PASSWORD
-          );
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (err) {
-        if (!active) return;
-        const code = err?.code || err?.message || "unknown";
-        if (attemptState.lastErrorCode !== code) {
-          attemptState.lastErrorCode = code;
-          if (HAS_ONLINE_FIREBASE_SERVICE_LOGIN) {
-            console.error(
-              "Failed to sign in to online orders Firebase auth with service credentials",
-              err
-            );
-          } else if (
-            err?.code === "auth/admin-restricted-operation" ||
-            err?.code === "auth/operation-not-allowed"
-          ) {
-            console.error(
-              "Failed to sign in to online orders Firebase auth anonymously. Configure REACT_APP_ONLINE_FIREBASE_AUTH_EMAIL/REACT_APP_ONLINE_FIREBASE_AUTH_PASSWORD (or the TUX_MENU equivalents) to use a service user, or enable anonymous access for the tux-menu project.",
-              err
-            );
-          } else {
-            console.error("Failed to sign in to online orders Firebase auth", err);
-          }
-        }
-      } finally {
-        attemptState.inFlight = false;
-      }
-    };
-
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (!active) return;
-      if (user) {
-        onlineAuthAttemptRef.current.lastErrorCode = null;
-        setOnlineFbUser(user);
-      } else {
-        setOnlineFbUser(null);
-        attemptSignIn();
-      }
+  if (!purchases?.length || !syncCostsFromPurchases) return;
+  setInventory(current => {
+    let changed = false;
+    const next = current.map(it => {
+      const last = getLatestPurchaseForInv(it, purchases, purchaseCategories);
+      if (!last) return it;
+      const cpu = unitPriceToInventoryCost(last.unitPrice, last.unit, it.unit);
+      if (cpu == null) return it;
+      const v = Number(cpu.toFixed(4));
+      if (Number(it.costPerUnit || 0) === v) return it;
+      changed = true;
+      return { ...it, costPerUnit: v };
     });
-
-    attemptSignIn();
-
-    return () => {
-      active = false;
-      setOnlineFbUser(null);
-      unsubscribe();
-    };
+    return changed ? next : current;
+  });
+}, [purchases, purchaseCategories, syncCostsFromPurchases]);
+const db = useMemo(() => (fbReady ? ensureFirebase().db : null), [fbReady]);
+  const onlineFirebaseApp = useMemo(
+    () => (fbReady ? ensureOnlineFirebase() : null),
+    [fbReady]
+  );
+  const onlineDb = useMemo(() => {
+    if (!onlineFirebaseApp) return null;
+    try {
+      return getFirestore(onlineFirebaseApp);
+    } catch (err) {
+      console.error("Failed to access online orders Firestore", err);
+      return null;
+    }
   }, [onlineFirebaseApp]);
   useEffect(() => {
     if (!onlineFirebaseApp) {
@@ -4467,11 +4415,9 @@ const unsubscribers = onlineOrderCollections.map(({ name, ref, pathSegments, sou
         (snap) => {
           if (!active) return;
           const arr = [];
-        snap.forEach((doc) => {
+          snap.forEach((doc) => {
             try {
-              const docData = doc.data();
-              if (!matchesShopId(docData, SHOP_ID)) return;
-              const parsed = onlineOrderFromDoc(doc.id, docData);
+              const parsed = onlineOrderFromDoc(doc.id, doc.data());
               arr.push({
                 ...parsed,
                 id: parsed?.id || doc.id,
@@ -13700,14 +13646,6 @@ setExtraList((arr) => [
     </div>
   );
 }
-
-
-
-
-
-
-
-
 
 
 
