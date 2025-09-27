@@ -366,7 +366,6 @@ const onlineFirebaseConfig = {
   measurementId: "G-1T1RRHCCDQ",
 };
 
-const ONLINE_FIREBASE_APP_NAME = "tux-menu-online";
 
 const ONLINE_FIREBASE_AUTH_EMAIL =
   process.env.REACT_APP_ONLINE_FIREBASE_AUTH_EMAIL ||
@@ -13725,6 +13724,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
