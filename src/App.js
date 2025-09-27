@@ -440,14 +440,7 @@ function ensureOnlineFirebase() {
     }
   }
 }
-function getOnlineServices() {
-  const app = ensureOnlineFirebase();
-  if (!app) return { onlineAuth: null, onlineDb: null };
-  return {
-    onlineAuth: getAuth(app),
-    onlineDb: getFirestore(app),
-  };
-}
+
 
 
 const SHOP_ID = "tux";
@@ -13707,6 +13700,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
