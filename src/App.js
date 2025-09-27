@@ -441,9 +441,41 @@ const ONLINE_ORDER_COLLECTIONS = [
     name: "pos/onlineOrders",
     source: "menu", // This correctly uses the 'tux-menu' Firebase project
     path: ["shops", SHOP_ID, "onlineOrders"], // This is the path we are writing to
-    constraints: [where("shopId", "==", SHOP_ID)], // This filter remains correct
+    // Filtering by shopId is redundant because the collection already lives
+    // underneath the specific shop document. Some upstream payloads stopped
+    // including the `shopId` field which caused the query to return nothing.
+    // By omitting the constraint we accept both shapes.
   },
 ];
+
+const normalizeShopId = (value) => {
+  if (value == null) return null;
+  const str = String(value).trim();
+  return str ? str.toLowerCase() : null;
+};
+
+const matchesShopId = (data, expected) => {
+  const normalizedExpected = normalizeShopId(expected);
+  if (!normalizedExpected) return true;
+
+  const candidates = [
+    data?.shopId,
+    data?.shopID,
+    data?.shop?.id,
+    data?.shop?.shopId,
+    data?.shop?.shopID,
+    data?.shop?.identifier,
+  ];
+
+  for (const candidate of candidates) {
+    const normalizedCandidate = normalizeShopId(candidate);
+    if (!normalizedCandidate) continue;
+    return normalizedCandidate === normalizedExpected;
+  }
+
+  // If the payload no longer carries a shop identifier, trust the path scoping.
+  return true;
+};
 const LS_KEY = "tux_pos_local_state_v1";
 function loadLocal() {
 
@@ -4415,9 +4447,11 @@ const unsubscribers = onlineOrderCollections.map(({ name, ref, pathSegments, sou
         (snap) => {
           if (!active) return;
           const arr = [];
-          snap.forEach((doc) => {
+        snap.forEach((doc) => {
             try {
-              const parsed = onlineOrderFromDoc(doc.id, doc.data());
+              const docData = doc.data();
+              if (!matchesShopId(docData, SHOP_ID)) return;
+              const parsed = onlineOrderFromDoc(doc.id, docData);
               arr.push({
                 ...parsed,
                 id: parsed?.id || doc.id,
@@ -13646,6 +13680,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
