@@ -344,31 +344,29 @@ function summarizePaymentParts(parts = [], fallbackMethod = "Online") {
   return normalizePaymentMethodName(fallbackMethod) || fallbackMethod || "Online";
 }
 const firebaseConfig = {
-  apiKey: process.env.REACT_APP_CASHIER_FIREBASE_API_KEY,
-  authDomain: process.env.REACT_APP_CASHIER_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.REACT_APP_CASHIER_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.REACT_APP_CASHIER_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.REACT_APP_CASHIER_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.REACT_APP_CASHIER_FIREBASE_APP_ID,
+  apiKey: "AIzaSyAp1F6t8zgRiJI9xOzFkKJVsCQIT9BWXno",
+  authDomain: "tux-cashier-system.firebaseapp.com",
+  projectId: "tux-cashier-system",
+  storageBucket: "tux-cashier-system.appspot.com",
+  messagingSenderId: "978379497015",
+  appId: "1:978379497015:web:ea165dcb6873e0c65929b2",
 };
 
 const onlineFirebaseConfig = {
-  apiKey: process.env.REACT_APP_MENU_FIREBASE_API_KEY,
-  authDomain: process.env.REACT_APP_MENU_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.REACT_APP_MENU_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.REACT_APP_MENU_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.REACT_APP_MENU_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.REACT_APP_MENU_FIREBASE_APP_ID,
-  measurementId: process.env.REACT_APP_MENU_FIREBASE_MEASUREMENT_ID,
+  apiKey: "AIzaSyDqjdI3ZqFSVY_5Kmowak1DCOL5bZaCYoo",
+  authDomain: "tux-menu.firebaseapp.com",
+  projectId: "tux-menu",
+  storageBucket: "tux-menu.firebasestorage.app",
+  messagingSenderId: "326432857137",
+  appId: "1:326432857137:web:926cc2ffb364b2f5d44910",
+  measurementId: "G-1T1RRHCCDQ",
 };
 
-const ONLINE_FIREBASE_APP_NAME = process.env.REACT_APP_ONLINE_FIREBASE_APP_NAME;
+const ONLINE_FIREBASE_APP_NAME = "tux-menu-online";
 
-// For EmailJS
-const EMAILJS_SERVICE_ID = process.env.REACT_APP_EMAILJS_SERVICE_ID;
-const EMAILJS_TEMPLATE_ID = process.env.REACT_APP_EMAILJS_TEMPLATE_ID;
-const EMAILJS_PUBLIC_KEY = process.env.REACT_APP_EMAILJS_PUBLIC_KEY;
-
+const EMAILJS_SERVICE_ID = "service_418s1uk";
+const EMAILJS_TEMPLATE_ID = "template_582daeb";
+const EMAILJS_PUBLIC_KEY = "f4N1IL_5lRvJ6--3K";
 
 async function sendEmailJsEmail(templateParams = {}) {
   const fetchFn =
@@ -425,7 +423,14 @@ function ensureOnlineFirebase() {
     }
   }
 }
-
+function getOnlineServices() {
+  const app = ensureOnlineFirebase();
+  if (!app) return { onlineAuth: null, onlineDb: null };
+  return {
+    onlineAuth: getAuth(app),
+    onlineDb: getFirestore(app),
+  };
+}
 
 
 const SHOP_ID = "tux";
@@ -593,10 +598,52 @@ function SundayWeekPicker({ selectedSunday, onSelect, dark = false, btnBorder = 
 
   const selectedStartTime = selectedStart ? selectedStart.getTime() : null;
 
-const [viewMonth, setViewMonth] = useState(() => {
+  const [viewMonth, setViewMonth] = useState(() => {
     const base = selectedStart || new Date();
     return new Date(base.getFullYear(), base.getMonth(), 1);
   });
+const [onlineFbUser, setOnlineFbUser] = useState(null);
+
+useEffect(() => {
+  const { onlineAuth } = getOnlineServices();
+  if (!onlineAuth) return;
+
+  // Keep session observed
+  const unsub = onAuthStateChanged(onlineAuth, (u) => {
+    setOnlineFbUser(u || null);
+    if (u) console.log("✅ tux-menu anonymous user:", u.uid);
+  });
+
+  // Ensure we are signed in anonymously
+  signInAnonymously(onlineAuth).catch((err) => {
+    console.error("❌ Anonymous sign-in to tux-menu failed:", err);
+  });
+
+  return () => unsub();
+}, []);
+function getDbForSource(source) {
+  if (source === "menu") {
+    const { onlineDb } = getOnlineServices();
+    return onlineDb;        // tux-menu Firestore
+  }
+  const { db } = ensureFirebase();
+  return db;                // primary POS Firestore
+}
+
+// Example when wiring listeners:
+ONLINE_ORDER_COLLECTIONS.forEach((def) => {
+  const dbForThis = getDbForSource(def.source);
+  if (!dbForThis) return;
+
+  // (Optional) gate menu listeners until anonymous auth is ready
+  if (def.source === "menu" && !onlineFbUser) return;
+
+  const colRef = collection(dbForThis, ...def.path);
+  const q = query(colRef, orderBy("createdAt", "desc"));
+  onSnapshot(q, (snap) => {
+    // merge/dedupe as you already do
+  });
+});
 
   useEffect(() => {
     if (!selectedStart) return;
@@ -2934,75 +2981,60 @@ const isBankLocked = (t) =>
     (t?.type === "init" && /Auto Init from day margin/i.test(t?.note || ""))
   );
 export default function App() {
-  const initialLocalStateRef = useRef();
-  if (initialLocalStateRef.current === undefined) {
-    initialLocalStateRef.current = loadLocal();
-  }
-  const initialLocalState = initialLocalStateRef.current || {};
-
   const [activeTab, setActiveTab] = useState("orders");
-  const [adminSubTab, setAdminSubTab] = useState(() => {
-    const stored = initialLocalState?.adminSubTab;
-    return typeof stored === "string" ? stored : "inventory";
-  });
-  const [dark, setDark] = useState(Boolean(initialLocalState?.dark));
-  const [workers, setWorkers] = useState(
-    Array.isArray(initialLocalState?.workers)
-      ? initialLocalState.workers
-      : BASE_WORKERS
-  );
-
-  const [newWorker, setNewWorker] = useState("");
-  const [paymentMethods, setPaymentMethods] = useState(
-    Array.isArray(initialLocalState?.paymentMethods)
-      ? initialLocalState.paymentMethods
-      : DEFAULT_PAYMENT_METHODS
-  );
-  const [newPayment, setNewPayment] = useState("");
-  const [targetMarginPct, setTargetMarginPct] = useState(() => {
-    const v = Number(initialLocalState?.targetMarginPct);
-    return Number.isFinite(v) ? v : 0.5; // default 50% like your screenshot
-  });
-  const [utilityBills, setUtilityBills] = useState(() =>
-    normalizeUtilityBills(initialLocalState?.utilityBills || DEFAULT_UTILITY_BILLS)
-  );
-  const [laborProfile, setLaborProfile] = useState(() =>
-    normalizeLaborProfile(initialLocalState?.laborProfile || DEFAULT_LABOR_PROFILE)
-  );
-  const [equipmentList, setEquipmentList] = useState(() => {
-    const raw = Array.isArray(initialLocalState?.equipmentList)
-      ? initialLocalState.equipmentList
-      : BASE_EQUIPMENT;
-    return normalizeEquipmentList(raw);
-  });
-  const [showLowMarginOnly, setShowLowMarginOnly] = useState(
-    Boolean(initialLocalState?.showLowMarginOnly)
-  );
-  const [cogsTypeFilter, setCogsTypeFilter] = useState("all");
-  const [cogsSearch, setCogsSearch] = useState("");
-  const [cogsSort, setCogsSort] = useState({ key: "margin", dir: "asc" });
-  const [inlinePriceDrafts, setInlinePriceDrafts] = useState({});
+const [adminSubTab, setAdminSubTab] = useState("inventory"); 
+  const [dark, setDark] = useState(false);
+  const [workers, setWorkers] = useState(BASE_WORKERS);
+  
+const [newWorker, setNewWorker] = useState("");
+const [paymentMethods, setPaymentMethods] = useState(DEFAULT_PAYMENT_METHODS);
+const [newPayment, setNewPayment] = useState("");
+const [targetMarginPct, setTargetMarginPct] = useState(() => {
+  const l = loadLocal();
+  const v = Number(l?.targetMarginPct);
+  return isFinite(v) ? v : 0.5; // default 50% like your screenshot
+});
+const [utilityBills, setUtilityBills] = useState(() => {
+  const l = loadLocal();
+  return normalizeUtilityBills(l?.utilityBills || DEFAULT_UTILITY_BILLS);
+});
+const [laborProfile, setLaborProfile] = useState(() => {
+  const l = loadLocal();
+  return normalizeLaborProfile(l?.laborProfile || DEFAULT_LABOR_PROFILE);
+});
+const [equipmentList, setEquipmentList] = useState(() => {
+  const l = loadLocal();
+  const raw = Array.isArray(l?.equipmentList) ? l.equipmentList : BASE_EQUIPMENT;
+  return normalizeEquipmentList(raw);
+});
+const [showLowMarginOnly, setShowLowMarginOnly] = useState(() => {
+  const l = loadLocal();
+  return Boolean(l?.showLowMarginOnly);
+});
+const [cogsTypeFilter, setCogsTypeFilter] = useState("all");
+const [cogsSearch, setCogsSearch] = useState("");
+const [cogsSort, setCogsSort] = useState({ key: "margin", dir: "asc" });
+const [inlinePriceDrafts, setInlinePriceDrafts] = useState({});
   const [historicalOrders, setHistoricalOrders] = useState(() => {
-    const raw = Array.isArray(initialLocalState?.historicalOrders)
-      ? initialLocalState.historicalOrders
-      : [];
-    return raw.map((order) => {
-      const converted = {
-        ...order,
-        date: order?.date ? new Date(order.date) : order?.date,
-        restockedAt: order?.restockedAt
-          ? new Date(order.restockedAt)
-          : order?.restockedAt,
-      };
-      return enrichOrderWithChannel(converted);
-    });
+  const l = loadLocal();
+  const raw = Array.isArray(l.historicalOrders) ? l.historicalOrders : [];
+  return raw.map((order) => {
+    const converted = {
+      ...order,
+      date: order?.date ? new Date(order.date) : order?.date,
+      restockedAt: order?.restockedAt ? new Date(order.restockedAt) : order?.restockedAt,
+    };
+    return enrichOrderWithChannel(converted);
   });
-  const [historicalExpenses, setHistoricalExpenses] = useState(
-    () => initialLocalState?.historicalExpenses || []
-  );
-  const [historicalPurchases, setHistoricalPurchases] = useState(
-    () => initialLocalState?.historicalPurchases || []
-  );
+});
+const [historicalExpenses, setHistoricalExpenses] = useState(() => {
+  const l = loadLocal();
+  return l.historicalExpenses || [];
+});
+const [historicalPurchases, setHistoricalPurchases] = useState(() => {
+  const l = loadLocal();
+  return l.historicalPurchases || [];
+});
 const [reportFilter, setReportFilter] = useState("shift");
 const [reportDay, setReportDay] = useState(() => new Date().toISOString().slice(0, 10));
 const [reportMonth, setReportMonth] = useState(() => {
@@ -3058,7 +3090,7 @@ const [inventorySnapshot, setInventorySnapshot] = useState([]);
 const [inventoryLockedAt, setInventoryLockedAt] = useState(null);
 const [showLowStock, setShowLowStock] = useState(false);
 const [purchaseCategories, setPurchaseCategories] = useState(() =>
-  normalizePurchaseCategories(initialLocalState?.purchaseCategories || [])
+  normalizePurchaseCategories(loadLocal().purchaseCategories || [])
 );
 const [purchases, setPurchases] = useState([]);
 const [purchaseFilter, setPurchaseFilter] = useState("day");
@@ -3229,7 +3261,17 @@ const [dayMeta, setDayMeta] = useState({
 const [workerProfiles, setWorkerProfiles] = useState(BASE_WORKER_PROFILES);
 const [showAddWorker, setShowAddWorker] = useState(false);
   const [usageFilter, setUsageFilter] = useState(() => {
-
+  const l = loadLocal();
+  return l?.usageFilter || "week";
+});
+const [usageWeekDate, setUsageWeekDate] = useState(() => {
+  const l = loadLocal();
+  return l?.usageWeekDate || new Date().toISOString().slice(0, 10);
+});
+const [usageMonth, setUsageMonth] = useState(() => {
+  const l = loadLocal();
+  return l?.usageMonth || new Date().toISOString().slice(0, 7);
+});
 const resetUsageViewAdmin = () => {
   const okAdmin = !!promptAdminAndPin();
   if (!okAdmin) return;
@@ -3277,7 +3319,29 @@ const activeWorkers = useMemo(() => {
   return names;
 }, [workerSessions]);
 const [orders, setOrders] = useState([]);
-
+const [onlineFbUser, setOnlineFbUser] = useState(null);const [orderBoardFilter, setOrderBoardFilter] = useState(() => {
+  const l = loadLocal();
+  return l?.orderBoardFilter === "online" ? "online" : "onsite";
+});
+const [lastSeenOnlineOrderTs, setLastSeenOnlineOrderTs] = useState(() => {
+  const l = loadLocal();
+  const v = Number(l?.lastSeenOnlineOrderTs);
+  return Number.isFinite(v) ? v : 0;
+});
+const [onlineViewCutoff, setOnlineViewCutoff] = useState(() => {
+  const l = loadLocal();
+  const v = Number(l?.lastSeenOnlineOrderTs);
+  return Number.isFinite(v) ? v : 0;
+});
+const [onlineOrdersRaw, setOnlineOrdersRaw] = useState([]);
+const onlineOrderSourcesRef = useRef({});const [bankTx, setBankTx] = useState([]);
+const [onlineOrderStatus, setOnlineOrderStatus] = useState(() => {
+  const raw = loadLocal()?.onlineOrderStatus;
+  if (!raw || typeof raw !== "object") return {};
+  const out = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (!key) continue;
+    out[key] = { ...value };
   }
   return out;
 });
@@ -3688,7 +3752,7 @@ useEffect(() => {
   /*hydrate from local*/
 useEffect(() => {
   if (localHydrated) return;
-  const l = initialLocalState;
+  const l = loadLocal();
   if (l.menu) setMenu(l.menu);
   if (l.extraList) setExtraList(l.extraList);
   if (l.workers) setWorkers(l.workers);
@@ -3779,7 +3843,10 @@ useEffect(() => {
 }, [workerSessions]);
   
   useEffect(() => { saveLocalPartial({ adminSubTab }); }, [adminSubTab]);
-
+useEffect(() => {
+  const l = loadLocal();
+  if (typeof l.adminSubTab === "string") setAdminSubTab(l.adminSubTab);
+}, []); 
 useEffect(() => { saveLocalPartial({ reconHistory }); }, [reconHistory]);
 useEffect(() => { saveLocalPartial({ reconCounts }); }, [reconCounts]);
 useEffect(() => { saveLocalPartial({ reconSavedBy }); }, [reconSavedBy]);
@@ -3866,8 +3933,8 @@ useEffect(() => {
   }
 }, [cogsKey, menu, extraList]);
 const [syncCostsFromPurchases, setSyncCostsFromPurchases] = useState(() => {
-  const stored = initialLocalState?.syncCostsFromPurchases;
-  return typeof stored === "boolean" ? stored : true;
+  const l = loadLocal();
+  return typeof l?.syncCostsFromPurchases === "boolean" ? l.syncCostsFromPurchases : true;
 });
 useEffect(() => { saveLocalPartial({ syncCostsFromPurchases }); }, [syncCostsFromPurchases]);
 useEffect(() => {
@@ -13579,9 +13646,6 @@ setExtraList((arr) => [
     </div>
   );
 }
-
-
-
 
 
 
