@@ -1,5 +1,3 @@
-in the reconcile tab after the worker press make for an online order the total money saved in the reconcile tab i salways more that the eactal total of the order fix this issue
-
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -13644,3 +13642,4 @@ setExtraList((arr) => [
     </div>
   );
 }
+
