@@ -1,3 +1,4 @@
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -6426,7 +6427,7 @@ const voidOrderToExpense = async (orderNo) => {
     alert("Report history and filters have been reset.");
   };
 
-const computeProfitBuckets = useCallback(
+  const computeProfitBuckets = useCallback(
     (rangeStart, rangeEnd) => {
       if (!rangeStart || !rangeEnd) return [];
       const startMs = +rangeStart;
@@ -6484,10 +6485,10 @@ const computeProfitBuckets = useCallback(
 
       const inRange = (d) => d >= start && d <= end;
 
-      // FIX: This calculation should only use processed orders from the main `orders` state
-      // and historical orders, NOT pending online orders.
-      const allOrders = mergeRows(orders, historicalOrders);
-      
+    const allOrders = [
+        ...mergeRows(orders, historicalOrders),
+        ...accountedOnlineOrders,
+      ];
       for (const order of allOrders) {
         if (!order || order.voided) continue;
         const when = toDate(order.date);
@@ -6549,6 +6550,7 @@ const computeProfitBuckets = useCallback(
       historicalOrders,
       historicalPurchases,
       historicalExpenses,
+      accountedOnlineOrders,
       dayMeta,
     ]
   );
@@ -6617,7 +6619,7 @@ const computeProfitBuckets = useCallback(
       .sort((a, b) => toMs(b.date) - toMs(a.date));
   }, [reportOrders]);
 
-const totals = useMemo(() => {
+  const totals = useMemo(() => {
     const makeEmptyMaps = () => {
       const byPay = {};
       for (const method of paymentMethods) byPay[method] = 0;
@@ -6676,14 +6678,19 @@ const totals = useMemo(() => {
         ? [...(historicalRows || []), ...(liveRows || [])]
         : liveRows || [];
 
-    // FIX: This calculation should only use processed orders.
-    // By removing `accountedOnlineOrders`, the totals will be accurate
-    // for reconciliation and shift reports.
-    const filteredOrders = mergeRows(orders, historicalOrders).filter((order) => {
+   const onsiteOrders = mergeRows(orders, historicalOrders).filter((order) => {
       if (!order || order.voided) return false;
       const when = toDate(order.date);
       return when && when >= start && when <= end;
     });
+
+    const onlineOrdersForTotals = accountedOnlineOrders.filter((order) => {
+      if (!order) return false;
+      const when = toDate(order.date);
+      return when && when >= start && when <= end;
+    });
+
+    const filteredOrders = [...onsiteOrders, ...onlineOrdersForTotals];
 
     const revenueTotal = filteredOrders.reduce(
       (sum, order) =>
@@ -6783,6 +6790,7 @@ const totals = useMemo(() => {
     historicalExpenses,
     paymentMethods,
     orderTypes,
+    accountedOnlineOrders,
     dayMeta,
   ]);
 
@@ -13642,4 +13650,3 @@ setExtraList((arr) => [
     </div>
   );
 }
-
