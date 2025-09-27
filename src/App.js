@@ -441,7 +441,10 @@ const ONLINE_ORDER_COLLECTIONS = [
     name: "pos/onlineOrders",
     source: "menu", // This correctly uses the 'tux-menu' Firebase project
     path: ["shops", SHOP_ID, "onlineOrders"], // This is the path we are writing to
-    constraints: [where("shopId", "==", SHOP_ID)], // This filter remains correct
+    // The sub-collection already scopes the data to the active shop, so filtering
+    // on `shopId` is redundant and caused us to miss orders that were written
+    // without this field set.
+    constraints: [],
   },
 ];
 const LS_KEY = "tux_pos_local_state_v1";
@@ -13646,6 +13649,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
