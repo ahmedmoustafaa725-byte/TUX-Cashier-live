@@ -651,32 +651,6 @@ function SundayWeekPicker({ selectedSunday, onSelect, dark = false, btnBorder = 
     const base = selectedStart || new Date();
     return new Date(base.getFullYear(), base.getMonth(), 1);
   });
-const [onlineFbUser, setOnlineFbUser] = useState(null);
-
-
-function getDbForSource(source) {
-  if (source === "menu") {
-    const { onlineDb } = getOnlineServices();
-    return onlineDb;        // tux-menu Firestore
-  }
-  const { db } = ensureFirebase();
-  return db;                // primary POS Firestore
-}
-
-// Example when wiring listeners:
-ONLINE_ORDER_COLLECTIONS.forEach((def) => {
-  const dbForThis = getDbForSource(def.source);
-  if (!dbForThis) return;
-
-  // (Optional) gate menu listeners until anonymous auth is ready
-  if (def.source === "menu" && !onlineFbUser) return;
-
-  const colRef = collection(dbForThis, ...def.path);
-  const q = query(colRef, orderBy("createdAt", "desc"));
-  onSnapshot(q, (snap) => {
-    // merge/dedupe as you already do
-  });
-});
 
   useEffect(() => {
     if (!selectedStart) return;
@@ -2345,25 +2319,6 @@ function convertToInventoryUnit(qty, purchaseUnit, invUnit) {
   const inBase = Number(qty || 0) * p.factor;
   return inBase / i.factor;           // in inventory units
 }
-function getLatestPurchaseForInv(inventoryItem, purchases, purchaseCategories) {
-  let best = null;
-  const invName = String(inventoryItem?.name || "").toLowerCase();
-
-  for (const p of purchases || []) {
-    const when = p?.date instanceof Date ? p.date : new Date(p?.date);
-    if (p.ingredientId && p.ingredientId === inventoryItem.id) {
-      if (!best || when > best._when) best = { ...p, _when: when };
-      continue;
-    }
-    if (!p.ingredientId) {
-      const catName = (purchaseCategories.find(c => c.id === p.categoryId)?.name || "").toLowerCase();
-      if (catName && catName === invName) {
-        if (!best || when > best._when) best = { ...p, _when: when };
-      }
-    }
-  }
-  return best;
-}
 const getNextMenuId = (menu=[]) =>
   (menu.reduce((m, it) => Math.max(m, Number(it?.id ?? 0)), 0) || 0) + 1;
 function sumPaymentsByMethod(orders = []) {
@@ -3673,7 +3628,6 @@ const [lastLocalEditAt, setLastLocalEditAt] = useState(0);
     }
   }, [onlineFirebaseApp]);
 
-  const [fbReady, setFbReady] = useState(false);
   const [fbUser, setFbUser] = useState(null);
   const [cloudEnabled, setCloudEnabled] = useState(true);
   const [realtimeOrders, setRealtimeOrders] = useState(true);
@@ -3701,9 +3655,8 @@ const onlineAuthAttemptRef = useRef({ inFlight: false, lastErrorCode: null });
   setReconCounts((prev) => ({ ...init, ...prev }));
 }, [dayMeta.startedAt, paymentMethods]);
   useEffect(() => {
-    try {
+  try {
       const { auth } = ensureFirebase();
-      setFbReady(true);
       const unsub = onAuthStateChanged(auth, async (u) => {
         if (!u) {
           try {
@@ -13754,6 +13707,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
