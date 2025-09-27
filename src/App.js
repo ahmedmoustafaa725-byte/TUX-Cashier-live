@@ -121,6 +121,31 @@ function addPaymentPart(parts, method, amount) {
 
 function extractPaymentPartsFromSource(source = {}, total, fallbackMethod) {
   const parts = [];
+  let structuredPartsDetected = false;
+
+  const markIfStructured = (value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return;
+    const hasMethodLike =
+      value.method != null ||
+      value.type != null ||
+      value.name != null ||
+      value.label != null ||
+      value.title != null ||
+      value.paymentMethod != null ||
+      value.paymentType != null;
+    const hasAmountLike =
+      value.amount != null ||
+      value.value != null ||
+      value.total != null ||
+      value.price != null ||
+      value.qty != null ||
+      value.quantity != null ||
+      value.paymentAmount != null ||
+      value.amountDue != null ||
+      value.paidAmount != null;
+    if (hasMethodLike && hasAmountLike) structuredPartsDetected = true;
+  };
+
   const structuralKeyPattern =
     /^(amount|value|total|price|qty|quantity|payment|due|method|type|name|label|title|mode|note|notes)$/i;
 
@@ -150,8 +175,10 @@ function extractPaymentPartsFromSource(source = {}, total, fallbackMethod) {
 
   const considerObject = (value) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) return;
+    markIfStructured(value);
     for (const [key, val] of Object.entries(value)) {
       if (val && typeof val === "object") {
+        markIfStructured(val);
         const candidateMethod =
           val.method ??
           val.type ??
@@ -167,7 +194,8 @@ function extractPaymentPartsFromSource(source = {}, total, fallbackMethod) {
           val.qty ??
           val.quantity ??
           val.paymentAmount ??
-          val.amountDue;
+          val.amountDue ??
+          val.paidAmount;
         const numeric = parseNumericAmount(candidateAmount);
         const methodNormalized = normalizePaymentMethodName(candidateMethod);
         if (methodNormalized && numeric != null) {
@@ -184,7 +212,10 @@ function extractPaymentPartsFromSource(source = {}, total, fallbackMethod) {
   const considerArray = (value) => {
     if (!Array.isArray(value)) return;
     for (const item of value) {
-      if (item && typeof item === "object") {
+      if (Array.isArray(item)) {
+        considerArray(item);
+      } else if (item && typeof item === "object") {
+        markIfStructured(item);
         const candidateMethod =
           item.method ??
           item.type ??
@@ -202,7 +233,8 @@ function extractPaymentPartsFromSource(source = {}, total, fallbackMethod) {
           item.qty ??
           item.quantity ??
           item.paymentAmount ??
-          item.amountDue;
+          item.amountDue ??
+          item.paidAmount;
         const numeric = parseNumericAmount(candidateAmount);
         const methodNormalized = normalizePaymentMethodName(candidateMethod);
         if (methodNormalized && numeric != null) {
@@ -247,67 +279,71 @@ function extractPaymentPartsFromSource(source = {}, total, fallbackMethod) {
     considerObject(candidate);
   }
 
-  const directFields = {
-    Cash: [
-      source?.cash,
-      source?.cashAmount,
-      source?.cashToPay,
-      source?.cashPayment,
-      source?.cashPaid,
-      source?.cashValue,
-      source?.cashDue,
-      source?.cashPart,
-      source?.paymentCash,
-      source?.paymentCashAmount,
-    ],
-    Instapay: [
-      source?.instapay,
-      source?.instaPay,
-      source?.instapayAmount,
-      source?.instaPayAmount,
-      source?.bank,
-      source?.bankAmount,
-      source?.bankTransfer,
-      source?.bankTransferAmount,
-      source?.transfer,
-      source?.transferAmount,
-      source?.onlinePayment,
-      source?.onlineAmount,
-      source?.digitalPayment,
-      source?.digitalAmount,
-    ],
-    Card: [
-      source?.card,
-      source?.cardAmount,
-      source?.cardPayment,
-      source?.cardPaid,
-      source?.visa,
-      source?.visaAmount,
-      source?.mastercard,
-      source?.mastercardAmount,
-      source?.credit,
-      source?.creditAmount,
-      source?.pos,
-      source?.posAmount,
-    ],
-  };
+  const skipFallbacks = structuredPartsDetected && parts.length > 0;
 
-  for (const [method, values] of Object.entries(directFields)) {
-    for (const value of values) considerEntry(method, value);
+  if (!skipFallbacks) {
+    const directFields = {
+      Cash: [
+        source?.cash,
+        source?.cashAmount,
+        source?.cashToPay,
+        source?.cashPayment,
+        source?.cashPaid,
+        source?.cashValue,
+        source?.cashDue,
+        source?.cashPart,
+        source?.paymentCash,
+        source?.paymentCashAmount,
+      ],
+      Instapay: [
+        source?.instapay,
+        source?.instaPay,
+        source?.instapayAmount,
+        source?.instaPayAmount,
+        source?.bank,
+        source?.bankAmount,
+        source?.bankTransfer,
+        source?.bankTransferAmount,
+        source?.transfer,
+        source?.transferAmount,
+        source?.onlinePayment,
+        source?.onlineAmount,
+        source?.digitalPayment,
+        source?.digitalAmount,
+      ],
+      Card: [
+        source?.card,
+        source?.cardAmount,
+        source?.cardPayment,
+        source?.cardPaid,
+        source?.visa,
+        source?.visaAmount,
+        source?.mastercard,
+        source?.mastercardAmount,
+        source?.credit,
+        source?.creditAmount,
+        source?.pos,
+        source?.posAmount,
+      ],
+    };
+
+    for (const [method, values] of Object.entries(directFields)) {
+      for (const value of values) considerEntry(method, value);
+    }
+
+    const stringSources = [
+      source?.payment,
+      source?.paymentMethod,
+      source?.paymentType,
+      source?.paymentNote,
+      source?.paymentNotes,
+      source?.paymentDescription,
+      source?.paymentText,
+      source?.note,
+      source?.notes,
+    ];
+    for (const text of stringSources) considerString(text);
   }
-
-  const stringSources = [
-    source?.payment,
-    source?.paymentMethod,
-    source?.paymentType,
-    source?.paymentNote,
-    source?.paymentNotes,
-    source?.paymentDescription,
-    source?.paymentText,
-    source?.note,
-    source?.notes,
-  ];
-  for (const text of stringSources) considerString(text);
 
   const fallbackLabel =
     fallbackMethod ||
@@ -321,7 +357,7 @@ function extractPaymentPartsFromSource(source = {}, total, fallbackMethod) {
     if (fallbackAmount != null) {
       addPaymentPart(parts, fallbackLabel || "Online", fallbackAmount);
     }
- } else {
+  } else {
     const totalAmount = parseNumericAmount(total);
     if (totalAmount != null) {
       const sum = parts.reduce((acc, cur) => acc + Number(cur.amount || 0), 0);
@@ -335,7 +371,6 @@ function extractPaymentPartsFromSource(source = {}, total, fallbackMethod) {
 
   return parts.map((p) => ({ method: p.method, amount: Number(p.amount.toFixed(2)) }));
 }
-
 export { extractPaymentPartsFromSource as __test_extractPaymentPartsFromSource };
 
 function summarizePaymentParts(parts = [], fallbackMethod = "Online") {
@@ -13649,6 +13684,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
