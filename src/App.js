@@ -321,12 +321,13 @@ function extractPaymentPartsFromSource(source = {}, total, fallbackMethod) {
     if (fallbackAmount != null) {
       addPaymentPart(parts, fallbackLabel || "Online", fallbackAmount);
     }
-  } else {
+ } else {
     const totalAmount = parseNumericAmount(total);
     if (totalAmount != null) {
       const sum = parts.reduce((acc, cur) => acc + Number(cur.amount || 0), 0);
       const diff = Number((totalAmount - sum).toFixed(2));
-      if (diff > 0.01 && parts.length) {
+      const allowedAdjustment = Math.max(1, Number((totalAmount * 0.01).toFixed(2)));
+      if (diff > 0.01 && diff <= allowedAdjustment && parts.length) {
         parts[0].amount = Number((Number(parts[0].amount || 0) + diff).toFixed(2));
       }
     }
@@ -334,6 +335,8 @@ function extractPaymentPartsFromSource(source = {}, total, fallbackMethod) {
 
   return parts.map((p) => ({ method: p.method, amount: Number(p.amount.toFixed(2)) }));
 }
+
+export { extractPaymentPartsFromSource as __test_extractPaymentPartsFromSource };
 
 function summarizePaymentParts(parts = [], fallbackMethod = "Online") {
   if (Array.isArray(parts) && parts.length) {
@@ -13646,6 +13649,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
