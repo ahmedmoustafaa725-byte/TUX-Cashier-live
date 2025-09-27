@@ -6483,10 +6483,8 @@ const voidOrderToExpense = async (orderNo) => {
 
       const inRange = (d) => d >= start && d <= end;
 
-    const allOrders = [
-        ...mergeRows(orders, historicalOrders),
-        ...accountedOnlineOrders,
-      ];
+          const allOrders = mergeRows(orders, historicalOrders);
+
       for (const order of allOrders) {
         if (!order || order.voided) continue;
         const when = toDate(order.date);
@@ -6542,13 +6540,12 @@ const voidOrderToExpense = async (orderNo) => {
         });
     },
  [
-      orders,
+     orders,
       purchases,
       expenses,
       historicalOrders,
       historicalPurchases,
       historicalExpenses,
-      accountedOnlineOrders,
       dayMeta,
     ]
   );
@@ -6676,19 +6673,13 @@ const voidOrderToExpense = async (orderNo) => {
         ? [...(historicalRows || []), ...(liveRows || [])]
         : liveRows || [];
 
-   const onsiteOrders = mergeRows(orders, historicalOrders).filter((order) => {
+const onsiteOrders = mergeRows(orders, historicalOrders).filter((order) => {
       if (!order || order.voided) return false;
       const when = toDate(order.date);
       return when && when >= start && when <= end;
     });
 
-    const onlineOrdersForTotals = accountedOnlineOrders.filter((order) => {
-      if (!order) return false;
-      const when = toDate(order.date);
-      return when && when >= start && when <= end;
-    });
-
-    const filteredOrders = [...onsiteOrders, ...onlineOrdersForTotals];
+    const filteredOrders = onsiteOrders;
 
     const revenueTotal = filteredOrders.reduce(
       (sum, order) =>
@@ -6783,14 +6774,14 @@ const voidOrderToExpense = async (orderNo) => {
     orders,
     historicalOrders,
     purchases,
-    historicalPurchases,
-    expenses,
-    historicalExpenses,
-    paymentMethods,
-    orderTypes,
-    accountedOnlineOrders,
-    dayMeta,
+      historicalPurchases,
+      expenses,
+      historicalExpenses,
+      paymentMethods,
+      orderTypes,
+      dayMeta,
   ]);
+
 
   const salesStats = useMemo(() => {
     const itemMap = new Map();
@@ -13648,6 +13639,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
