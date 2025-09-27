@@ -6425,130 +6425,132 @@ const voidOrderToExpense = async (orderNo) => {
     alert("Report history and filters have been reset.");
   };
 
-  const computeProfitBuckets = useCallback(
-    (rangeStart, rangeEnd) => {
-      if (!rangeStart || !rangeEnd) return [];
-      const startMs = +rangeStart;
-      const endMs = +rangeEnd;
-      if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return [];
+const computeProfitBuckets = useCallback(
+    (rangeStart, rangeEnd) => {
+      if (!rangeStart || !rangeEnd) return [];
+      const startMs = +rangeStart;
+      const endMs = +rangeEnd;
+      if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return [];
 
-      const start = new Date(startMs);
-      const end = new Date(endMs);
+      const start = new Date(startMs);
+      const end = new Date(endMs);
 
-      const toDate = (value) => {
-        if (!value) return null;
-        if (value instanceof Date) return value;
-        const d = new Date(value);
-        return Number.isNaN(+d) ? null : d;
-      };
+      const toDate = (value) => {
+        if (!value) return null;
+        if (value instanceof Date) return value;
+        const d = new Date(value);
+        return Number.isNaN(+d) ? null : d;
+      };
 
-      const shiftStart = dayMeta?.startedAt ? new Date(dayMeta.startedAt) : null;
-      const shiftEndRaw = dayMeta?.endedAt ? new Date(dayMeta.endedAt) : null;
-      const now = new Date();
-      const shiftEnd = shiftEndRaw || now;
-      const includeHistorical =
-        !shiftStart || start < shiftStart || end > shiftEnd;
+      const shiftStart = dayMeta?.startedAt ? new Date(dayMeta.startedAt) : null;
+      const shiftEndRaw = dayMeta?.endedAt ? new Date(dayMeta.endedAt) : null;
+      const now = new Date();
+      const shiftEnd = shiftEndRaw || now;
+      const includeHistorical =
+        !shiftStart || start < shiftStart || end > shiftEnd;
 
-      const mergeRows = (liveRows = [], historicalRows = []) =>
-        includeHistorical
-          ? [...(historicalRows || []), ...(liveRows || [])]
-          : liveRows || [];
+      const mergeRows = (liveRows = [], historicalRows = []) =>
+        includeHistorical
+          ? [...(historicalRows || []), ...(liveRows || [])]
+          : liveRows || [];
 
-      const map = new Map();
-      const ensureBucket = (dateObj) => {
-        const dayStart = new Date(
-          dateObj.getFullYear(),
-          dateObj.getMonth(),
-          dateObj.getDate(),
-          0,
-          0,
-          0,
-          0
-        );
-        const key = dayStart.getTime();
-        if (!map.has(key)) {
-          const dd = String(dayStart.getDate()).padStart(2, "0");
-          const mm = String(dayStart.getMonth() + 1).padStart(2, "0");
-          const yyyy = dayStart.getFullYear();
-          map.set(key, {
-            ts: key,
-            date: `${dd}-${mm}-${yyyy}`,
-            revenue: 0,
-            purchasesCost: 0,
-            expenseCost: 0,
-          });
-        }
-        return map.get(key);
-      };
+      const map = new Map();
+      const ensureBucket = (dateObj) => {
+        const dayStart = new Date(
+          dateObj.getFullYear(),
+          dateObj.getMonth(),
+          dateObj.getDate(),
+          0,
+          0,
+          0,
+          0
+        );
+        const key = dayStart.getTime();
+        if (!map.has(key)) {
+          const dd = String(dayStart.getDate()).padStart(2, "0");
+          const mm = String(dayStart.getMonth() + 1).padStart(2, "0");
+          const yyyy = dayStart.getFullYear();
+          map.set(key, {
+            ts: key,
+            date: `${dd}-${mm}-${yyyy}`,
+            revenue: 0,
+            purchasesCost: 0,
+            expenseCost: 0,
+          });
+        }
+        return map.get(key);
+      };
 
-      const inRange = (d) => d >= start && d <= end;
+      const inRange = (d) => d >= start && d <= end;
 
-          const allOrders = mergeRows(orders, historicalOrders);
+      // FIX: This calculation should only use processed orders from the main `orders` state
+      // and historical orders, NOT pending online orders.
+      const allOrders = mergeRows(orders, historicalOrders);
+      
+      for (const order of allOrders) {
+        if (!order || order.voided) continue;
+        const when = toDate(order.date);
+        if (!when || !inRange(when)) continue;
+        const itemsOnly = Number(
+          order.itemsTotal != null
+            ? order.itemsTotal
+            : (order.total || 0) - (order.deliveryFee || 0)
+        );
+        if (!Number.isFinite(itemsOnly)) continue;
+        const bucket = ensureBucket(when);
+        bucket.revenue += itemsOnly;
+      }
 
-      for (const order of allOrders) {
-        if (!order || order.voided) continue;
-        const when = toDate(order.date);
-        if (!when || !inRange(when)) continue;
-        const itemsOnly = Number(
-          order.itemsTotal != null
-            ? order.itemsTotal
-            : (order.total || 0) - (order.deliveryFee || 0)
-        );
-        if (!Number.isFinite(itemsOnly)) continue;
-        const bucket = ensureBucket(when);
-        bucket.revenue += itemsOnly;
-      }
+      for (const purchase of mergeRows(purchases, historicalPurchases)) {
+        const when = toDate(purchase?.date);
+        if (!when || !inRange(when)) continue;
+        const qty = Number(purchase?.qty || 0);
+        const price = Number(purchase?.unitPrice || 0);
+        const amount = qty * price;
+        if (!Number.isFinite(amount)) continue;
+        const bucket = ensureBucket(when);
+        bucket.purchasesCost += amount;
+      }
 
-      for (const purchase of mergeRows(purchases, historicalPurchases)) {
-        const when = toDate(purchase?.date);
-        if (!when || !inRange(when)) continue;
-        const qty = Number(purchase?.qty || 0);
-        const price = Number(purchase?.unitPrice || 0);
-        const amount = qty * price;
-        if (!Number.isFinite(amount)) continue;
-        const bucket = ensureBucket(when);
-        bucket.purchasesCost += amount;
-      }
+      for (const expense of mergeRows(expenses, historicalExpenses)) {
+        const when = toDate(expense?.date);
+        if (!when || !inRange(when)) continue;
+        const qty = Number(expense?.qty || 0);
+        const price = Number(expense?.unitPrice || 0);
+        const amount = qty * price;
+        if (!Number.isFinite(amount)) continue;
+        const bucket = ensureBucket(when);
+        bucket.expenseCost += amount;
+      }
 
-      for (const expense of mergeRows(expenses, historicalExpenses)) {
-        const when = toDate(expense?.date);
-        if (!when || !inRange(when)) continue;
-        const qty = Number(expense?.qty || 0);
-        const price = Number(expense?.unitPrice || 0);
-        const amount = qty * price;
-        if (!Number.isFinite(amount)) continue;
-        const bucket = ensureBucket(when);
-        bucket.expenseCost += amount;
-      }
-
-      return Array.from(map.values())
-        .sort((a, b) => a.ts - b.ts)
-        .map((bucket) => {
-          const net = bucket.revenue - bucket.purchasesCost - bucket.expenseCost;
-          const marginPct = bucket.revenue
-            ? (net / bucket.revenue) * 100
-            : 0;
-          return {
-            date: bucket.date,
-            ts: bucket.ts,
-            revenue: Number(bucket.revenue.toFixed(2)),
-            purchasesCost: Number(bucket.purchasesCost.toFixed(2)),
-            expenseCost: Number(bucket.expenseCost.toFixed(2)),
-            net: Number(net.toFixed(2)),
-            marginPct: Number(marginPct.toFixed(2)),
-          };
-        });
-    },
- [
-     orders,
-      purchases,
-      expenses,
-      historicalOrders,
-      historicalPurchases,
-      historicalExpenses,
-      dayMeta,
-    ]
-  );
+      return Array.from(map.values())
+        .sort((a, b) => a.ts - b.ts)
+        .map((bucket) => {
+          const net = bucket.revenue - bucket.purchasesCost - bucket.expenseCost;
+          const marginPct = bucket.revenue
+            ? (net / bucket.revenue) * 100
+            : 0;
+          return {
+            date: bucket.date,
+            ts: bucket.ts,
+            revenue: Number(bucket.revenue.toFixed(2)),
+            purchasesCost: Number(bucket.purchasesCost.toFixed(2)),
+            expenseCost: Number(bucket.expenseCost.toFixed(2)),
+            net: Number(net.toFixed(2)),
+            marginPct: Number(marginPct.toFixed(2)),
+          };
+        });
+    },
+ [
+      orders,
+      purchases,
+      expenses,
+      historicalOrders,
+      historicalPurchases,
+      historicalExpenses,
+      dayMeta,
+    ]
+  );
 
   const profitTimeline = useMemo(
     () => computeProfitBuckets(reportStart, reportEnd),
@@ -6614,173 +6616,174 @@ const voidOrderToExpense = async (orderNo) => {
       .sort((a, b) => toMs(b.date) - toMs(a.date));
   }, [reportOrders]);
 
-  const totals = useMemo(() => {
-    const makeEmptyMaps = () => {
-      const byPay = {};
-      for (const method of paymentMethods) byPay[method] = 0;
-      const byType = {};
-      for (const type of orderTypes) byType[type] = 0;
-      return { byPay, byType };
-    };
+const totals = useMemo(() => {
+    const makeEmptyMaps = () => {
+      const byPay = {};
+      for (const method of paymentMethods) byPay[method] = 0;
+      const byType = {};
+      for (const type of orderTypes) byType[type] = 0;
+      return { byPay, byType };
+    };
 
-    if (!reportStart || !reportEnd) {
-      const { byPay, byType } = makeEmptyMaps();
-      return {
-        revenueTotal: 0,
-        deliveryFeesTotal: 0,
-        expensesTotal: 0,
-        purchasesTotal: 0,
-        margin: 0,
-        byPay,
-        byType,
-      };
-    }
+    if (!reportStart || !reportEnd) {
+      const { byPay, byType } = makeEmptyMaps();
+      return {
+        revenueTotal: 0,
+        deliveryFeesTotal: 0,
+        expensesTotal: 0,
+        purchasesTotal: 0,
+        margin: 0,
+        byPay,
+        byType,
+      };
+    }
 
-    const startMs = +reportStart;
-    const endMs = +reportEnd;
-    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
-      const { byPay, byType } = makeEmptyMaps();
-      return {
-        revenueTotal: 0,
-        deliveryFeesTotal: 0,
-        expensesTotal: 0,
-        purchasesTotal: 0,
-        margin: 0,
-        byPay,
-        byType,
-      };
-    }
+    const startMs = +reportStart;
+    const endMs = +reportEnd;
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+      const { byPay, byType } = makeEmptyMaps();
+      return {
+        revenueTotal: 0,
+        deliveryFeesTotal: 0,
+        expensesTotal: 0,
+        purchasesTotal: 0,
+        margin: 0,
+        byPay,
+        byType,
+      };
+    }
 
-    const start = new Date(startMs);
-    const end = new Date(endMs);
+    const start = new Date(startMs);
+    const end = new Date(endMs);
 
-    const toDate = (value) => {
-      if (!value) return null;
-      if (value instanceof Date) return value;
-      const d = new Date(value);
-      return Number.isNaN(+d) ? null : d;
-    };
+    const toDate = (value) => {
+      if (!value) return null;
+      if (value instanceof Date) return value;
+      const d = new Date(value);
+      return Number.isNaN(+d) ? null : d;
+    };
 
-    const shiftStart = dayMeta?.startedAt ? new Date(dayMeta.startedAt) : null;
-    const shiftEndRaw = dayMeta?.endedAt ? new Date(dayMeta.endedAt) : null;
-    const now = new Date();
-    const shiftEnd = shiftEndRaw || now;
-    const includeHistorical =
-      !shiftStart || start < shiftStart || end > shiftEnd;
+    const shiftStart = dayMeta?.startedAt ? new Date(dayMeta.startedAt) : null;
+    const shiftEndRaw = dayMeta?.endedAt ? new Date(dayMeta.endedAt) : null;
+    const now = new Date();
+    const shiftEnd = shiftEndRaw || now;
+    const includeHistorical =
+      !shiftStart || start < shiftStart || end > shiftEnd;
 
-    const mergeRows = (liveRows = [], historicalRows = []) =>
-      includeHistorical
-        ? [...(historicalRows || []), ...(liveRows || [])]
-        : liveRows || [];
+    const mergeRows = (liveRows = [], historicalRows = []) =>
+      includeHistorical
+        ? [...(historicalRows || []), ...(liveRows || [])]
+        : liveRows || [];
 
-const onsiteOrders = mergeRows(orders, historicalOrders).filter((order) => {
-      if (!order || order.voided) return false;
-      const when = toDate(order.date);
-      return when && when >= start && when <= end;
-    });
+    // FIX: This calculation should only use processed orders.
+    // By removing `accountedOnlineOrders`, the totals will be accurate
+    // for reconciliation and shift reports.
+    const filteredOrders = mergeRows(orders, historicalOrders).filter((order) => {
+      if (!order || order.voided) return false;
+      const when = toDate(order.date);
+      return when && when >= start && when <= end;
+    });
 
-    const filteredOrders = onsiteOrders;
+    const revenueTotal = filteredOrders.reduce(
+      (sum, order) =>
+        sum +
+        Number(
+          order.itemsTotal != null
+            ? order.itemsTotal
+            : (order.total || 0) - (order.deliveryFee || 0)
+        ),
+      0
+    );
 
-    const revenueTotal = filteredOrders.reduce(
-      (sum, order) =>
-        sum +
-        Number(
-          order.itemsTotal != null
-            ? order.itemsTotal
-            : (order.total || 0) - (order.deliveryFee || 0)
-        ),
-      0
-    );
+    const deliveryFeesTotal = filteredOrders.reduce(
+      (sum, order) => sum + Number(order.deliveryFee || 0),
+      0
+    );
 
-    const deliveryFeesTotal = filteredOrders.reduce(
-      (sum, order) => sum + Number(order.deliveryFee || 0),
-      0
-    );
+    const { byPay, byType } = makeEmptyMaps();
 
-    const { byPay, byType } = makeEmptyMaps();
+    for (const order of filteredOrders) {
+      const itemsOnly = Number(
+        order.itemsTotal != null
+          ? order.itemsTotal
+          : (order.total || 0) - (order.deliveryFee || 0)
+      );
 
-    for (const order of filteredOrders) {
-      const itemsOnly = Number(
-        order.itemsTotal != null
-          ? order.itemsTotal
-          : (order.total || 0) - (order.deliveryFee || 0)
-      );
+      if (Array.isArray(order.paymentParts) && order.paymentParts.length) {
+        const sumParts =
+          order.paymentParts.reduce(
+            (sum, part) => sum + Number(part.amount || 0),
+            0
+          ) || order.total || itemsOnly;
+        for (const part of order.paymentParts) {
+          const method = part.method || "Unknown";
+          const share = sumParts ? Number(part.amount || 0) / sumParts : 0;
+          if (byPay[method] == null) byPay[method] = 0;
+          byPay[method] += itemsOnly * share;
+        }
+      } else {
+        const method = order.payment || "Unknown";
+        if (byPay[method] == null) byPay[method] = 0;
+        byPay[method] += itemsOnly;
+      }
 
-      if (Array.isArray(order.paymentParts) && order.paymentParts.length) {
-        const sumParts =
-          order.paymentParts.reduce(
-            (sum, part) => sum + Number(part.amount || 0),
-            0
-          ) || order.total || itemsOnly;
-        for (const part of order.paymentParts) {
-          const method = part.method || "Unknown";
-          const share = sumParts ? Number(part.amount || 0) / sumParts : 0;
-          if (byPay[method] == null) byPay[method] = 0;
-          byPay[method] += itemsOnly * share;
-        }
-      } else {
-        const method = order.payment || "Unknown";
-        if (byPay[method] == null) byPay[method] = 0;
-        byPay[method] += itemsOnly;
-      }
+      const typeKey = order.orderType || "";
+      if (byType[typeKey] == null) byType[typeKey] = 0;
+      byType[typeKey] += itemsOnly;
+    }
 
-      const typeKey = order.orderType || "";
-      if (byType[typeKey] == null) byType[typeKey] = 0;
-      byType[typeKey] += itemsOnly;
-    }
+    const filteredPurchases = mergeRows(
+      purchases,
+      historicalPurchases
+    ).filter((purchase) => {
+      const when = toDate(purchase?.date);
+      return when && when >= start && when <= end;
+    });
 
-    const filteredPurchases = mergeRows(
-      purchases,
-      historicalPurchases
-    ).filter((purchase) => {
-      const when = toDate(purchase?.date);
-      return when && when >= start && when <= end;
-    });
+    const purchasesTotal = filteredPurchases.reduce(
+      (sum, purchase) =>
+        sum + Number(purchase?.qty || 0) * Number(purchase?.unitPrice || 0),
+      0
+    );
 
-    const purchasesTotal = filteredPurchases.reduce(
-      (sum, purchase) =>
-        sum + Number(purchase?.qty || 0) * Number(purchase?.unitPrice || 0),
-      0
-    );
+    const filteredExpenses = mergeRows(
+      expenses,
+      historicalExpenses
+    ).filter((expense) => {
+      const when = toDate(expense?.date);
+      return when && when >= start && when <= end;
+    });
 
-    const filteredExpenses = mergeRows(
-      expenses,
-      historicalExpenses
-    ).filter((expense) => {
-      const when = toDate(expense?.date);
-      return when && when >= start && when <= end;
-    });
+    const expensesTotal = filteredExpenses.reduce(
+      (sum, expense) =>
+        sum + Number(expense?.qty || 0) * Number(expense?.unitPrice || 0),
+      0
+    );
 
-    const expensesTotal = filteredExpenses.reduce(
-      (sum, expense) =>
-        sum + Number(expense?.qty || 0) * Number(expense?.unitPrice || 0),
-      0
-    );
+    const margin = revenueTotal - purchasesTotal - expensesTotal;
 
-    const margin = revenueTotal - purchasesTotal - expensesTotal;
-
-    return {
-      revenueTotal,
-      deliveryFeesTotal,
-      expensesTotal,
-      purchasesTotal,
-      margin,
-      byPay,
-      byType,
-    };
-  }, [
-    reportStart,
-    reportEnd,
-    orders,
-    historicalOrders,
-    purchases,
-      historicalPurchases,
-      expenses,
-      historicalExpenses,
-      paymentMethods,
-      orderTypes,
-      dayMeta,
-  ]);
+    return {
+      revenueTotal,
+      deliveryFeesTotal,
+      expensesTotal,
+      purchasesTotal,
+      margin,
+      byPay,
+      byType,
+    };
+  }, [
+    reportStart,
+    reportEnd,
+    orders,
+    historicalOrders,
+    purchases,
+    historicalPurchases,
+    expenses,
+    historicalExpenses,
+    paymentMethods,
+    orderTypes,
+    dayMeta,
+  ]);
 
 
   const salesStats = useMemo(() => {
@@ -13639,6 +13642,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
