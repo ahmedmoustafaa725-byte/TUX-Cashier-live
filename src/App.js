@@ -434,13 +434,14 @@ function getOnlineServices() {
 
 
 const SHOP_ID = "tux";
-// In your React POS app code (App.js)
+
+const ONLINE_ORDERS_COLLECTION_PATH = ["shops", SHOP_ID, "onlineOrders"];
 
 const ONLINE_ORDER_COLLECTIONS = [
   {
     name: "pos/onlineOrders",
     source: "menu", // This correctly uses the 'tux-menu' Firebase project
-    path: ["shops", SHOP_ID, "onlineOrders"], // This is the path we are writing to
+    path: ONLINE_ORDERS_COLLECTION_PATH, // This is the path we are writing to
     // The sub-collection already scopes the data to the active shop, so filtering
     // on `shopId` is redundant and caused us to miss orders that were written
     // without this field set.
@@ -13649,6 +13650,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
