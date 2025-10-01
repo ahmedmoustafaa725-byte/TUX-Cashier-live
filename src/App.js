@@ -2335,15 +2335,23 @@ function getLatestPurchaseForInv(inventoryItem, purchases, purchaseCategories) {
 }
 const getNextMenuId = (menu=[]) =>
   (menu.reduce((m, it) => Math.max(m, Number(it?.id ?? 0)), 0) || 0) + 1;
-function sumPaymentsByMethod(orders = []) {
-  const m = {};
-  for (const o of orders || []) {
-    if (o.voided) continue;
-    if (Array.isArray(o.paymentParts) && o.paymentParts.length) {
-      for (const p of o.paymentParts) {
-        const k = String(p.method || "Unknown");
-        m[k] = (m[k] || 0) + Number(p.amount || 0);
-      }
+function sumPaymentsByMethod(orders = [])
+{
+const m = tri
+for (const o of orders || []) {
+if (o. voided) continue;
+const channel = (o && (o. channel ||
+deriveOrderChannel(0))) || "';
+if (String(channel).toLowerCase() ===
+"online") continue;
+if (Array.isArray(o.paymentParts) &&
+o. paymentParts.length) {
+for (const p of o.paymentParts) {
+const k = String(p.method ||
+"Unknown" ) ;
+m[k] = (m[k] || 0) +
+Number (p. amount || 0);
+｝
     } else {
       const k = String(o.payment || "Unknown");
       m[k] = (m[k] || 0) + Number(o.total || 0);
@@ -13642,6 +13650,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
