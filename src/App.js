@@ -128,19 +128,7 @@ function extractPaymentPartsFromSource(source = {}, total, fallbackMethod) {
     addPaymentPart(parts, methodLike, amountLike);
   };
 
-  const considerDirectEntry = (methodLike, amountLike) => {
-    const normalizedMethod = normalizePaymentMethodName(methodLike);
-    const numericAmount = parseNumericAmount(amountLike);
-    if (!normalizedMethod || numericAmount == null) return;
-    const existing = parts.find((p) => p.method === normalizedMethod);
-    if (
-      existing &&
-      Math.abs(Number(existing.amount || 0) - Number(numericAmount || 0)) <= 0.01
-    ) {
-      return;
-    }
-    addPaymentPart(parts, normalizedMethod, numericAmount);
-  };
+
 
   const considerPrimitiveEntry = (key, value) => {
     if (value == null) return;
@@ -13660,6 +13648,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
