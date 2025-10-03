@@ -2340,8 +2340,9 @@ function sumPaymentsByMethod(orders = []) {
   const totals = {};
   for (const order of orders || []) {
     if (order?.voided) continue;
-    const channel = (order && (order.channel || deriveOrderChannel(order))) || "";
-    if (String(channel).toLowerCase() === "online") continue;
+    if (order && Object.prototype.hasOwnProperty.call(order, "done") && order.done === false) {
+      continue;
+    }
     if (Array.isArray(order.paymentParts) && order.paymentParts.length) {
       for (const part of order.paymentParts) {
         const key = String(part.method || "Unknown");
@@ -13645,6 +13646,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
