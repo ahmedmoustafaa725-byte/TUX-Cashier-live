@@ -2333,31 +2333,26 @@ function getLatestPurchaseForInv(inventoryItem, purchases, purchaseCategories) {
   }
   return best;
 }
-const getNextMenuId = (menu=[]) =>
+const getNextMenuId = (menu = []) =>
   (menu.reduce((m, it) => Math.max(m, Number(it?.id ?? 0)), 0) || 0) + 1;
-function sumPaymentsByMethod(orders = [])
-{
-const m = tri
-for (const o of orders || []) {
-if (o. voided) continue;
-const channel = (o && (o. channel ||
-deriveOrderChannel(0))) || "';
-if (String(channel).toLowerCase() ===
-"online") continue;
-if (Array.isArray(o.paymentParts) &&
-o. paymentParts.length) {
-for (const p of o.paymentParts) {
-const k = String(p.method ||
-"Unknown" ) ;
-m[k] = (m[k] || 0) +
-Number (p. amount || 0);
-｝
+
+function sumPaymentsByMethod(orders = []) {
+  const totals = {};
+  for (const order of orders || []) {
+    if (order?.voided) continue;
+    const channel = (order && (order.channel || deriveOrderChannel(order))) || "";
+    if (String(channel).toLowerCase() === "online") continue;
+    if (Array.isArray(order.paymentParts) && order.paymentParts.length) {
+      for (const part of order.paymentParts) {
+        const key = String(part.method || "Unknown");
+        totals[key] = (totals[key] || 0) + Number(part.amount || 0);
+      }
     } else {
-      const k = String(o.payment || "Unknown");
-      m[k] = (m[k] || 0) + Number(o.total || 0);
+      const key = String(order.payment || "Unknown");
+      totals[key] = (totals[key] || 0) + Number(order.total || 0);
     }
   }
-  return m;
+  return totals;
 }
 const DEFAULT_INV_UNIT_BY_CATNAME = {
   buns: "piece",
@@ -13650,6 +13645,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
