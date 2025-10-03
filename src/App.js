@@ -318,7 +318,7 @@ function extractPaymentPartsFromSource(source = {}, total, fallbackMethod) {
     source?.paymentType ||
     (source?.paidOnline ? "Online" : "");
 
-  if (!parts.length) {
+ if (!parts.length) {
     const fallbackAmount = parseNumericAmount(total);
     if (fallbackAmount != null) {
       addPaymentPart(parts, fallbackLabel || "Online", fallbackAmount);
@@ -330,13 +330,30 @@ function extractPaymentPartsFromSource(source = {}, total, fallbackMethod) {
       const diff = Number((totalAmount - sum).toFixed(2));
       if (diff > 0.01 && parts.length) {
         parts[0].amount = Number((Number(parts[0].amount || 0) + diff).toFixed(2));
+      } else if (diff < -0.01 && parts.length) {
+        let remaining = Number(totalAmount.toFixed(2));
+        for (const part of parts) {
+          const current = Number(part.amount || 0);
+          if (!(remaining > 0)) {
+            part.amount = 0;
+            continue;
+          }
+          const capped = Math.min(current, remaining);
+          part.amount = Number(Math.max(0, capped).toFixed(2));
+          remaining = Number((remaining - part.amount).toFixed(2));
+        }
+        if (remaining < -0.01) {
+          const last = parts[parts.length - 1];
+          last.amount = Number((Number(last.amount || 0) + remaining).toFixed(2));
+        }
       }
     }
   }
 
-  return parts.map((p) => ({ method: p.method, amount: Number(p.amount.toFixed(2)) }));
+  return parts
+    .map((p) => ({ method: p.method, amount: Number(p.amount.toFixed(2)) }))
+    .filter((p) => Math.abs(p.amount) > 0.009);
 }
-
 function summarizePaymentParts(parts = [], fallbackMethod = "Online") {
   if (Array.isArray(parts) && parts.length) {
     if (parts.length === 1) return parts[0].method;
@@ -13648,6 +13665,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
