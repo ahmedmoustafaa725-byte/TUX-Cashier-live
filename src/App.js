@@ -9732,10 +9732,13 @@ const cogs = Number(
               ) : (
                 <ul style={{ listStyle: "none", padding: 0 }}>
                    {onlineOrders.map((o) => {
+                    const statusKey = getOnlineOrderDedupeKey(o);
                     const isNew =
                       Number(o?.createdAtMs || 0) > Number(onlineViewCutoff || 0);
                     const placedAt = o?.date || o?.createdAt || new Date();
-                    const statusEntry = onlineOrderStatus[key] || {};
+                    const statusEntry = statusKey
+                      ? onlineOrderStatus[statusKey] || {}
+                      : {};
                     const posOrder = findPosOrderForOnline(o);
                     const isIntegrated = !!posOrder;
                     const isProcessing =
@@ -13949,6 +13952,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
