@@ -158,7 +158,7 @@ function extractPaymentPartsFromSource(source = {}, total, fallbackMethod) {
       considerEntry(compositeMethodMatch[1], value, options);
       return;
     }
-    const compositeAmountMatch = rawKey.match(compositeAmountPattern);␊
+    const compositeAmountMatch = rawKey.match(compositeAmountPattern);
     if (compositeAmountMatch) {
       considerEntry(compositeAmountMatch[2], value, options);
       return;
@@ -13881,6 +13881,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
