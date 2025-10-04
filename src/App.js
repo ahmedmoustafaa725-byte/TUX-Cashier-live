@@ -1573,6 +1573,7 @@ function normalizeOrderForCloud(order) {
     deliveryEmail: normalized.deliveryEmail || "",
     deliveryAddress: normalized.deliveryAddress || "",
     deliveryZoneId: normalized.deliveryZoneId || "",
+    deliveryZoneName: normalized.deliveryZoneName || "",
     notifyViaWhatsapp: !!normalized.notifyViaWhatsapp,
     whatsappSentAt: toIso(normalized.whatsappSentAt),
     total: normalized.total,
@@ -1617,6 +1618,7 @@ function orderFromCloudDoc(id, d) {
     deliveryEmail: d.deliveryEmail || "",
     deliveryAddress: d.deliveryAddress || "",
     deliveryZoneId: d.deliveryZoneId || "",
+    deliveryZoneName: d.deliveryZoneName || "",
     notifyViaWhatsapp: !!d.notifyViaWhatsapp,
     whatsappSentAt: d.whatsappSentAt ? asDate(d.whatsappSentAt) : null,
     total: Number(d.total || 0),
@@ -6155,6 +6157,36 @@ const onlineFallbackId =
     onlineOrder.channelOrderNo ||
     formatOnlineChannelOrderNo(onlineOrder.orderNo, onlineFallbackId, onlineOrder.createdAtMs);
 
+ const onlineDeliveryZoneId = pickFirstTruthyKey(
+    onlineOrder.deliveryZoneId,
+    onlineOrder.deliveryZone,
+    onlineOrder.delivery_zone,
+    onlineOrder.zone,
+    onlineOrder.raw?.deliveryZoneId,
+    onlineOrder.raw?.deliveryZone,
+    onlineOrder.raw?.delivery?.zoneId,
+    onlineOrder.raw?.delivery?.zone?.id,
+    onlineOrder.raw?.delivery?.zone?.slug,
+    onlineOrder.raw?.delivery?.zone?.code
+  );
+
+  const onlineDeliveryZoneName = pickFirstTruthyKey(
+    onlineOrder.deliveryZoneName,
+    onlineOrder.deliveryZoneLabel,
+    onlineOrder.deliveryZone,
+    onlineOrder.delivery_zone,
+    onlineOrder.zone,
+    onlineOrder.raw?.delivery?.zoneName,
+    onlineOrder.raw?.delivery?.zone?.name,
+    onlineOrder.raw?.delivery?.zone?.title,
+    onlineOrder.raw?.delivery?.area
+  );
+
+  const normalizedDeliveryZoneId = pickFirstTruthyKey(
+    onlineDeliveryZoneId,
+    onlineDeliveryZoneName
+  );
+
   let posOrder = enrichOrderWithChannel({
     orderNo,
     date: new Date(),
@@ -6167,7 +6199,8 @@ const onlineFallbackId =
     deliveryPhone: phoneDigits,
     deliveryEmail: onlineOrder.deliveryEmail || "",
     deliveryAddress: onlineOrder.deliveryAddress || "",
-    deliveryZoneId: "",
+  deliveryZoneId: normalizedDeliveryZoneId || "",
+    deliveryZoneName: onlineDeliveryZoneName || "",
     notifyViaWhatsapp: shouldWhatsapp,
     whatsappSentAt: null,
     total,
@@ -9746,19 +9779,47 @@ const cogs = Number(
                       (statusEntry.state === "importing" || statusEntry.state === "imported");
                     const isDone = posOrder?.done;
                     const isVoided = posOrder?.voided;
-                    const rawDeliveryZone = pickFirstTruthyKey(
+          const rawDeliveryZone = pickFirstTruthyKey(
                       o.raw?.deliveryZone,
                       o.raw?.delivery?.zone,
                       o.raw?.delivery?.zoneName,
-                      o.raw?.delivery?.area
+                      o.raw?.delivery?.zone?.name,
+                      o.raw?.delivery?.zone?.title,
+                      o.raw?.delivery?.area,
+                      o.deliveryZoneName,
+                      o.deliveryZone,
+                      o.delivery_zone,
+                      o.zone
                     );
-                    const matchedZone = deliveryZones.find((z) => z.id === o.deliveryZoneId);
+                    const zoneMatchId = pickFirstTruthyKey(
+                      o.deliveryZoneId,
+                      o.deliveryZone,
+                      o.raw?.delivery?.zoneId,
+                      o.raw?.delivery?.zone?.id,
+                      o.raw?.delivery?.zone?.slug,
+                      o.raw?.delivery?.zone?.code
+                    );
+                    const matchedZone = deliveryZones.find((z) => z.id === zoneMatchId);
                     const displayZoneName = pickFirstTruthyKey(
                       matchedZone?.name,
                       rawDeliveryZone,
+                      o.deliveryZoneName,
+                      o.deliveryZoneLabel,
+                      o.deliveryZone,
+                      o.delivery_zone,
+                      o.zone,
                       o.deliveryZoneId
                     );
-                    const displayZoneId = pickFirstTruthyKey(o.deliveryZoneId, matchedZone?.id);
+                    const displayZoneId = pickFirstTruthyKey(
+                      o.deliveryZoneId,
+                      o.deliveryZone,
+                      o.delivery_zone,
+                      o.raw?.delivery?.zoneId,
+                      o.raw?.delivery?.zone?.id,
+                      o.raw?.delivery?.zone?.slug,
+                      o.raw?.delivery?.zone?.code,
+                      matchedZone?.id
+                    );
                     const deliveryZoneDisplay = displayZoneName
                       ? displayZoneId && displayZoneId !== displayZoneName
                         ? `${displayZoneName} (${displayZoneId})`
@@ -9979,117 +10040,209 @@ const cogs = Number(
             <>
               {orders.length === 0 && <p>No orders yet.</p>}
               <ul style={{ listStyle: "none", padding: 0 }}>
-                {orders.map((o) => (
-                  <li
-                    key={`${o.cloudId || "local"}_${o.orderNo}`}
-                    style={{
-                      border: `1px solid ${cardBorder}`,
-                      borderRadius: 6,
-                      padding: 10,
-                      marginBottom: 8,
-                      background: o.voided
-                        ? dark
-                          ? "#4a2b2b"
-                          : "#ffebee"
-                        : o.done
-                        ? dark
-                          ? "#14331a"
-                          : "#e8f5e9"
-                        : dark
-                        ? "#333018"
-                        : "#fffde7",
-                    }}
-                  >
-                   <div
+ {orders.map((o) => {
+                  const rawDeliveryZone = pickFirstTruthyKey(
+                    o.deliveryZoneName,
+                    o.deliveryZone,
+                    o.delivery_zone,
+                    o.zone,
+                    o.raw?.deliveryZone,
+                    o.raw?.delivery?.zone,
+                    o.raw?.delivery?.zoneName,
+                    o.raw?.delivery?.zone?.name,
+                    o.raw?.delivery?.zone?.title,
+                    o.raw?.delivery?.area
+                  );
+                  const zoneMatchId = pickFirstTruthyKey(
+                    o.deliveryZoneId,
+                    o.deliveryZone,
+                    o.raw?.delivery?.zoneId,
+                    o.raw?.delivery?.zone?.id,
+                    o.raw?.delivery?.zone?.slug,
+                    o.raw?.delivery?.zone?.code
+                  );
+                  const matchedZone = deliveryZones.find((z) => z.id === zoneMatchId);
+                  const displayZoneName = pickFirstTruthyKey(
+                    matchedZone?.name,
+                    rawDeliveryZone,
+                    o.deliveryZoneName,
+                    o.deliveryZone,
+                    o.delivery_zone,
+                    o.zone,
+                    o.deliveryZoneId
+                  );
+                  const displayZoneId = pickFirstTruthyKey(
+                    o.deliveryZoneId,
+                    o.deliveryZone,
+                    o.delivery_zone,
+                    o.raw?.delivery?.zoneId,
+                    o.raw?.delivery?.zone?.id,
+                    o.raw?.delivery?.zone?.slug,
+                    o.raw?.delivery?.zone?.code,
+                    matchedZone?.id
+                  );
+                  const deliveryZoneDisplay = displayZoneName
+                    ? displayZoneId && displayZoneId !== displayZoneName
+                      ? `${displayZoneName} (${displayZoneId})`
+                      : displayZoneName
+                    : displayZoneId || "";
+                  return (
+                    <li
+                      key={`${o.cloudId || "local"}_${o.orderNo}`}
                       style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 8,
-                        flexWrap: "wrap",
+                        border: `1px solid ${cardBorder}`,
+                        borderRadius: 6,
+                        padding: 10,
+                        marginBottom: 8,
+                        background: o.voided
+                          ? dark
+                            ? "#4a2b2b"
+                            : "#ffebee"
+                          : o.done
+                          ? dark
+                            ? "#14331a"
+                            : "#e8f5e9"
+                          : dark
+                          ? "#333018"
+                          : "#fffde7",
                       }}
                     >
-                      <strong>
-                        Order #{o.orderNo} — E£{o.total.toFixed(2)}{" "}
-                        {o.cloudId ? "☁" : ""}
-                      </strong>
-                      <span>{fmtDate(o.date)}</span>
-                    </div>
-                   <div style={{ color: dark ? "#ccc" : "#555", marginTop: 4 }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: 8,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <strong>
+                          Order #{o.orderNo} — E£{o.total.toFixed(2)}{" "}
+                          {o.cloudId ? "☁" : ""}
+                        </strong>
+                        <span>{fmtDate(o.date)}</span>
+                      </div>
+                      <div style={{ color: dark ? "#ccc" : "#555", marginTop: 4 }}>
+                        Worker: {o.worker} • Payment: {o.payment}
+                        {Array.isArray(o.paymentParts) && o.paymentParts.length ? (
+                          <>
+                            (
+                            {o.paymentParts
+                              .map(
+                                (p) => `${p.method}: E£${Number(p.amount || 0).toFixed(2)}`
+                              )
+                              .join(" + ")}
+                            )
+                          </>
+                        ) : null}
+                        {" "}• Type: {o.orderType || "-"}
+                        {o.orderType === "Delivery" && (
+                          <> • Delivery: E£{Number(o.deliveryFee || 0).toFixed(2)}</>
+                        )}
+                        {o.orderType === "Delivery" && deliveryZoneDisplay && (
+                          <> • Zone: {deliveryZoneDisplay}</>
+                        )}
+                        {(o.deliveryName || o.deliveryPhone || o.deliveryAddress) && (
+                          <>
+                            {" "}• Customer: {o.deliveryName || "—"}
+                            {o.deliveryPhone
+                              ? ` (${formatPhoneForDisplay(o.deliveryPhone)})`
+                              : ""}
+                            {o.deliveryAddress ? ` • ${o.deliveryAddress}` : ""}
+                          </>
+                        )}
+                        {o.notifyViaWhatsapp && (
+                          <>
+                            {" "}• WhatsApp:{" "}
+                            {o.whatsappSentAt
+                              ? `Sent ${fmtDateTime(o.whatsappSentAt)}`
+                              : "Pending"}
+                          </>
+                        )}
+                        {o.payment === "Cash" && o.cashReceived != null && (
+                          <> • Cash: E£{o.cashReceived.toFixed(2)} • Change: E£{(o.changeDue || 0).toFixed(2)}</>
+                        )}
+                        {" "}• Status:{" "}
+                        <strong>
+                          {o.voided
+                            ? o.restockedAt
+                              ? "Cancelled"
+                              : "Returned"
+                            : o.done
+                            ? "Done"
+                            : "Not done"}
+                        </strong>
+                        {o.voided && (
+                          <>
+                            {o.restockedAt && (
+                              <span> • Cancelled at: {fmtDate(o.restockedAt)}</span>
+                            )}
+                            {o.voidReason && <span> • Reason: {o.voidReason}</span>}
+                          </>
+                        )}
+                      </div>
 
-                      Worker: {o.worker} • Payment: {o.payment}
-                      {Array.isArray(o.paymentParts) && o.paymentParts.length ? (
-                        <> ({o.paymentParts.map(p => `${p.method}: E£${Number(p.amount||0).toFixed(2)}`).join(" + ")})</>
-                      ) : null}
-                       • Type: {o.orderType || "-"}
-               {o.orderType === "Delivery" && (
-                        <> • Delivery: E£{Number(o.deliveryFee || 0).toFixed(2)}</>
-                      )}
-                      {(o.deliveryName || o.deliveryPhone) && (
-                        <>
-                          {" "}• Customer: {o.deliveryName || "—"}
-                          {o.deliveryPhone
-                            ? ` (${formatPhoneForDisplay(o.deliveryPhone)})`
-                            : ""}
-                        </>
-                      )}
-                      {o.notifyViaWhatsapp && (
-                        <>
-                          {" "}• WhatsApp:{" "}
-                          {o.whatsappSentAt
-                            ? `Sent ${fmtDateTime(o.whatsappSentAt)}`
-                            : "Pending"}
-                        </>
-                      )}
-                      {o.payment === "Cash" && o.cashReceived != null && (
-                        <> • Cash: E£{o.cashReceived.toFixed(2)} • Change: E£{(o.changeDue || 0).toFixed(2)}</>
-                      )}
-                      {" "}• Status:{" "}
-                             <strong>
-                               {o.voided
-                                 ? (o.restockedAt ? "Cancelled" : "Returned")
-                                 : (o.done ? "Done" : "Not done")}
-                             </strong>
-                             {o.voided && (
-  <>
-    {o.restockedAt && (
-      <span> • Cancelled at: {fmtDate(o.restockedAt)}</span>
-    )}
-    {o.voidReason && (
-      <span> • Reason: {o.voidReason}</span>
-    )}
-  </>
-)}
+                      <ul style={{ marginTop: 8, marginBottom: 8 }}>
+                        {o.cart.map((ci, idx) => (
+                          <li key={idx} style={{ marginLeft: 12 }}>
+                            • {ci.name} × {ci.qty || 1} — E£{ci.price} each
+                            {ci.extras?.length > 0 && (
+                              <ul
+                                style={{
+                                  margin: "2px 0 6px 18px",
+                                  color: dark ? "#bbb" : "#555",
+                                }}
+                              >
+                                {ci.extras.map((ex) => (
+                                  <li key={ex.id}>
+                                    + {ex.name} (E£{ex.price}) × {ci.qty || 1}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
 
-                    </div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        {!o.done && !o.voided && (
+                          <button
+                            onClick={() => markOrderDone(o.orderNo)}
+                            style={{
+                              background: "#43a047",
+                              color: "white",
+                              border: "none",
+                              borderRadius: 6,
+                              padding: "6px 10px",
+                              cursor: "pointer",
+                            }}
+                          >
+                            Mark DONE (locks)
+                          </button>
+                        )}
+                        {o.done && (
+                          <button
+                            disabled
+                            style={{
+                              background: "#9e9e9e",
+                              color: "white",
+                              border: "none",
+                              borderRadius: 6,
+                              padding: "6px 10px",
+                              cursor: "not-allowed",
+                            }}
+                          >
+                            DONE (locked)
+                          </button>
+                        )}
 
-                    <ul style={{ marginTop: 8, marginBottom: 8 }}>
-                      {o.cart.map((ci, idx) => (
-                        <li key={idx} style={{ marginLeft: 12 }}>
-                          • {ci.name} × {ci.qty || 1} — E£{ci.price} each
-                          {ci.extras?.length > 0 && (
-                            <ul
-                              style={{
-                                margin: "2px 0 6px 18px",
-                                color: dark ? "#bbb" : "#555",
-                              }}
-                            >
-                              {ci.extras.map((ex) => (
-                                <li key={ex.id}>
-                                  + {ex.name} (E£{ex.price}) × {ci.qty || 1}
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      {!o.done && !o.voided && (
+                        {/* Single Print button (removed all other print options) */}
                         <button
-                          onClick={() => markOrderDone(o.orderNo)}
+                          onClick={() =>
+                            printReceiptHTML(o, Number(preferredPaperWidthMm) || 80, "Customer")
+                          }
+                          disabled={o.voided}
                           style={{
-                            background: "#43a047",
+                            background: o.voided ? "#039be588" : "#039be5",
                             color: "white",
                             border: "none",
                             borderRadius: 6,
@@ -10097,75 +10250,44 @@ const cogs = Number(
                             cursor: "pointer",
                           }}
                         >
-                          Mark DONE (locks)
+                          Print
                         </button>
-                      )}
-                      {o.done && (
+
                         <button
-                          disabled
+                          onClick={() => voidOrderAndRestock(o.orderNo)}
+                          disabled={o.done || o.voided}
                           style={{
-                            background: "#9e9e9e",
+                            background: o.done || o.voided ? "#ef9a9a" : "#c62828",
                             color: "white",
                             border: "none",
                             borderRadius: 6,
                             padding: "6px 10px",
-                            cursor: "not-allowed",
+                            cursor: o.done || o.voided ? "not-allowed" : "pointer",
                           }}
                         >
-                          DONE (locked)
+                          Cancel (restock)
                         </button>
-                      )}
 
-                      {/* Single Print button (removed all other print options) */}
-                      <button
-                        onClick={() => printReceiptHTML(o, Number(preferredPaperWidthMm) || 80, "Customer")}
-                        disabled={o.voided}
-                        style={{
-                          background: o.voided ? "#039be588" : "#039be5",
-                          color: "white",
-                          border: "none",
-                          borderRadius: 6,
-                          padding: "6px 10px",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Print
-                      </button>
-
-                      <button
-                       onClick={() => voidOrderAndRestock(o.orderNo)}
-                       disabled={o.done || o.voided}
-                        style={{
-                          background: o.done || o.voided ? "#ef9a9a" : "#c62828",
-                          color: "white",
-                          border: "none",
-                          borderRadius: 6,
-                          padding: "6px 10px",
-                          cursor: o.done || o.voided ? "not-allowed" : "pointer",
-                        }}
-                      >
-                         Cancel (restock)
-                      </button>
-
-                          {!o.done && !o.voided && isExpenseVoidEligible(o.orderType) && (
-                     <button
-                       onClick={() => voidOrderToExpense(o.orderNo)}
-                      style={{
-                        background: "#fb8c00",        // orange
-                        color: "white",
-                        border: "none",
-                        borderRadius: 6,
-                        padding: "6px 10px",
-                        cursor: "pointer",
-                      }}
-      >
-        Returned
-      </button>
-    )}
+                        {!o.done && !o.voided && isExpenseVoidEligible(o.orderType) && (
+                          <button
+                            onClick={() => voidOrderToExpense(o.orderNo)}
+                            style={{
+                              background: "#fb8c00",
+                              color: "white",
+                              border: "none",
+                              borderRadius: 6,
+                              padding: "6px 10px",
+                              cursor: "pointer",
+                            }}
+                          >
+                            Returned
+                          </button>
+                        )}
 
                     </div>
                   </li>
-                ))}
+                );
+              })}
               </ul>
             </>
           )}
@@ -13952,6 +14074,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
