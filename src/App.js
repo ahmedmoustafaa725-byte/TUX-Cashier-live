@@ -1910,10 +1910,19 @@ function onlineOrderFromDoc(id, data = {}) {
     createdAtMs
   );
 
+ const deliveryZoneId =
+    pickFirstTruthyKey(
+      data?.deliveryZoneId,
+      deliveryInfo?.zoneId,
+      deliveryInfo?.zone?.id,
+      deliveryInfo?.zone?.slug,
+      deliveryInfo?.zone?.code
+    ) || "";
+
   return {
     id,
     orderNo: normalizedOrderNo,
-   worker: data?.handledBy || data?.worker || "Online Order",
+    worker: data?.handledBy || data?.worker || "Online Order",
     payment: String(paymentLabel || payment || "Unspecified"),
     paymentParts,
     orderType,
@@ -1922,6 +1931,7 @@ function onlineOrderFromDoc(id, data = {}) {
     deliveryPhone: customerPhone,
     deliveryEmail: customerEmail,
     deliveryAddress: customerAddress,
+    deliveryZoneId,
     notifyViaWhatsapp: false,
     whatsappSentAt: null,
     total,
@@ -13921,6 +13931,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
