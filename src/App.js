@@ -105,18 +105,32 @@ function parseNumericAmount(value) {
   return null;
 }
 
-function addPaymentPart(parts, method, amount) {
+function addPaymentPart(parts, method, amount, options = {}) {
+  const { explicit = false } = options || {};
   const label = normalizePaymentMethodName(method);
   const numeric = parseNumericAmount(amount);
-  if (!label || numeric == null) return;
+  if (!label || numeric == null) return null;
   const fixed = Number(numeric.toFixed(2));
-  if (!fixed && fixed !== 0) return;
+  if (!fixed && fixed !== 0) return null;
   const existing = parts.find((p) => p.method === label);
   if (existing) {
-    existing.amount = Number((Number(existing.amount || 0) + fixed).toFixed(2));
-  } else {
-    parts.push({ method: label, amount: fixed });
+    if (explicit) {
+      if (existing.__explicit) {
+        existing.amount = Number((Number(existing.amount || 0) + fixed).toFixed(2));
+      } else {
+        existing.amount = fixed;
+        existing.__explicit = true;
+      }
+    } else {
+      if (existing.__explicit) return existing.method;
+      existing.amount = Number((Number(existing.amount || 0) + fixed).toFixed(2));
+    }
+    return existing.method;
   }
+  const entry = { method: label, amount: fixed };
+  if (explicit) entry.__explicit = true;
+  parts.push(entry);
+  return label;
 }
 
 function extractPaymentPartsFromSource(source = {}, total, fallbackMethod) {
@@ -124,8 +138,8 @@ function extractPaymentPartsFromSource(source = {}, total, fallbackMethod) {
   const structuralKeyPattern =
     /^(amount|value|total|price|qty|quantity|payment|due|method|type|name|label|title|mode|note|notes)$/i;
 
-  const considerEntry = (methodLike, amountLike) => {
-    addPaymentPart(parts, methodLike, amountLike);
+  const considerEntry = (methodLike, amountLike, options = {}) => {
+    addPaymentPart(parts, methodLike, amountLike, options);
   };
 
 
@@ -135,23 +149,23 @@ function extractPaymentPartsFromSource(source = {}, total, fallbackMethod) {
   const compositeAmountPattern =
     /^(amount|value|total|price|paid|payment|due)[_\s-]?(cash|insta\s*pay|instapay|card|visa|master|mada|meeza|wallet|fawry|valu|bank|transfer|vodafone|aman|pos|credit|debit)$/i;
 
-  const considerPrimitiveEntry = (key, value) => {
+ const considerPrimitiveEntry = (key, value, options = {}) => {
     if (value == null) return;
     const rawKey = String(key || "");
     const lowerKey = rawKey.toLowerCase();
     const compositeMethodMatch = rawKey.match(compositeMethodPattern);
     if (compositeMethodMatch) {
-      addPaymentPart(parts, compositeMethodMatch[1], value);
+      considerEntry(compositeMethodMatch[1], value, options);
       return;
     }
-    const compositeAmountMatch = rawKey.match(compositeAmountPattern);
+    const compositeAmountMatch = rawKey.match(compositeAmountPattern);␊
     if (compositeAmountMatch) {
-      addPaymentPart(parts, compositeAmountMatch[2], value);
+      considerEntry(compositeAmountMatch[2], value, options);
       return;
     }
     const normalizedKey = normalizePaymentMethodName(key);
     if (!normalizedKey) {
-      if (typeof value === "string") considerString(value);
+      if (typeof value === "string") considerString(value, options);
       return;
     }
     const lowerNormalized = normalizedKey.toLowerCase();
@@ -160,13 +174,13 @@ function extractPaymentPartsFromSource(source = {}, total, fallbackMethod) {
       (!/(cash|insta|card|visa|master|wallet|fawry|valu|bank|transfer)/i.test(lowerKey) &&
         /(amount|value|total|price|qty|quantity|payment|due)/i.test(lowerKey));
     if (isStructural) {
-      if (typeof value === "string") considerString(value);
+      if (typeof value === "string") considerString(value, options);
       return;
     }
-    addPaymentPart(parts, normalizedKey, value);
+    considerEntry(normalizedKey, value, options);
   };
 
-  const considerMethodAmountPairs = (entries = []) => {
+  const considerMethodAmountPairs = (entries = [], options = {}) => {
     if (!entries.length) return;
     const methodMap = new Map();
     const amountMap = new Map();
@@ -186,20 +200,35 @@ function extractPaymentPartsFromSource(source = {}, total, fallbackMethod) {
       }
     }
     if (!methodMap.size || !amountMap.size) return;
-    for (const [suffix, methodValue] of methodMap.entries()) {
+  for (const [suffix, methodValue] of methodMap.entries()) {
       const amountValue = amountMap.get(suffix);
       if (amountValue == null) continue;
-      addPaymentPart(parts, methodValue, amountValue);
+      considerEntry(methodValue, amountValue, options);
     }
   };
 
-  const considerObject = (value) => {
+  const considerObject = (value, options = {}) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) return;
     const entries = Object.entries(value);
-    considerMethodAmountPairs(entries);
-   for (const [key, val] of entries) {
+    considerMethodAmountPairs(entries, options);
+    for (const [key, val] of entries) {
+      const lowerKey = String(key || "").toLowerCase();
+      const childExplicit =
+        options.explicit ||
+        lowerKey === "paymentbreakdown" ||
+        lowerKey === "paymentdetails" ||
+        lowerKey === "paymentinfo" ||
+        lowerKey === "paymentamounts" ||
+        lowerKey === "payments" ||
+        lowerKey === "splitpayment" ||
+        lowerKey === "splitpayments" ||
+        lowerKey === "paymentoptions" ||
+        lowerKey === "paymentselections" ||
+        lowerKey === "paymentallocation" ||
+        lowerKey === "paymentparts";
+      const childOptions = childExplicit ? { ...options, explicit: true } : options;
       if (Array.isArray(val)) {
-        considerArray(val);
+        considerArray(val, childOptions);
         continue;
       }
       if (val && typeof val === "object") {
@@ -217,26 +246,26 @@ function extractPaymentPartsFromSource(source = {}, total, fallbackMethod) {
           val.price ??
           val.qty ??
           val.quantity ??
-          val.paymentAmount ??
+           val.paymentAmount ??
           val.amountDue;
         const numeric = parseNumericAmount(candidateAmount);
         const methodNormalized = normalizePaymentMethodName(candidateMethod);
         if (methodNormalized && numeric != null) {
-          addPaymentPart(parts, methodNormalized, numeric);
+          addPaymentPart(parts, methodNormalized, numeric, childOptions);
         }
-        considerObject(val);
+        considerObject(val, childOptions);
       } else {
-        if (typeof val === "string") considerString(val);
-        considerPrimitiveEntry(key, val);
+        if (typeof val === "string") considerString(val, childOptions);
+        considerPrimitiveEntry(key, val, childOptions);
       }
     }
   };
 
-  const considerArray = (value) => {
+  const considerArray = (value, options = {}) => {
     if (!Array.isArray(value)) return;
-   for (const item of value) {
+    for (const item of value) {
       if (Array.isArray(item)) {
-        considerArray(item);
+        considerArray(item, options);
       } else if (item && typeof item === "object") {
         const candidateMethod =
           item.method ??
@@ -255,25 +284,25 @@ function extractPaymentPartsFromSource(source = {}, total, fallbackMethod) {
           item.qty ??
           item.quantity ??
           item.paymentAmount ??
-          item.amountDue;
+  item.amountDue;
         const numeric = parseNumericAmount(candidateAmount);
         const methodNormalized = normalizePaymentMethodName(candidateMethod);
         if (methodNormalized && numeric != null) {
-          addPaymentPart(parts, methodNormalized, numeric);
+          addPaymentPart(parts, methodNormalized, numeric, options);
         }
-        considerObject(item);
+        considerObject(item, options);
       } else if (typeof item === "string") {
-        considerString(item);
+        considerString(item, options);
       }
     }
   };
 
-  const considerString = (value) => {
+  const considerString = (value, options = {}) => {
     if (typeof value !== "string") return;
     const pattern = /(cash|insta\s*pay|instapay|card|visa|master(?:\s*card)?|mada|meeza|wallet|fawry|valu|bank\s*transfer|transfer|vodafone(?:\s*cash)?|aman)\s*[:=]?\s*(-?\d+(?:[.,]\d+)?)/gi;
     let match;
     while ((match = pattern.exec(value))) {
-      considerEntry(match[1], match[2]);
+      considerEntry(match[1], match[2], options);
     }
   };
 
@@ -293,11 +322,12 @@ function extractPaymentPartsFromSource(source = {}, total, fallbackMethod) {
     source?.paymentOptions,
     source?.paymentSelections,
     source?.paymentAllocation,
-  ];
+ ];
 
   for (const candidate of sources) {
-    considerArray(candidate);
-    considerObject(candidate);
+    const options = { explicit: true };
+    considerArray(candidate, options);
+    considerObject(candidate, options);
   }
 
   const directFields = {
@@ -13851,21 +13881,6 @@ setExtraList((arr) => [
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
