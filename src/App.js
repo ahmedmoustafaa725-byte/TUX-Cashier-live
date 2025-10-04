@@ -197,7 +197,11 @@ function extractPaymentPartsFromSource(source = {}, total, fallbackMethod) {
     if (!value || typeof value !== "object" || Array.isArray(value)) return;
     const entries = Object.entries(value);
     considerMethodAmountPairs(entries);
-    for (const [key, val] of entries) {
+   for (const [key, val] of entries) {
+      if (Array.isArray(val)) {
+        considerArray(val);
+        continue;
+      }
       if (val && typeof val === "object") {
         const candidateMethod =
           val.method ??
@@ -230,8 +234,10 @@ function extractPaymentPartsFromSource(source = {}, total, fallbackMethod) {
 
   const considerArray = (value) => {
     if (!Array.isArray(value)) return;
-    for (const item of value) {
-      if (item && typeof item === "object") {
+   for (const item of value) {
+      if (Array.isArray(item)) {
+        considerArray(item);
+      } else if (item && typeof item === "object") {
         const candidateMethod =
           item.method ??
           item.type ??
@@ -1456,14 +1462,55 @@ if (Array.isArray(data.workerSessions)) {
  if (data.utilityBills) out.utilityBills = data.utilityBills;
   if (data.laborProfile) out.laborProfile = data.laborProfile;
   if (Array.isArray(data.equipmentList)) out.equipmentList = data.equipmentList;
-  if (Array.isArray(data.onlineOrders)) {
-    out.onlineOrdersRaw = data.onlineOrders.map((order) => ({
-      ...order,
-      date: order.date ? new Date(order.date) : undefined,
-      createdAt: order.createdAt ? new Date(order.createdAt) : null,
-      restockedAt: order.restockedAt ? new Date(order.restockedAt) : undefined,
-      whatsappSentAt: order.whatsappSentAt ? new Date(order.whatsappSentAt) : null,
-    }));
+ if (Array.isArray(data.onlineOrders)) {
+    out.onlineOrdersRaw = data.onlineOrders.map((order) => {
+      const safeOrder = order && typeof order === "object" ? order : {};
+      const rawSource =
+        safeOrder.raw && typeof safeOrder.raw === "object" ? safeOrder.raw : {};
+      const recomputeSource = { ...rawSource, ...safeOrder };
+      delete recomputeSource.paymentParts;
+
+      const totalCandidate =
+        recomputeSource.total ??
+        safeOrder.total ??
+        rawSource.total ??
+        rawSource.amount ??
+        rawSource.orderTotal ??
+        rawSource.cartTotal;
+
+      const fallbackPaymentMethod =
+        safeOrder.payment ||
+        safeOrder.paymentMethod ||
+        safeOrder.paymentType ||
+        rawSource.payment ||
+        rawSource.paymentMethod ||
+        rawSource.paymentType ||
+        (rawSource.paidOnline || safeOrder.paidOnline ? "Online" : undefined);
+
+      const recomputedParts = extractPaymentPartsFromSource(
+        recomputeSource,
+        totalCandidate,
+        fallbackPaymentMethod
+      );
+      const recomputedLabel = summarizePaymentParts(
+        recomputedParts,
+        fallbackPaymentMethod
+      );
+
+      return {
+        ...safeOrder,
+        payment: String(recomputedLabel || safeOrder.payment || ""),
+        paymentParts: recomputedParts,
+        date: safeOrder.date ? new Date(safeOrder.date) : undefined,
+        createdAt: safeOrder.createdAt ? new Date(safeOrder.createdAt) : null,
+        restockedAt: safeOrder.restockedAt
+          ? new Date(safeOrder.restockedAt)
+          : undefined,
+        whatsappSentAt: safeOrder.whatsappSentAt
+          ? new Date(safeOrder.whatsappSentAt)
+          : null,
+      };
+    });
   }
   if (data.onlineOrderStatus && typeof data.onlineOrderStatus === "object") {
     const status = {};
@@ -13804,6 +13851,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
