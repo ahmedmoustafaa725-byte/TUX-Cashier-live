@@ -445,6 +445,26 @@ async function sendEmailJsEmail(templateParams = {}) {
     throw new Error("Fetch API unavailable for EmailJS request");
   }
 
+  if (!EMAILJS_SERVICE_ID || !EMAILJS_TEMPLATE_ID || !EMAILJS_PUBLIC_KEY) {
+    const missingKeys = [];
+    if (!EMAILJS_SERVICE_ID) missingKeys.push("REACT_APP_EMAILJS_SERVICE_ID");
+    if (!EMAILJS_TEMPLATE_ID) missingKeys.push("REACT_APP_EMAILJS_TEMPLATE_ID");
+    if (!EMAILJS_PUBLIC_KEY) missingKeys.push("REACT_APP_EMAILJS_PUBLIC_KEY");
+    const message =
+      "Online-order confirmation emails cannot be sent until EmailJS credentials are configured. " +
+      (missingKeys.length ? `Missing: ${missingKeys.join(", ")}.` : "");
+    if (typeof window !== "undefined" && typeof window.alert === "function") {
+      window.alert(message);
+    } else {
+      console.warn(message);
+    }
+    console.error("EmailJS credentials missing", {
+      missingKeys,
+      templateParams,
+    });
+    return;
+  }
+
   const response = await fetchFn("https://api.emailjs.com/api/v1.0/email/send", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -13780,6 +13800,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
