@@ -130,19 +130,35 @@ function extractPaymentPartsFromSource(source = {}, total, fallbackMethod) {
 
 
 
+  const compositeMethodPattern =
+    /^(cash|insta\s*pay|instapay|card|visa|master|mada|meeza|wallet|fawry|valu|bank|transfer|vodafone|aman|pos|credit|debit)[_\s-]?(amount|value|total|price|paid|payment|due)$/i;
+  const compositeAmountPattern =
+    /^(amount|value|total|price|paid|payment|due)[_\s-]?(cash|insta\s*pay|instapay|card|visa|master|mada|meeza|wallet|fawry|valu|bank|transfer|vodafone|aman|pos|credit|debit)$/i;
+
   const considerPrimitiveEntry = (key, value) => {
     if (value == null) return;
+    const rawKey = String(key || "");
+    const lowerKey = rawKey.toLowerCase();
+    const compositeMethodMatch = rawKey.match(compositeMethodPattern);
+    if (compositeMethodMatch) {
+      addPaymentPart(parts, compositeMethodMatch[1], value);
+      return;
+    }
+    const compositeAmountMatch = rawKey.match(compositeAmountPattern);
+    if (compositeAmountMatch) {
+      addPaymentPart(parts, compositeAmountMatch[2], value);
+      return;
+    }
     const normalizedKey = normalizePaymentMethodName(key);
     if (!normalizedKey) {
       if (typeof value === "string") considerString(value);
       return;
     }
-    const lowerRawKey = String(key || "").toLowerCase();
     const lowerNormalized = normalizedKey.toLowerCase();
     const isStructural =
       structuralKeyPattern.test(lowerNormalized) ||
-      (!/(cash|insta|card|visa|master|wallet|fawry|valu|bank|transfer)/i.test(lowerRawKey) &&
-        /(amount|value|total|price|qty|quantity|payment|due)/i.test(lowerRawKey));
+      (!/(cash|insta|card|visa|master|wallet|fawry|valu|bank|transfer)/i.test(lowerKey) &&
+        /(amount|value|total|price|qty|quantity|payment|due)/i.test(lowerKey));
     if (isStructural) {
       if (typeof value === "string") considerString(value);
       return;
@@ -150,9 +166,38 @@ function extractPaymentPartsFromSource(source = {}, total, fallbackMethod) {
     addPaymentPart(parts, normalizedKey, value);
   };
 
+  const considerMethodAmountPairs = (entries = []) => {
+    if (!entries.length) return;
+    const methodMap = new Map();
+    const amountMap = new Map();
+    for (const [key, rawValue] of entries) {
+      if (rawValue == null) continue;
+      if (typeof rawValue === "object" && !Array.isArray(rawValue)) continue;
+      const keyStr = String(key || "");
+      const lowerKey = keyStr.toLowerCase();
+      const methodMatch = lowerKey.match(/(method|paymethod|paymentmethod|paymenttype|paytype|type|mode|channel|option|choice)(?:[_\s-]*([a-z0-9]+))$/i);
+      if (methodMatch && methodMatch[2]) {
+        methodMap.set(methodMatch[2].toLowerCase(), rawValue);
+        continue;
+      }
+      const amountMatch = lowerKey.match(/(amount|value|total|price|paid|paymentamount|amountdue|portion|part)(?:[_\s-]*([a-z0-9]+))$/i);
+      if (amountMatch && amountMatch[2]) {
+        amountMap.set(amountMatch[2].toLowerCase(), rawValue);
+      }
+    }
+    if (!methodMap.size || !amountMap.size) return;
+    for (const [suffix, methodValue] of methodMap.entries()) {
+      const amountValue = amountMap.get(suffix);
+      if (amountValue == null) continue;
+      addPaymentPart(parts, methodValue, amountValue);
+    }
+  };
+
   const considerObject = (value) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) return;
-    for (const [key, val] of Object.entries(value)) {
+    const entries = Object.entries(value);
+    considerMethodAmountPairs(entries);
+    for (const [key, val] of entries) {
       if (val && typeof val === "object") {
         const candidateMethod =
           val.method ??
@@ -5986,9 +6031,64 @@ const onlineFallbackId =
 
  recordCustomerFromOrder(posOrder);
 
-const targetEmail = pickFirstTruthyKey(
+  const pickFirstEmailFromArray = (maybeArray) => {
+    if (!Array.isArray(maybeArray)) return null;
+    for (const entry of maybeArray) {
+      if (entry == null) continue;
+      if (typeof entry === "string") {
+        const trimmed = String(entry).trim();
+        if (trimmed) return trimmed;
+        continue;
+      }
+      if (typeof entry === "object") {
+        const candidate = pickFirstTruthyKey(
+          entry.email,
+          entry.emailAddress,
+          entry.email_address,
+          entry.contactEmail,
+          entry.contact_email,
+          entry.contact?.email,
+          entry.contact?.emailAddress,
+          entry.contact?.email_address,
+          entry.value
+        );
+        if (candidate) return candidate;
+      }
+    }
+    return null;
+  };
+
+  const customerEmailListCandidate =
+    pickFirstEmailFromArray(onlineOrder.raw?.customer?.emails) ||
+    pickFirstEmailFromArray(onlineOrder.raw?.customer?.emailList) ||
+    pickFirstEmailFromArray(onlineOrder.raw?.customer?.email_list) ||
+    pickFirstEmailFromArray(onlineOrder.raw?.emails) ||
+    pickFirstEmailFromArray(onlineOrder.raw?.emailList) ||
+    pickFirstEmailFromArray(onlineOrder.raw?.email_list);
+
+  const contactEmailListCandidate =
+    pickFirstEmailFromArray(onlineOrder.raw?.customer?.contacts) ||
+    pickFirstEmailFromArray(onlineOrder.raw?.contacts) ||
+    pickFirstEmailFromArray(onlineOrder.raw?.contactList) ||
+    pickFirstEmailFromArray(onlineOrder.raw?.contact_list) ||
+    pickFirstEmailFromArray(onlineOrder.raw?.delivery?.contacts) ||
+    pickFirstEmailFromArray(onlineOrder.raw?.delivery?.contactList) ||
+    pickFirstEmailFromArray(onlineOrder.raw?.delivery?.contact_list);
+
+  const targetEmail = pickFirstTruthyKey(
     posOrder.deliveryEmail,
     onlineOrder.deliveryEmail,
+    onlineOrder.raw?.deliveryEmail,
+    onlineOrder.raw?.delivery?.email,
+    onlineOrder.raw?.delivery?.emailAddress,
+    onlineOrder.raw?.delivery?.email_address,
+    onlineOrder.raw?.delivery?.contactEmail,
+    onlineOrder.raw?.delivery?.contact?.email,
+    onlineOrder.raw?.delivery?.contact?.emailAddress,
+    onlineOrder.raw?.delivery?.contact?.email_address,
+    onlineOrder.raw?.delivery?.customer?.email,
+    onlineOrder.raw?.delivery?.customer?.contactEmail,
+    onlineOrder.raw?.delivery?.customer?.contact?.email,
     onlineOrder.raw?.customerEmail,
     onlineOrder.raw?.customer?.email,
     onlineOrder.raw?.customer?.emailAddress,
@@ -5997,11 +6097,26 @@ const targetEmail = pickFirstTruthyKey(
     onlineOrder.raw?.customer?.contact?.email,
     onlineOrder.raw?.customer?.contact?.emailAddress,
     onlineOrder.raw?.customer?.contact?.email_address,
+    onlineOrder.raw?.customerDetails?.email,
+    onlineOrder.raw?.customer_details?.email,
+    onlineOrder.raw?.customerInfo?.email,
+    onlineOrder.raw?.customer_info?.email,
+    onlineOrder.raw?.customerInfo?.contactEmail,
+    onlineOrder.raw?.customer_info?.contactEmail,
+    onlineOrder.raw?.customerInfo?.contact?.email,
+    onlineOrder.raw?.customer_info?.contact?.email,
     onlineOrder.raw?.email,
     onlineOrder.raw?.contactEmail,
     onlineOrder.raw?.contact?.email,
     onlineOrder.raw?.contact?.emailAddress,
-    onlineOrder.raw?.contact?.email_address
+    onlineOrder.raw?.contact?.email_address,
+    onlineOrder.raw?.user?.email,
+    onlineOrder.raw?.user?.emailAddress,
+    onlineOrder.raw?.user?.email_address,
+    onlineOrder.raw?.user?.contactEmail,
+    onlineOrder.raw?.user?.contact?.email,
+    customerEmailListCandidate,
+    contactEmailListCandidate
   );
 
   if (targetEmail) {
@@ -13665,6 +13780,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
