@@ -5788,10 +5788,14 @@ const checkout = async () => {
       if (sum !== Number(total.toFixed(2))) {
         return alert(`Split amounts must equal total (E£${total.toFixed(2)}).`);
       }
-      paymentLabel = `${payA}+${payB}`;
-      paymentParts = [{ method: payA, amount: a }, { method: payB, amount: b }];
+    paymentParts = [
+        { method: payA, amount: a },
+        { method: payB, amount: b },
+      ];
+      paymentLabel = summarizePaymentParts(paymentParts, paymentLabel);
     } else {
       paymentParts = [{ method: payment || "Unknown", amount: total }];
+      paymentLabel = summarizePaymentParts(paymentParts, paymentLabel);
     }
     let cashVal = null;
     let changeDue = null;
@@ -13800,6 +13804,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
