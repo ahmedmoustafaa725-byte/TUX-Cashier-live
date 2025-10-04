@@ -6059,6 +6059,8 @@ const integrateOnlineOrder = async (onlineOrder) => {
     ...(onlineOrder.raw || {}),
     ...(onlineOrder.paymentParts && onlineOrder.paymentParts.length
       ? { paymentParts: onlineOrder.paymentParts }
+      : onlineOrder.raw?.paymentParts && onlineOrder.raw.paymentParts.length
+      ? { paymentParts: onlineOrder.raw.paymentParts }
       : {}),
     payment: onlineOrder.payment || (onlineOrder.raw && onlineOrder.raw.payment),
     paymentMethod:
@@ -6066,18 +6068,62 @@ const integrateOnlineOrder = async (onlineOrder) => {
     paymentType:
       onlineOrder.paymentType || (onlineOrder.raw && onlineOrder.raw.paymentType),
   };
-  const normalizedPaymentParts = extractPaymentPartsFromSource(
-    paymentSource,
-    total,
-    paymentSource.payment
-  );
+
+  const explicitPaymentParts = Array.isArray(paymentSource.paymentParts)
+    ? paymentSource.paymentParts
+    : [];
+
+  const normalizedExplicitParts = explicitPaymentParts
+    .map((part) => {
+      if (!part || typeof part !== "object") return null;
+      const methodCandidate =
+        part.method ||
+        part.type ||
+        part.name ||
+        part.label ||
+        part.title ||
+        part.mode ||
+        part.paymentMethod ||
+        part.paymentType;
+      const normalizedMethod = normalizePaymentMethodName(methodCandidate);
+      if (!normalizedMethod) return null;
+      const amountCandidate =
+        part.amount ??
+        part.value ??
+        part.total ??
+        part.price ??
+        part.qty ??
+        part.quantity ??
+        part.paymentAmount ??
+        part.amountDue;
+      const numeric = parseNumericAmount(amountCandidate);
+      if (numeric == null) return null;
+      return {
+        method: normalizedMethod,
+        amount: Number(Number(numeric).toFixed(2)),
+      };
+    })
+    .filter(Boolean);
+
+  const normalizedPaymentParts =
+    normalizedExplicitParts.length > 0
+      ? normalizedExplicitParts
+      : extractPaymentPartsFromSource(
+          paymentSource,
+          total,
+          paymentSource.payment
+        );
+
   const paymentLabel = summarizePaymentParts(
     normalizedPaymentParts,
     paymentSource.payment || "Online"
   );
   const paymentParts =
     normalizedPaymentParts.length > 0
-      ? normalizedPaymentParts
+      ? normalizedPaymentParts.map((part) => ({
+          method: part.method,
+          amount: Number(Number(part.amount || 0).toFixed(2)),
+        }))
       : [{ method: paymentLabel, amount: total }];
   const phoneDigits = normalizePhone(
     onlineOrder.deliveryPhone || onlineOrder.customerPhone
@@ -13881,6 +13927,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
