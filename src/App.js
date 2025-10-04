@@ -9735,7 +9735,6 @@ const cogs = Number(
                     const isNew =
                       Number(o?.createdAtMs || 0) > Number(onlineViewCutoff || 0);
                     const placedAt = o?.date || o?.createdAt || new Date();
-                    const key = getOnlineOrderDedupeKey(o);
                     const statusEntry = onlineOrderStatus[key] || {};
                     const posOrder = findPosOrderForOnline(o);
                     const isIntegrated = !!posOrder;
@@ -9744,6 +9743,24 @@ const cogs = Number(
                       (statusEntry.state === "importing" || statusEntry.state === "imported");
                     const isDone = posOrder?.done;
                     const isVoided = posOrder?.voided;
+                    const rawDeliveryZone = pickFirstTruthyKey(
+                      o.raw?.deliveryZone,
+                      o.raw?.delivery?.zone,
+                      o.raw?.delivery?.zoneName,
+                      o.raw?.delivery?.area
+                    );
+                    const matchedZone = deliveryZones.find((z) => z.id === o.deliveryZoneId);
+                    const displayZoneName = pickFirstTruthyKey(
+                      matchedZone?.name,
+                      rawDeliveryZone,
+                      o.deliveryZoneId
+                    );
+                    const displayZoneId = pickFirstTruthyKey(o.deliveryZoneId, matchedZone?.id);
+                    const deliveryZoneDisplay = displayZoneName
+                      ? displayZoneId && displayZoneId !== displayZoneName
+                        ? `${displayZoneName} (${displayZoneId})`
+                        : displayZoneName
+                      : displayZoneId || "";
                     return (
                       <li
                         key={o.id}
@@ -9785,12 +9802,13 @@ const cogs = Number(
                           </div>
                           <span>{fmtDateTime(placedAt)}</span>
                         </div>
-                        <div style={{ color: dark ? "#bbd0ff" : "#1a237e", marginTop: 4 }}>
+                         <div style={{ color: dark ? "#bbd0ff" : "#1a237e", marginTop: 4 }}>
                           Payment: {o.payment || "—"} • Type: {o.orderType || "—"} • Status: {" "}
                           {String(o.status || "pending")}
                           {Number(o.deliveryFee || 0) > 0 && (
                             <> • Delivery: E£{Number(o.deliveryFee || 0).toFixed(2)}</>
                           )}
+                          {deliveryZoneDisplay && <> • Zone: {deliveryZoneDisplay}</>}
                         </div>
                         {(o.deliveryName || o.deliveryPhone || o.deliveryAddress) && (
                           <div style={{ marginTop: 4, color: dark ? "#ddd" : "#555" }}>
@@ -13931,6 +13949,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
