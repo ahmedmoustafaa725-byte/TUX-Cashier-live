@@ -2957,7 +2957,12 @@ const openWhatsappNotification = (order, phoneDigits) => {
   const waNumber = formatPhoneForWhatsapp(phoneDigits);
   if (!waNumber) return;
   const name = order?.deliveryName?.trim() || "customer";
-  const message = `Hello ${name}, your order #${order?.orderNo || ""} is ready for pickup.`;
+  const orderLabel = order?.orderNo ? ` #${order.orderNo}` : "";
+  const typeKey = normalizeNameKey(order?.orderType);
+  const isDelivery = typeKey === "delivery";
+  const message = isDelivery
+    ? `Hello ${name}, your order${orderLabel} is out for delivery.`
+    : `Hello ${name}, your order${orderLabel} is ready for pickup.`;
   const encodedMessage = encodeURIComponent(message);
   const isDesktop = (() => {
     if (typeof window === "undefined") return false;
@@ -6424,22 +6429,11 @@ const onlineFallbackId =
 const markOrderDone = async (orderNo) => {
 const ord = orders.find((o) => o.orderNo === orderNo);
   const phoneDigits = ord ? normalizePhone(ord.deliveryPhone) : "";
-  const isOnlineOrder =
-    !!(
-      ord &&
-      (ord.channel === "online" ||
-        ord.source === "online" ||
-        ord.onlineOrderId ||
-        ord.onlineOrderKey)
-    );
-  const typeKey = normalizeNameKey(ord?.orderType);
-  const isDeliveryType = typeKey === "delivery";
-  const shouldNotify =
+ const shouldNotify =
     ord &&
     ord.notifyViaWhatsapp &&
     !ord.whatsappSentAt &&
-    hasWhatsappNumberLength(phoneDigits) &&
-    (!isDeliveryType || isOnlineOrder);
+    hasWhatsappNumberLength(phoneDigits);
   let notifiedAt = null;
   if (shouldNotify) {
     notifiedAt = new Date();
@@ -13927,6 +13921,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
