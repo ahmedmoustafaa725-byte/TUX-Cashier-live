@@ -9586,7 +9586,7 @@ const cogs = Number(
         <span role="img" aria-label="VIP">
           ⭐
         </span>
-        VIP delivery customer
+        VIP Customer
       </div>
     )}
     <input
@@ -14109,6 +14109,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
