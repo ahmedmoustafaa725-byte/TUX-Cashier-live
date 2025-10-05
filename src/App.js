@@ -3681,6 +3681,12 @@ const [deliveryName, setDeliveryName] = useState("");
 const [deliveryPhone, setDeliveryPhone] = useState("");
 const [deliveryAddress, setDeliveryAddress] = useState("");
 const [deliveryZoneId, setDeliveryZoneId] = useState("");
+const isVipDeliveryCustomer = useMemo(() => {
+  if (orderType !== "Delivery") return false;
+  const normalized = normalizePhone(deliveryPhone);
+  if (!normalized) return false;
+  return vipPhones.has(normalized);
+}, [orderType, deliveryPhone, vipPhones]);
 const [customerName, setCustomerName] = useState("");
 const [customerPhone, setCustomerPhone] = useState("");
 const [syncWhatsappReady, setSyncWhatsappReady] = useState(false);            
@@ -7243,6 +7249,15 @@ const topSpenders = useMemo(
   () => customerRows.slice(0, 5),
   [customerRows]
 );
+const vipPhones = useMemo(
+  () =>
+    new Set(
+      topSpenders
+        .map((row) => normalizePhone(row.phone))
+        .filter(Boolean)
+    ),
+  [topSpenders]
+);
 const totalContactSpend = useMemo(
   () => customerRows.reduce((sum, row) => sum + Number(row.totalSpend || 0), 0),
   [customerRows]
@@ -9547,16 +9562,36 @@ const cogs = Number(
 
 
     {/* NEW: Customer details (only for Delivery) */}
-    <input
+ <input
       type="text"
       placeholder="Customer name"
       value={deliveryName}
       onChange={(e) => setDeliveryName(e.target.value)}
       style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
     />
+    {isVipDeliveryCustomer && (
+      <div
+        style={{
+          padding: "8px 10px",
+          borderRadius: 6,
+          border: `1px solid ${btnBorder}`,
+          background: "#fff4d6",
+          fontWeight: 700,
+          color: "#8a5700",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+        }}
+      >
+        <span role="img" aria-label="VIP">
+          ⭐
+        </span>
+        VIP delivery customer
+      </div>
+    )}
     <input
   type="tel"
-  list="phone-saved" 
+  list="phone-saved"
   inputMode="numeric"
   pattern="\d{11}"
   maxLength={11}
@@ -14074,6 +14109,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
