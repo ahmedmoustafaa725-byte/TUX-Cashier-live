@@ -2976,31 +2976,48 @@ const openWhatsappNotification = (order, phoneDigits) => {
     ? `Hello ${name}, your order${orderLabel} is out for delivery.`
     : `Hello ${name}, your order${orderLabel} is ready for pickup.`;
   const encodedMessage = encodeURIComponent(message);
-  const isDesktop = (() => {
-    if (typeof window === "undefined") return false;
-    if (typeof navigator !== "undefined") {
-      const uaData = navigator.userAgentData;
-      if (uaData && typeof uaData.mobile === "boolean") {
-        return !uaData.mobile;
-      }
-      const ua = navigator.userAgent || "";
-      if (/Windows|Macintosh|Linux|X11/i.test(ua) && !/Mobi|Android|iPhone|iPad/i.test(ua)) {
-        return true;
-      }
+  const appUrl = `whatsapp://send?phone=${waNumber}&text=${encodedMessage}`;
+  const fallbackUrl = `https://wa.me/${waNumber}?text=${encodedMessage}`;
+
+  if (typeof window === "undefined") return;
+
+  const openFallback = () => {
+    if (window?.open) {
+      window.open(fallbackUrl, "_blank", "noopener");
     }
-    if (typeof window.innerWidth === "number") {
-      return window.innerWidth >= 768;
+  };
+
+  let fallbackTimer = null;
+  const cancelFallback = () => {
+    if (fallbackTimer) {
+      clearTimeout(fallbackTimer);
+      fallbackTimer = null;
     }
-    return false;
-  })();
-  const url = isDesktop
-    ? `https://web.whatsapp.com/send?phone=${waNumber}&text=${encodedMessage}`
-    : `https://wa.me/${waNumber}?text=${encodedMessage}`;
-  if (typeof window !== "undefined" && window?.open) {
-    window.open(url, "_blank", "noopener");
-  } else {
-    console.info("WhatsApp notification URL:", url);
+    if (typeof window !== "undefined") {
+      window.removeEventListener("blur", cancelFallback);
+      window.removeEventListener("pagehide", cancelFallback);
+    }
+  };
+
+  try {
+    if (typeof document !== "undefined" && document.body) {
+      const anchor = document.createElement("a");
+      anchor.href = appUrl;
+      anchor.target = "_blank";
+      anchor.rel = "noopener noreferrer";
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      fallbackTimer = setTimeout(openFallback, 1500);
+      window.addEventListener("blur", cancelFallback, { once: true });
+      window.addEventListener("pagehide", cancelFallback, { once: true });
+      return;
+    }
+  } catch (err) {
+    cancelFallback();
   }
+
+  openFallback();
 };
 const upsertCustomer = (list, rec) => {
   const phone = normalizePhone(rec.phone);
@@ -14119,6 +14136,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
