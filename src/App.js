@@ -5816,7 +5816,7 @@ const checkout = async () => {
     const p = normalizePhone(deliveryPhone);
     const a = String(deliveryAddress || "").trim();
     if (!n || !/^\d{11}$/.test(p) || !a) {
-      return alert("Please enter customer name, phone Number (11 digits), and address for Delivery.");
+        return alert("Please enter customer name, phone number (10 digits after +20), and address for Delivery.");
     }
   }
   const orderCustomerName =
@@ -5905,9 +5905,11 @@ const checkout = async () => {
     }
     let optimisticNo = nextOrderNo;
 
-   const hasWhatsappPhone =
-      orderType !== "Delivery" && hasWhatsappNumberLength(orderCustomerPhone);
-    const shouldWhatsapp = hasWhatsappPhone && !!syncWhatsappReady;
+  const hasWhatsappPhone = hasWhatsappNumberLength(orderCustomerPhone);
+    const shouldWhatsapp =
+      orderType === "Delivery"
+        ? hasWhatsappPhone
+        : hasWhatsappPhone && !!syncWhatsappReady;
     let order = enrichOrderWithChannel({
       orderNo: optimisticNo,
       date: new Date(),
@@ -9561,14 +9563,7 @@ const cogs = Number(
 </div>
 
 
-    {/* NEW: Customer details (only for Delivery) */}
- <input
-      type="text"
-      placeholder="Customer name"
-      value={deliveryName}
-      onChange={(e) => setDeliveryName(e.target.value)}
-      style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-    />
+  {/* NEW: Customer details (only for Delivery) */}
     {isVipDeliveryCustomer && (
       <div
         style={{
@@ -9581,6 +9576,7 @@ const cogs = Number(
           display: "flex",
           alignItems: "center",
           gap: 8,
+          marginBottom: 4,
         }}
       >
         <span role="img" aria-label="VIP">
@@ -9590,26 +9586,40 @@ const cogs = Number(
       </div>
     )}
     <input
-  type="tel"
-  list="phone-saved"
-  inputMode="numeric"
-  pattern="\d{11}"
-  maxLength={11}
-  placeholder="Phone Number"
-  value={deliveryPhone}
-  onChange={(e) => {
-    const digits = e.target.value.replace(/\D/g, "").slice(0, 11);
-    setDeliveryPhone(digits);
-  }}
-  onKeyDown={(e) => {
-    const ctrl = e.ctrlKey || e.metaKey;
-    const allowed = ["Backspace","Delete","ArrowLeft","ArrowRight","Home","End","Tab"];
-    if (allowed.includes(e.key) || ctrl) return;
-    if (!/^\d$/.test(e.key)) e.preventDefault(); // block non-digits
-  }}
-  style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
-/>
-     <input
+      type="text"
+      placeholder="Customer name"
+      value={deliveryName}
+      onChange={(e) => setDeliveryName(e.target.value)}
+      style={{ padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+    />
+    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      <span style={{ opacity: 0.8, fontWeight: 600 }}>+20</span>
+      <input
+        type="tel"
+        list="phone-saved"
+        inputMode="numeric"
+        placeholder="Phone Number (10 digits)"
+        maxLength={10}
+        value={extractLocalPhoneDigits(deliveryPhone)}
+        onChange={(e) => setDeliveryPhone(toCanonicalLocalPhone(e.target.value))}
+        onKeyDown={(e) => {
+          const ctrl = e.ctrlKey || e.metaKey;
+          const allowed = [
+            "Backspace",
+            "Delete",
+            "ArrowLeft",
+            "ArrowRight",
+            "Home",
+            "End",
+            "Tab",
+          ];
+          if (allowed.includes(e.key) || ctrl) return;
+          if (!/^\d$/.test(e.key)) e.preventDefault();
+        }}
+        style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
+      />
+    </div>
+    <input
       type="text"
       placeholder="Address"
       value={deliveryAddress}
@@ -14109,6 +14119,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
