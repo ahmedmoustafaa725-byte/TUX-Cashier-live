@@ -3681,12 +3681,6 @@ const [deliveryName, setDeliveryName] = useState("");
 const [deliveryPhone, setDeliveryPhone] = useState("");
 const [deliveryAddress, setDeliveryAddress] = useState("");
 const [deliveryZoneId, setDeliveryZoneId] = useState("");
-const isVipDeliveryCustomer = useMemo(() => {
-  if (orderType !== "Delivery") return false;
-  const normalized = normalizePhone(deliveryPhone);
-  if (!normalized) return false;
-  return vipPhones.has(normalized);
-}, [orderType, deliveryPhone, vipPhones]);
 const [customerName, setCustomerName] = useState("");
 const [customerPhone, setCustomerPhone] = useState("");
 const [syncWhatsappReady, setSyncWhatsappReady] = useState(false);            
@@ -7258,6 +7252,12 @@ const vipPhones = useMemo(
     ),
   [topSpenders]
 );
+const isVipDeliveryCustomer = useMemo(() => {
+  if (orderType !== "Delivery") return false;
+  const normalized = normalizePhone(deliveryPhone);
+  if (!normalized) return false;
+  return vipPhones.has(normalized);
+}, [orderType, deliveryPhone, vipPhones]);
 const totalContactSpend = useMemo(
   () => customerRows.reduce((sum, row) => sum + Number(row.totalSpend || 0), 0),
   [customerRows]
@@ -14109,6 +14109,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
