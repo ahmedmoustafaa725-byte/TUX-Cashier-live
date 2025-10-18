@@ -3702,6 +3702,12 @@ const saveReconciliation = () => {
   if (!dayMeta.startedAt) return alert("Start a shift first.");
   const who = String(reconSavedBy || dayMeta.currentWorker || "").trim();
   if (!who) return alert("Select or type who saved it (Saved by).");
+  const missingActualMethods = (paymentMethods || []).filter(
+    (m) => !Object.prototype.hasOwnProperty.call(reconCounts, m)
+  );
+  if (missingActualMethods.length) {
+    return alert("Enter the counted amount for each payment method before saving.");
+  }
   const breakdown = {};
   for (const m of paymentMethods || []) {
     const expected = Number(expectedByMethod[m] || 0);
@@ -11525,11 +11531,12 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
                   <td style={{ padding:10, borderBottom:`1px solid ${cardBorder}`, textAlign:"right" }}>E£{raw.toFixed(2)}</td>
                   <td style={{ padding:10, borderBottom:`1px solid ${cardBorder}`, textAlign:"right" }}>E£{exp.toFixed(2)}</td>
                   <td style={{ padding:10, borderBottom:`1px solid ${cardBorder}`, textAlign:"right" }}>
-                    <input
+              <input
                       type="number"
                       step="0.01"
-                      value={reconCounts[m] ?? 0}
-                      onChange={(e) => setReconCounts(rc => ({ ...rc, [m]: Number(e.target.value || 0) }))}
+                      value={reconCounts[m] ?? ""}
+                      placeholder="0.00"
+                      onChange={(e) => handleReconCountChange(m, e.target.value)}
                       style={{ width:120, padding:"6px 8px", borderRadius:8, border:`1px solid ${btnBorder}`, background:dark?"#1f1f1f":"#fff", color:dark?"#eee":"#000", textAlign:"right" }}
                     />
                   </td>
@@ -14204,6 +14211,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
