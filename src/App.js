@@ -5496,11 +5496,23 @@ const signOutByPin = (pin) => {
     setDayMeta(d => ({ ...d, currentWorker: "" }));
   }
 };
-const closeOpenSessionsAt = (endTime) => {
-  setWorkerSessions(list =>
-    list.map(s => !s.signOutAt ? { ...s, signOutAt: endTime } : s)
-  );
-};
+const closeOpenSessionsAt = useCallback((endTime) => {
+  const endStamp = endTime instanceof Date ? endTime : new Date(endTime || Date.now());
+  setWorkerSessions((list = []) => {
+    const next = list.map((session) =>
+      session && !session.signOutAt ? { ...session, signOutAt: endStamp } : session
+    );
+    saveLocalPartial({
+      workerSessions: next.map((session) => ({
+        ...session,
+        signInAt: toIso(session?.signInAt),
+        signOutAt: toIso(session?.signOutAt),
+      })),
+    });
+    setLastLocalEditAt(Date.now());
+    return next;
+  });
+}, [setLastLocalEditAt]);
 const resetWorkerLog = () => {
   const okAdmin = !!promptAdminAndPin();
   if (!okAdmin) return;
@@ -5663,11 +5675,13 @@ const workerMonthlyTotalPay = useMemo(
   };
 
 
- const endDay = async () => {
+const endDay = async () => {
     if (!dayMeta.startedAt) return alert("Start a shift first.");
+
     const who = window.prompt("Enter your name to END THE DAY:", "");
     const endBy = norm(who);
     if (!endBy) return alert("Name is required.");
+
     const pendingOrders = orders.filter((order) => order && !order.done && !order.voided);
     if (pendingOrders.length > 0) {
       const pendingList = pendingOrders
@@ -5686,13 +5700,14 @@ const workerMonthlyTotalPay = useMemo(
       );
       return;
     }
-    if (!dayMeta.reconciledAt || !dayMeta.startedAt || (dayMeta.reconciledAt < dayMeta.startedAt)) {
+
+    if (!dayMeta.reconciledAt || !dayMeta.startedAt || dayMeta.reconciledAt < dayMeta.startedAt) {
       alert("You must save a Cash Drawer Reconciliation before ending the day. Go to the Reconcile tab.");
       return;
     }
+
     const endTime = new Date();
     const metaForReport = { ...dayMeta, endedAt: endTime, endedBy: endBy };
-
     generatePDF(false, metaForReport);
 
     if (cloudEnabled && ordersColRef && fbUser && db) {
@@ -5708,11 +5723,7 @@ const workerMonthlyTotalPay = useMemo(
       }
       try {
         if (counterDocRef) {
-          await setDoc(
-            counterDocRef,
-            { lastOrderNo: 0, updatedAt: serverTimestamp() },
-            { merge: true }
-          );
+          await setDoc(counterDocRef, { lastOrderNo: 0, updatedAt: serverTimestamp() }, { merge: true });
         }
       } catch (e) {
         console.warn("Counter reset failed:", e);
@@ -5721,61 +5732,59 @@ const workerMonthlyTotalPay = useMemo(
 
     const validOrders = orders.filter((o) => !o.voided);
     const revenueExclDelivery = validOrders.reduce(
-      (s, o) =>
-        s +
-        Number(
-          o.itemsTotal != null ? o.itemsTotal : o.total - (o.deliveryFee || 0)
-        ),
+      (sum, order) =>
+        sum + Number(order.itemsTotal != null ? order.itemsTotal : order.total - (order.deliveryFee || 0)),
       0
     );
-    const expensesTotal = expenses.reduce(
-      (s, e) => s + Number((e.qty || 0) * (e.unitPrice || 0)),
-      0
-    );
+    const expensesTotal = expenses.reduce((sum, expense) => sum + Number((expense.qty || 0) * (expense.unitPrice || 0)), 0);
     const margin = revenueExclDelivery - expensesTotal;
-const txs = [];
 
-if (margin > 0) {
-  txs.push({
-    id: `tx_${Date.now()}`,
-    type: "init",
-    amount: margin,
-    worker: endBy,
-    note: "Auto Init from day margin",
-    date: new Date(),
-    locked: true,
-    source: "auto_day_margin",
-  });
-} else if (margin < 0) {
-  txs.push({
-    id: `tx_${Date.now() + 1}`,
-    type: "adjustDown",
-    amount: Math.abs(margin),
-    worker: endBy,
-    note: "Auto Adjust Down (negative margin)",
-    date: new Date(),
-    locked: true, // Prevent removal of negative margin
-    source: "auto_day_negative_margin"
-  });
-}
-if (txs.length) setBankTx((arr) => [...txs, ...arr]);
-lastLockedRef.current = [];  
-  const newHistoricalOrders = [...historicalOrders, ...orders];
-  const newHistoricalExpenses = [...historicalExpenses, ...expenses];
-  const newHistoricalPurchases = [...historicalPurchases, ...purchases];
-  setHistoricalOrders(newHistoricalOrders);
-  setHistoricalExpenses(newHistoricalExpenses);
-  setHistoricalPurchases(newHistoricalPurchases);
-  saveLocalPartial({
-    historicalOrders: newHistoricalOrders,
-    historicalExpenses: newHistoricalExpenses,
-    historicalPurchases: newHistoricalPurchases
-  });
-setExpenses([]);              
-closeOpenSessionsAt(endTime);
-      setOrders([]);
+    const txs = [];
+    if (margin > 0) {
+      txs.push({
+        id: `tx_${Date.now()}`,
+        type: "init",
+        amount: margin,
+        worker: endBy,
+        note: "Auto Init from day margin",
+        date: new Date(),
+        locked: true,
+        source: "auto_day_margin",
+      });
+    } else if (margin < 0) {
+      txs.push({
+        id: `tx_${Date.now() + 1}`,
+        type: "adjustDown",
+        amount: Math.abs(margin),
+        worker: endBy,
+        note: "Auto Adjust Down (negative margin)",
+        date: new Date(),
+        locked: true,
+        source: "auto_day_negative_margin",
+      });
+    }
+    if (txs.length) setBankTx((arr) => [...txs, ...arr]);
+
+    lastLockedRef.current = [];
+
+    const newHistoricalOrders = [...historicalOrders, ...orders];
+    const newHistoricalExpenses = [...historicalExpenses, ...expenses];
+    const newHistoricalPurchases = [...historicalPurchases, ...purchases];
+    setHistoricalOrders(newHistoricalOrders);
+    setHistoricalExpenses(newHistoricalExpenses);
+    setHistoricalPurchases(newHistoricalPurchases);
+    saveLocalPartial({
+      historicalOrders: newHistoricalOrders,
+      historicalExpenses: newHistoricalExpenses,
+      historicalPurchases: newHistoricalPurchases,
+    });
+
+    setExpenses([]);
+    closeOpenSessionsAt(endTime);
+    setOrders([]);
     setNextOrderNo(1);
-    setDayMeta({
+
+    const resetMeta = {
       startedBy: "",
       currentWorker: "",
       startedAt: null,
@@ -5785,9 +5794,14 @@ closeOpenSessionsAt(endTime);
       resetBy: "",
       resetAt: null,
       shiftChanges: [],
-    });
+    };
+    setDayMeta(resetMeta);
+    saveLocalPartial({ dayMeta: resetMeta });
+    setLastLocalEditAt(Date.now());
+
     setReconCounts({});
-setReconSavedBy("");
+    setReconSavedBy("");
+
     alert(`Day ended by ${endBy}. Report downloaded and day reset ✅`);
   };
   const [isCheckingOut, setIsCheckingOut] = useState(false);
@@ -14234,6 +14248,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
