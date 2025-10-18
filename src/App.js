@@ -3698,8 +3698,14 @@ const totalVariance = useMemo(
   () => Object.values(varianceByMethod).reduce((s, v) => s + Number(v || 0), 0),
   [varianceByMethod]
 );
-const hasNonZeroActualCount = useMemo(
-  () => (paymentMethods || []).some((m) => Number(reconCounts[m] || 0) !== 0),
+const hasMeaningfulActualCounts = useMemo(
+  () =>
+    (paymentMethods || []).every((m) => {
+      const raw = reconCounts[m];
+      if (raw == null || raw === "") return false;
+      const numeric = Number(raw);
+      return Number.isFinite(numeric) && numeric !== 0;
+    }),
   [paymentMethods, reconCounts]
 );
 const saveReconciliation = () => {
@@ -3712,8 +3718,8 @@ const saveReconciliation = () => {
   if (missingActualMethods.length) {
     return alert("Enter the counted amount for each payment method before saving.");
   }
-  if (!hasNonZeroActualCount) {
-    return alert("Enter a non-zero counted amount before saving.");
+if (!hasMeaningfulActualCounts) {
+    return alert("Enter a non-zero counted amount for each payment method before saving.");
   }
   const breakdown = {};
   for (const m of paymentMethods || []) {
@@ -11595,19 +11601,19 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
                       ))}
                     </select>
               </label>
-  <button
+ <button
           onClick={saveReconciliation}
-          disabled={!hasNonZeroActualCount}
+          disabled={!hasMeaningfulActualCounts}
           style={{
             marginLeft: "auto",
             padding: "10px 16px",
             borderRadius: 12,
             border: "none",
-            background: !hasNonZeroActualCount ? "#9e9e9e" : "#00966a",
+            background: !hasMeaningfulActualCounts ? "#9e9e9e" : "#00966a",
             color: "#fff",
             fontWeight: 800,
-            cursor: !hasNonZeroActualCount ? "not-allowed" : "pointer",
-            opacity: !hasNonZeroActualCount ? 0.7 : 1,
+            cursor: !hasMeaningfulActualCounts ? "not-allowed" : "pointer",
+            opacity: !hasMeaningfulActualCounts ? 0.7 : 1,
           }}
         >
           Save Reconciliation
@@ -14228,6 +14234,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
