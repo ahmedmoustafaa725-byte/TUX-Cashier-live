@@ -2516,14 +2516,47 @@ function sumPaymentsByMethod(orders = []) {
     if (order && Object.prototype.hasOwnProperty.call(order, "done") && order.done === false) {
       continue;
     }
+
+    const rawDelivery = Number(order?.deliveryFee || 0);
+    const deliveryFee = Number.isFinite(rawDelivery) && rawDelivery > 0 ? rawDelivery : 0;
+    const baseItemsTotal =
+      order?.itemsTotal != null
+        ? Number(order.itemsTotal || 0)
+        : Number(order?.total || 0) - deliveryFee;
+    const itemsOnly = Number.isFinite(baseItemsTotal) ? Math.max(0, baseItemsTotal) : 0;
+
+    if (!itemsOnly) continue;
+
     if (Array.isArray(order.paymentParts) && order.paymentParts.length) {
-      for (const part of order.paymentParts) {
-        const key = String(part.method || "Unknown");
-        totals[key] = (totals[key] || 0) + Number(part.amount || 0);
+      const parts = order.paymentParts.map((part) => ({
+        method: String(part?.method || "Unknown"),
+        amount: Number(part?.amount || 0),
+      }));
+      const sumParts = parts.reduce((sum, part) => sum + (Number.isFinite(part.amount) ? part.amount : 0), 0);
+
+      if (sumParts <= 0) {
+        const evenShare = Number((itemsOnly / parts.length).toFixed(2));
+        let remaining = itemsOnly;
+        parts.forEach((part, idx) => {
+          const allocation = idx === parts.length - 1 ? remaining : Math.min(remaining, evenShare);
+          totals[part.method] = (totals[part.method] || 0) + allocation;
+          remaining = Math.max(0, remaining - allocation);
+        });
+      } else {
+        let remaining = itemsOnly;
+        parts.forEach((part, idx) => {
+          const proportion = part.amount / sumParts;
+          let allocation = Number((itemsOnly * proportion).toFixed(2));
+          if (allocation > remaining || idx === parts.length - 1) {
+            allocation = remaining;
+          }
+          totals[part.method] = (totals[part.method] || 0) + allocation;
+          remaining = Math.max(0, Number((remaining - allocation).toFixed(2)));
+        });
       }
     } else {
-      const key = String(order.payment || "Unknown");
-      totals[key] = (totals[key] || 0) + Number(order.total || 0);
+      const key = String(order?.payment || "Unknown");
+      totals[key] = (totals[key] || 0) + itemsOnly;
     }
   }
   return totals;
@@ -14154,6 +14187,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
