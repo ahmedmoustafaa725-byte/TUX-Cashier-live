@@ -5594,15 +5594,33 @@ const workerMonthlyTotalPay = useMemo(
   };
 
 
-  const endDay = async () => {
+ const endDay = async () => {
     if (!dayMeta.startedAt) return alert("Start a shift first.");
     const who = window.prompt("Enter your name to END THE DAY:", "");
     const endBy = norm(who);
     if (!endBy) return alert("Name is required.");
-  if (!dayMeta.reconciledAt || !dayMeta.startedAt || (dayMeta.reconciledAt < dayMeta.startedAt)) {
-    alert("You must save a Cash Drawer Reconciliation before ending the day. Go to the Reconcile tab.");
-    return;
-  }
+    const pendingOrders = orders.filter((order) => order && !order.done && !order.voided);
+    if (pendingOrders.length > 0) {
+      const pendingList = pendingOrders
+        .map((order) =>
+          order?.orderNo != null
+            ? `#${order.orderNo}`
+            : order?.channelOrderNo
+            ? order.channelOrderNo
+            : order?.id
+            ? String(order.id)
+            : "an order"
+        )
+        .join(", ");
+      alert(
+        `You must mark all orders as Done or Cancelled before ending the day. Pending orders: ${pendingList}.`
+      );
+      return;
+    }
+    if (!dayMeta.reconciledAt || !dayMeta.startedAt || (dayMeta.reconciledAt < dayMeta.startedAt)) {
+      alert("You must save a Cash Drawer Reconciliation before ending the day. Go to the Reconcile tab.");
+      return;
+    }
     const endTime = new Date();
     const metaForReport = { ...dayMeta, endedAt: endTime, endedBy: endBy };
 
@@ -14136,6 +14154,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
