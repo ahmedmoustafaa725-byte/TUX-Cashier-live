@@ -3534,7 +3534,10 @@ const [newWName, setNewWName] = useState("");
 const [newWPin, setNewWPin] = useState("");
 const [newWRate, setNewWRate] = useState("");
 const [workerSessions, setWorkerSessions] = useState([]);
-const [workerLogFilter, setWorkerLogFilter] = useState("month"); // 'day' | 'week' | 'month'
+const workerSessionsRef = useRef(workerSessions);
+useEffect(() => {
+  workerSessionsRef.current = workerSessions;
+}, [workerSessions]);const [workerLogFilter, setWorkerLogFilter] = useState("month"); // 'day' | 'week' | 'month'
 const [workerLogDay, setWorkerLogDay] = useState(() => new Date().toISOString().slice(0,10));
 const [workerLogWeekStart, setWorkerLogWeekStart] = useState(() => getSundayStart(new Date()));
 const [workerLogMonth, setWorkerLogMonth] = useState(() => {
@@ -5511,12 +5514,16 @@ const signOutByPin = (pin) => {
     setDayMeta(d => ({ ...d, currentWorker: "" }));
   }
 };
-const closeOpenSessionsAt = useCallback((endTime) => {
-  const endStamp = endTime instanceof Date ? endTime : new Date(endTime || Date.now());
-  setWorkerSessions((list = []) => {
-    const next = list.map((session) =>
+const closeOpenSessionsAt = useCallback(
+  (endTime) => {
+    const endStamp = endTime instanceof Date ? endTime : new Date(endTime || Date.now());
+    const current = Array.isArray(workerSessionsRef.current)
+      ? workerSessionsRef.current
+      : [];
+    const next = current.map((session) =>
       session && !session.signOutAt ? { ...session, signOutAt: endStamp } : session
     );
+    setWorkerSessions(next);
     saveLocalPartial({
       workerSessions: next.map((session) => ({
         ...session,
@@ -5526,8 +5533,9 @@ const closeOpenSessionsAt = useCallback((endTime) => {
     });
     setLastLocalEditAt(Date.now());
     return next;
-  });
-}, [setLastLocalEditAt]);
+  },
+  [setLastLocalEditAt]
+);
 const resetWorkerLog = () => {
   const okAdmin = !!promptAdminAndPin();
   if (!okAdmin) return;
@@ -5778,6 +5786,7 @@ const endDay = async () => {
         source: "auto_day_negative_margin",
       });
     }
+    const updatedBankTx = txs.length ? [...txs, ...bankTx] : bankTx;
     if (txs.length) setBankTx((arr) => [...txs, ...arr]);
 
     lastLockedRef.current = [];
@@ -5794,9 +5803,11 @@ const endDay = async () => {
       historicalPurchases: newHistoricalPurchases,
     });
 
-    setExpenses([]);
-    closeOpenSessionsAt(endTime);
-    setOrders([]);
+      const clearedExpenses = [];
+    const clearedOrders = [];
+    setExpenses(clearedExpenses);
+    const closedSessions = closeOpenSessionsAt(endTime) || [];
+    setOrders(clearedOrders);
     setNextOrderNo(1);
 
     const resetMeta = {
@@ -5816,6 +5827,57 @@ const endDay = async () => {
 
     setReconCounts({});
     setReconSavedBy("");
+
+    if (cloudEnabled && stateDocRef && fbUser) {
+      try {
+        const bodyBase = packStateForCloud({
+          menu,
+          extraList,
+          orders: realtimeOrders ? [] : clearedOrders,
+          inventory,
+          nextOrderNo: 1,
+          workerProfiles,
+          workerSessions: closedSessions,
+          dark,
+          workers,
+          paymentMethods,
+          inventoryLocked,
+          inventorySnapshot,
+          inventoryLockedAt,
+          adminPins,
+          orderTypes,
+          defaultDeliveryFee,
+          expenses: clearedExpenses,
+          purchases,
+          purchaseCategories,
+          customers,
+          deliveryZones,
+          dayMeta: resetMeta,
+          utilityBills,
+          laborProfile,
+          equipmentList,
+          bankTx: updatedBankTx,
+          realtimeOrders,
+          reconHistory,
+          onlineOrdersRaw,
+          onlineOrderStatus,
+          lastSeenOnlineOrderTs,
+        });
+        writeSeqRef.current += 1;
+        const body = {
+          ...bodyBase,
+          writerId: clientIdRef.current,
+          writeSeq: writeSeqRef.current,
+          clientTime: Date.now(),
+        };
+        await setDoc(stateDocRef, body, { merge: true });
+        const now = Date.now();
+        setLastAppliedCloudAt(now);
+        setCloudStatus((s) => ({ ...s, lastSaveAt: new Date(now), error: null }));
+      } catch (err) {
+        console.warn("Immediate cloud sync after endDay failed", err);
+      }
+    }
 
     alert(`Day ended by ${endBy}. Report downloaded and day reset ✅`);
   };
@@ -14263,6 +14325,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
