@@ -3698,6 +3698,10 @@ const totalVariance = useMemo(
   () => Object.values(varianceByMethod).reduce((s, v) => s + Number(v || 0), 0),
   [varianceByMethod]
 );
+const hasNonZeroActualCount = useMemo(
+  () => (paymentMethods || []).some((m) => Number(reconCounts[m] || 0) !== 0),
+  [paymentMethods, reconCounts]
+);
 const saveReconciliation = () => {
   if (!dayMeta.startedAt) return alert("Start a shift first.");
   const who = String(reconSavedBy || dayMeta.currentWorker || "").trim();
@@ -3707,6 +3711,9 @@ const saveReconciliation = () => {
   );
   if (missingActualMethods.length) {
     return alert("Enter the counted amount for each payment method before saving.");
+  }
+  if (!hasNonZeroActualCount) {
+    return alert("Enter a non-zero counted amount before saving.");
   }
   const breakdown = {};
   for (const m of paymentMethods || []) {
@@ -11588,10 +11595,20 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
                       ))}
                     </select>
               </label>
-
-        <button
+  <button
           onClick={saveReconciliation}
-          style={{ marginLeft:"auto", padding:"10px 16px", borderRadius:12, border:"none", background:"#00966a", color:"#fff", fontWeight:800, cursor:"pointer" }}
+          disabled={!hasNonZeroActualCount}
+          style={{
+            marginLeft: "auto",
+            padding: "10px 16px",
+            borderRadius: 12,
+            border: "none",
+            background: !hasNonZeroActualCount ? "#9e9e9e" : "#00966a",
+            color: "#fff",
+            fontWeight: 800,
+            cursor: !hasNonZeroActualCount ? "not-allowed" : "pointer",
+            opacity: !hasNonZeroActualCount ? 0.7 : 1,
+          }}
         >
           Save Reconciliation
         </button>
@@ -14211,6 +14228,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
