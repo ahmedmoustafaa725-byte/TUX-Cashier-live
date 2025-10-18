@@ -3580,7 +3580,24 @@ const [onlineOrderStatus, setOnlineOrderStatus] = useState(() => {
   return out;
 });
 const [reconCounts, setReconCounts] = useState({});
-const [reconSavedBy, setReconSavedBy] = useState("");
+const handleReconCountChange = useCallback((method, rawValue) => {
+  setReconCounts((rc) => {
+    const next = { ...rc };
+    const value = rawValue == null ? "" : String(rawValue);
+    if (
+      value === "" ||
+      value === "-" ||
+      value === "." ||
+      value === "-." ||
+      Number.isNaN(Number(value))
+    ) {
+      delete next[method];
+    } else {
+      next[method] = Number(value);
+    }
+    return next;
+  });
+}, []);const [reconSavedBy, setReconSavedBy] = useState("");
 const [reconHistory, setReconHistory] = useState([]);
 const accountedOnlineOrders = useMemo(() => {
   const seen = new Set();
@@ -14187,6 +14204,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
