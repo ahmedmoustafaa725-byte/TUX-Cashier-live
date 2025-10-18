@@ -4396,6 +4396,10 @@ if (ts && lastLocalEditAt && ts < lastLocalEditAt) return;
       if (unpacked.defaultDeliveryFee != null) setDefaultDeliveryFee(unpacked.defaultDeliveryFee);
       if (unpacked.expenses) setExpenses(unpacked.expenses);
 
+      const appliedAt = ts || Date.now();
+      setLastAppliedCloudAt(appliedAt);
+      setCloudStatus((s) => ({ ...s, lastLoadAt: new Date(), error: null }));
+
     } catch (e) {
       console.warn("Realtime state apply failed:", e);
     }
@@ -4510,8 +4514,11 @@ if (unpacked.workerSessions) setWorkerSessions(unpacked.workerSessions);
   }
 };
 useEffect(() => {
-  if (!cloudEnabled || !stateDocRef || !fbUser || !hydrated) return;
-  const t = setTimeout(async () => {
+  if (!cloudEnabled || !stateDocRef || !fbUser || !hydrated) return undefined;
+
+  let cancelled = false;
+
+  (async () => {
     try {
  const bodyBase = packStateForCloud({
         menu,
@@ -4555,12 +4562,20 @@ useEffect(() => {
       };
 
       await setDoc(stateDocRef, body, { merge: true });
+      if (cancelled) return;
+      const now = Date.now();
+      setLastAppliedCloudAt(now);
       setCloudStatus((s) => ({ ...s, lastSaveAt: new Date(), error: null }));
     } catch (e) {
-      setCloudStatus((s) => ({ ...s, error: String(e) }));
+      if (!cancelled) {
+        setCloudStatus((s) => ({ ...s, error: String(e) }));
+      }
     }
-  }, 1600);
-  return () => clearTimeout(t);
+  })();
+
+  return () => {
+    cancelled = true;
+  };
 }, [
   cloudEnabled,
   stateDocRef,
@@ -14248,6 +14263,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
