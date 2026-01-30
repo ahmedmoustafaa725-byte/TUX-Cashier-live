@@ -2104,6 +2104,15 @@ function dedupeOrders(list) {
     (a, b) => +new Date(b.date) - +new Date(a.date)
   );
 }
+function mergePendingOrders(cloudOrders, existingOrders) {
+  const cloudOrderNos = new Set(
+    (cloudOrders || []).map((order) => order?.orderNo).filter((no) => no != null)
+  );
+  const pending = (existingOrders || []).filter(
+    (order) => order?.pendingCloud && !cloudOrderNos.has(order.orderNo)
+  );
+  return dedupeOrders([...(cloudOrders || []), ...pending]).map(enrichOrderWithChannel);
+}
 const BASE_MENU = [
   {
     id: 1,
@@ -2654,7 +2663,16 @@ async function allocateOrderNoAtomic(db, counterDocRef) {
     );
     return n;
   });
-  return next;
+ return next;
+}
+function withTimeout(promise, ms, label) {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${ms}ms`));
+    }, ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
 }
 function escHtml(s) {
   return String(s ?? "")
@@ -4636,7 +4654,7 @@ useEffect(() => {
     const unsub = onSnapshot(qy, (snap) => {
       const arr = [];
       snap.forEach((d) => arr.push(orderFromCloudDoc(d.id, d.data())));
-      setOrders(dedupeOrders(arr).map(enrichOrderWithChannel));
+      setOrders((prev) => mergePendingOrders(arr, prev));
     });
    return () => unsub();
   }, [realtimeOrders, ordersColRef, fbUser, startedAtMs, endedAtMs]);
@@ -6134,14 +6152,18 @@ const checkout = async () => {
       source: "onsite",
     });
     recordCustomerFromOrder(order);
-    if (autoPrintOnCheckout) {
+   if (autoPrintOnCheckout) {
       printReceiptHTML(order, Number(preferredPaperWidthMm) || 80, "Customer");
     }
     setNextOrderNo(optimisticNo + 1);
     let allocatedNo = optimisticNo;
     if (cloudEnabled && counterDocRef && fbUser && db) {
       try {
-      allocatedNo = await allocateOrderNoAtomic(db, counterDocRef);
+      allocatedNo = await withTimeout(
+        allocateOrderNoAtomic(db, counterDocRef),
+        4000,
+        "Allocate order number"
+      );
         if (allocatedNo !== optimisticNo) {
           order = {
             ...order,
@@ -6154,19 +6176,33 @@ const checkout = async () => {
         console.warn("Atomic order number allocation failed, using optimistic number.", e);
       }
     }
-    if (!realtimeOrders) setOrders((o) => [order, ...o]);
+    const pendingCloud = cloudEnabled && realtimeOrders;
+    setOrders((o) => [{ ...order, pendingCloud }, ...o]);
     if (cloudEnabled && ordersColRef && fbUser) {
-      try {
-        const ref = await addDoc(ordersColRef, normalizeOrderForCloud(order));
-        if (!realtimeOrders) {
-          setOrders((prev) =>
-            prev.map((oo) =>
-              oo.orderNo === order.orderNo ? { ...oo, cloudId: ref.id } : oo
-            )
-          );
+      const writeCloudOrder = async () => {
+        const ref = await withTimeout(
+          addDoc(ordersColRef, normalizeOrderForCloud(order)),
+          5000,
+          "Cloud order write"
+        );
+        setOrders((prev) =>
+          prev.map((oo) =>
+            oo.orderNo === order.orderNo
+              ? { ...oo, cloudId: ref.id, pendingCloud: false }
+              : oo
+          )
+        );
+      };
+      if (realtimeOrders) {
+        writeCloudOrder().catch((e) => {
+          console.warn("Cloud order write failed:", e);
+        });
+      } else {
+        try {
+          await writeCloudOrder();
+        } catch (e) {
+          console.warn("Cloud order write failed:", e);
         }
-      } catch (e) {
-        console.warn("Cloud order write failed:", e);
       }
     }
     setCart([]);
@@ -14325,6 +14361,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
