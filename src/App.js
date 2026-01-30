@@ -2948,19 +2948,25 @@ function printReceiptHTML(order, widthMm = 80, copy = "Customer", images) {
   const ifr = document.createElement("iframe");
   Object.assign(ifr.style, { position:"fixed", right:0, bottom:0, width:0, height:0, border:0 });
   let htmlWritten = false;
+  let printed = false;
+  const cleanup = () => { try { ifr.remove(); } catch {} };
+  const attemptPrint = () => {
+    if (printed) return;
+    const w = ifr.contentWindow;
+    if (!w) return;
+    printed = true;
+    try {
+      w.focus();
+      w.print();
+      w.addEventListener("afterprint", cleanup, { once: true });
+      setTimeout(cleanup, 8000);
+    } catch {
+      printed = false;
+    }
+  };
   ifr.addEventListener("load", () => {
     if (!htmlWritten) return;
-    try {
-      const w = ifr.contentWindow;
-      if (!w) return;
-      requestAnimationFrame(() => {
-        w.focus();
-        w.print();
-        const cleanup = () => { try { ifr.remove(); } catch {} };
-        w.addEventListener("afterprint", cleanup, { once: true });
-        setTimeout(cleanup, 8000);
-      });
-    } catch {}
+    attemptPrint();
   });
   document.body.appendChild(ifr);
   const doc = ifr.contentDocument || ifr.contentWindow.document;
@@ -2968,6 +2974,7 @@ function printReceiptHTML(order, widthMm = 80, copy = "Customer", images) {
   doc.write(html);
   doc.close();
   htmlWritten = true;
+  attemptPrint();
   setTimeout(() => { try { if (document.body.contains(ifr)) ifr.remove(); } catch {} }, 12000);
 }
 const normalizePhone = (s) => {
@@ -14364,6 +14371,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
