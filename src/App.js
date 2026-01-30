@@ -6155,9 +6155,7 @@ const checkout = async () => {
     if (autoPrintOnCheckout) {
       const paperWidth = Number(preferredPaperWidthMm) || 80;
       for (let i = 0; i < 2; i += 1) {
-        setTimeout(() => {
-          printReceiptHTML(order, paperWidth, "Customer");
-        }, i * 250);
+        setTimeout(printReceiptHTML, i * 250, order, paperWidth, "Customer");
       }
     }
     setNextOrderNo(optimisticNo + 1);
@@ -14366,6 +14364,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
