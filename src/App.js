@@ -6152,8 +6152,13 @@ const checkout = async () => {
       source: "onsite",
     });
     recordCustomerFromOrder(order);
-   if (autoPrintOnCheckout) {
-      printReceiptHTML(order, Number(preferredPaperWidthMm) || 80, "Customer");
+    if (autoPrintOnCheckout) {
+      const paperWidth = Number(preferredPaperWidthMm) || 80;
+      for (let i = 0; i < 2; i += 1) {
+        setTimeout(() => {
+          printReceiptHTML(order, paperWidth, "Customer");
+        }, i * 250);
+      }
     }
     setNextOrderNo(optimisticNo + 1);
     let allocatedNo = optimisticNo;
@@ -14361,6 +14366,7 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
 
