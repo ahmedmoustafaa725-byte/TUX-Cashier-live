@@ -2929,28 +2929,49 @@ function printReceiptHTML(order, widthMm = 80, copy = "Customer", images) {
   const html = buildReceiptHTML(order, widthMm, copy, images);
   const ifr = document.createElement("iframe");
   Object.assign(ifr.style, { position:"fixed", right:0, bottom:0, width:0, height:0, border:0 });
-  let htmlWritten = false;
-  ifr.addEventListener("load", () => {
-    if (!htmlWritten) return;
+  const cleanup = () => { try { ifr.remove(); } catch {} };
+  const waitForAssets = async (doc) => {
+    const imagesToLoad = Array.from(doc?.images || []);
+    const imagesPromise = imagesToLoad.length
+      ? Promise.all(
+          imagesToLoad.map(
+            (img) =>
+              new Promise((resolve) => {
+                if (img.complete) return resolve();
+                img.addEventListener("load", resolve, { once: true });
+                img.addEventListener("error", resolve, { once: true });
+              })
+          )
+        )
+      : Promise.resolve();
+    const fontsPromise = doc?.fonts?.ready?.catch?.(() => {}) || Promise.resolve();
+    await Promise.race([
+      Promise.all([imagesPromise, fontsPromise]),
+      new Promise((resolve) => setTimeout(resolve, 2000)),
+    ]);
+  };
+  const triggerPrint = () => {
+    const w = ifr.contentWindow;
+    if (!w) return;
+    requestAnimationFrame(() => {
+      w.focus();
+      w.print();
+      w.addEventListener("afterprint", cleanup, { once: true });
+      setTimeout(cleanup, 30000);
+    });
+  };
+  ifr.addEventListener("load", async () => {
     try {
-      const w = ifr.contentWindow;
-      if (!w) return;
-      requestAnimationFrame(() => {
-        w.focus();
-        w.print();
-        const cleanup = () => { try { ifr.remove(); } catch {} };
-        w.addEventListener("afterprint", cleanup, { once: true });
-        setTimeout(cleanup, 8000);
-      });
-    } catch {}
+      const doc = ifr.contentDocument || ifr.contentWindow?.document;
+      await waitForAssets(doc);
+      triggerPrint();
+    } catch {
+      triggerPrint();
+    }
   });
   document.body.appendChild(ifr);
-  const doc = ifr.contentDocument || ifr.contentWindow.document;
-  doc.open();
-  doc.write(html);
-  doc.close();
-  htmlWritten = true;
-  setTimeout(() => { try { if (document.body.contains(ifr)) ifr.remove(); } catch {} }, 12000);
+  ifr.srcdoc = html;
+  setTimeout(() => { try { if (document.body.contains(ifr)) ifr.remove(); } catch {} }, 60000);
 }
 const normalizePhone = (s) => {
   let digits = String(s || "").replace(/\D/g, "");
@@ -14322,5 +14343,6 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
 
