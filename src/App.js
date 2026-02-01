@@ -2104,15 +2104,6 @@ function dedupeOrders(list) {
     (a, b) => +new Date(b.date) - +new Date(a.date)
   );
 }
-function mergePendingOrders(cloudOrders, existingOrders) {
-  const cloudOrderNos = new Set(
-    (cloudOrders || []).map((order) => order?.orderNo).filter((no) => no != null)
-  );
-  const pending = (existingOrders || []).filter(
-    (order) => order?.pendingCloud && !cloudOrderNos.has(order.orderNo)
-  );
-  return dedupeOrders([...(cloudOrders || []), ...pending]).map(enrichOrderWithChannel);
-}
 const BASE_MENU = [
   {
     id: 1,
@@ -2663,16 +2654,7 @@ async function allocateOrderNoAtomic(db, counterDocRef) {
     );
     return n;
   });
- return next;
-}
-function withTimeout(promise, ms, label) {
-  let timeoutId;
-  const timeout = new Promise((_, reject) => {
-    timeoutId = setTimeout(() => {
-      reject(new Error(`${label} timed out after ${ms}ms`));
-    }, ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
+  return next;
 }
 function escHtml(s) {
   return String(s ?? "")
@@ -2948,25 +2930,19 @@ function printReceiptHTML(order, widthMm = 80, copy = "Customer", images) {
   const ifr = document.createElement("iframe");
   Object.assign(ifr.style, { position:"fixed", right:0, bottom:0, width:0, height:0, border:0 });
   let htmlWritten = false;
-  let printed = false;
-  const cleanup = () => { try { ifr.remove(); } catch {} };
-  const attemptPrint = () => {
-    if (printed) return;
-    const w = ifr.contentWindow;
-    if (!w) return;
-    printed = true;
-    try {
-      w.focus();
-      w.print();
-      w.addEventListener("afterprint", cleanup, { once: true });
-      setTimeout(cleanup, 8000);
-    } catch {
-      printed = false;
-    }
-  };
   ifr.addEventListener("load", () => {
     if (!htmlWritten) return;
-    attemptPrint();
+    try {
+      const w = ifr.contentWindow;
+      if (!w) return;
+      requestAnimationFrame(() => {
+        w.focus();
+        w.print();
+        const cleanup = () => { try { ifr.remove(); } catch {} };
+        w.addEventListener("afterprint", cleanup, { once: true });
+        setTimeout(cleanup, 8000);
+      });
+    } catch {}
   });
   document.body.appendChild(ifr);
   const doc = ifr.contentDocument || ifr.contentWindow.document;
@@ -2974,7 +2950,6 @@ function printReceiptHTML(order, widthMm = 80, copy = "Customer", images) {
   doc.write(html);
   doc.close();
   htmlWritten = true;
-  attemptPrint();
   setTimeout(() => { try { if (document.body.contains(ifr)) ifr.remove(); } catch {} }, 12000);
 }
 const normalizePhone = (s) => {
@@ -4661,7 +4636,7 @@ useEffect(() => {
     const unsub = onSnapshot(qy, (snap) => {
       const arr = [];
       snap.forEach((d) => arr.push(orderFromCloudDoc(d.id, d.data())));
-      setOrders((prev) => mergePendingOrders(arr, prev));
+      setOrders(dedupeOrders(arr).map(enrichOrderWithChannel));
     });
    return () => unsub();
   }, [realtimeOrders, ordersColRef, fbUser, startedAtMs, endedAtMs]);
@@ -6160,20 +6135,13 @@ const checkout = async () => {
     });
     recordCustomerFromOrder(order);
     if (autoPrintOnCheckout) {
-      const paperWidth = Number(preferredPaperWidthMm) || 80;
-      for (let i = 0; i < 2; i += 1) {
-        setTimeout(printReceiptHTML, i * 250, order, paperWidth, "Customer");
-      }
+      printReceiptHTML(order, Number(preferredPaperWidthMm) || 80, "Customer");
     }
     setNextOrderNo(optimisticNo + 1);
     let allocatedNo = optimisticNo;
     if (cloudEnabled && counterDocRef && fbUser && db) {
       try {
-      allocatedNo = await withTimeout(
-        allocateOrderNoAtomic(db, counterDocRef),
-        4000,
-        "Allocate order number"
-      );
+      allocatedNo = await allocateOrderNoAtomic(db, counterDocRef);
         if (allocatedNo !== optimisticNo) {
           order = {
             ...order,
@@ -6186,33 +6154,19 @@ const checkout = async () => {
         console.warn("Atomic order number allocation failed, using optimistic number.", e);
       }
     }
-    const pendingCloud = cloudEnabled && realtimeOrders;
-    setOrders((o) => [{ ...order, pendingCloud }, ...o]);
+    if (!realtimeOrders) setOrders((o) => [order, ...o]);
     if (cloudEnabled && ordersColRef && fbUser) {
-      const writeCloudOrder = async () => {
-        const ref = await withTimeout(
-          addDoc(ordersColRef, normalizeOrderForCloud(order)),
-          5000,
-          "Cloud order write"
-        );
-        setOrders((prev) =>
-          prev.map((oo) =>
-            oo.orderNo === order.orderNo
-              ? { ...oo, cloudId: ref.id, pendingCloud: false }
-              : oo
-          )
-        );
-      };
-      if (realtimeOrders) {
-        writeCloudOrder().catch((e) => {
-          console.warn("Cloud order write failed:", e);
-        });
-      } else {
-        try {
-          await writeCloudOrder();
-        } catch (e) {
-          console.warn("Cloud order write failed:", e);
+      try {
+        const ref = await addDoc(ordersColRef, normalizeOrderForCloud(order));
+        if (!realtimeOrders) {
+          setOrders((prev) =>
+            prev.map((oo) =>
+              oo.orderNo === order.orderNo ? { ...oo, cloudId: ref.id } : oo
+            )
+          );
         }
+      } catch (e) {
+        console.warn("Cloud order write failed:", e);
       }
     }
     setCart([]);
@@ -14371,50 +14325,4 @@ setExtraList((arr) => [
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
