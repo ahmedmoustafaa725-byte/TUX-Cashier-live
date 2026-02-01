@@ -2950,12 +2950,38 @@ function printReceiptHTML(order, widthMm = 80, copy = "Customer", images) {
       new Promise((resolve) => setTimeout(resolve, 2000)),
     ]);
   };
+  const printWithPopup = async () => {
+    const popup = window.open("", "_blank");
+    if (!popup) return false;
+    popup.document.open();
+    popup.document.write(html);
+    popup.document.close();
+    await waitForAssets(popup.document);
+    requestAnimationFrame(() => {
+      try {
+        popup.focus();
+        popup.print();
+      } catch {}
+      popup.addEventListener("afterprint", () => {
+        try { popup.close(); } catch {}
+      }, { once: true });
+      setTimeout(() => { try { if (!popup.closed) popup.close(); } catch {} }, 30000);
+    });
+    return true;
+  };
   const triggerPrint = () => {
     const w = ifr.contentWindow;
-    if (!w) return;
+    if (!w) {
+      printWithPopup();
+      return;
+    }
     requestAnimationFrame(() => {
-      w.focus();
-      w.print();
+      try {
+        w.focus();
+        w.print();
+      } catch {
+        printWithPopup();
+      }
       w.addEventListener("afterprint", cleanup, { once: true });
       setTimeout(cleanup, 30000);
     });
@@ -2970,7 +2996,18 @@ function printReceiptHTML(order, widthMm = 80, copy = "Customer", images) {
     }
   });
   document.body.appendChild(ifr);
-  ifr.srcdoc = html;
+  if ("srcdoc" in ifr) {
+    ifr.srcdoc = html;
+  } else {
+    const doc = ifr.contentWindow?.document;
+    if (doc) {
+      doc.open();
+      doc.write(html);
+      doc.close();
+    } else {
+      ifr.srcdoc = html;
+    }
+  }
   setTimeout(() => { try { if (document.body.contains(ifr)) ifr.remove(); } catch {} }, 60000);
 }
 const normalizePhone = (s) => {
