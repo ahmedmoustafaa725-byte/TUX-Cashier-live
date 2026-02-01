@@ -6134,9 +6134,6 @@ const checkout = async () => {
       source: "onsite",
     });
     recordCustomerFromOrder(order);
-    if (autoPrintOnCheckout) {
-      printReceiptHTML(order, Number(preferredPaperWidthMm) || 80, "Customer");
-    }
     setNextOrderNo(optimisticNo + 1);
     let allocatedNo = optimisticNo;
     if (cloudEnabled && counterDocRef && fbUser && db) {
@@ -14325,4 +14322,5 @@ setExtraList((arr) => [
     </div>
   );
 }
+
 
