@@ -4455,8 +4455,45 @@ if (unpacked.workerSessions) setWorkerSessions(unpacked.workerSessions);
         setOnlineOrderStatus(unpacked.onlineOrderStatus);
       if (unpacked.lastSeenOnlineOrderTs != null)
         setLastSeenOnlineOrderTs(unpacked.lastSeenOnlineOrderTs);
+
+      if (ordersColRef) {
+        const now = new Date();
+        const last72HoursMs = Date.now() - 72 * 60 * 60 * 1000;
+        const todayStartMs = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          0,
+          0,
+          0,
+          0
+        ).getTime();
+        const todayEndMs = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          23,
+          59,
+          59,
+          999
+        ).getTime();
+        const loadStartMs = Math.min(last72HoursMs, todayStartMs);
+        const qy = query(
+          ordersColRef,
+          where("createdAt", ">=", Timestamp.fromMillis(loadStartMs)),
+          where("createdAt", "<=", Timestamp.fromMillis(todayEndMs)),
+          orderBy("createdAt", "desc")
+        );
+        const orderSnap = await getDocs(qy);
+        const loadedOrders = [];
+        orderSnap.forEach((docSnap) => {
+          loadedOrders.push(orderFromCloudDoc(docSnap.id, docSnap.data()));
+        });
+        setOrders(dedupeOrders(loadedOrders).map(enrichOrderWithChannel));
+      }
+
       setCloudStatus((s) => ({ ...s, lastLoadAt: new Date(), error: null }));
-      alert("Loaded from cloud ✔");
+      alert("Loaded from cloud ✔ (last 72 hours + today)");
     } catch (e) {
       setCloudStatus((s) => ({ ...s, error: String(e) }));
       alert("Cloud load failed: " + e);
