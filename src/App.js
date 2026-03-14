@@ -3887,6 +3887,12 @@ const [lastLocalEditAt, setLastLocalEditAt] = useState(0);
   const [fbUser, setFbUser] = useState(null);
   const [cloudEnabled, setCloudEnabled] = useState(true);
   const [realtimeOrders, setRealtimeOrders] = useState(true);
+  const [cloudImportStartDay, setCloudImportStartDay] = useState(() =>
+    new Date().toISOString().slice(0, 10)
+  );
+  const [cloudImportEndDay, setCloudImportEndDay] = useState(() =>
+    new Date().toISOString().slice(0, 10)
+  );
   const [cloudStatus, setCloudStatus] = useState({
     lastSaveAt: null,
     lastLoadAt: null,
@@ -4460,6 +4466,52 @@ if (unpacked.workerSessions) setWorkerSessions(unpacked.workerSessions);
     } catch (e) {
       setCloudStatus((s) => ({ ...s, error: String(e) }));
       alert("Cloud load failed: " + e);
+    }
+  };
+  const loadCloudRangeToHistory = async () => {
+    if (!ordersColRef || !fbUser) return alert("Firebase not ready.");
+    if (!cloudImportStartDay || !cloudImportEndDay) {
+      return alert("Select both start and end dates.");
+    }
+
+    const start = new Date(`${cloudImportStartDay}T00:00:00`);
+    const end = new Date(`${cloudImportEndDay}T23:59:59.999`);
+    if (Number.isNaN(+start) || Number.isNaN(+end)) {
+      return alert("Invalid date range.");
+    }
+    if (end < start) return alert("End date cannot be before start date.");
+
+    try {
+      const qy = query(
+        ordersColRef,
+        where("createdAt", ">=", Timestamp.fromDate(start)),
+        where("createdAt", "<=", Timestamp.fromDate(end)),
+        orderBy("createdAt", "desc")
+      );
+      const ss = await getDocs(qy);
+      if (ss.empty) {
+        alert("No cloud orders found for this date range.");
+        return;
+      }
+
+      const pulled = [];
+      ss.forEach((docSnap) => {
+        pulled.push(orderFromCloudDoc(docSnap.id, docSnap.data()));
+      });
+      const incoming = dedupeOrders(pulled).map(enrichOrderWithChannel);
+
+      setHistoricalOrders((prev) => {
+        const merged = dedupeOrders([...(prev || []), ...incoming]).map(
+          enrichOrderWithChannel
+        );
+        saveLocalPartial({ historicalOrders: merged });
+        return merged;
+      });
+
+      alert(`Loaded ${incoming.length} cloud orders into app history.`);
+    } catch (e) {
+      console.error("Failed to load date range from cloud", e);
+      alert("Cloud range load failed: " + e);
     }
   };
  const saveToCloudNow = async () => {
@@ -14304,12 +14356,34 @@ setExtraList((arr) => [
   <button onClick={saveToCloudNow} style={{ background: "#2e7d32", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px" }}>
     Sync to Cloud
   </button>
-  <button onClick={loadFromCloud} style={{ background: "#1976d2", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px" }}>
-    Load from Cloud
-  </button>
-  <small style={{ opacity: 0.8 }}>
-    Last save: {cloudStatus.lastSaveAt ? cloudStatus.lastSaveAt.toLocaleString() : "—"} • Last load: {cloudStatus.lastLoadAt ? cloudStatus.lastLoadAt.toLocaleString() : "—"}
-  </small>
+	 <button onClick={loadFromCloud} style={{ background: "#1976d2", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px" }}>
+	   Load from Cloud
+	 </button>
+	 <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+	   <span style={{ fontSize: 12, opacity: 0.85 }}>Import orders:</span>
+	   <input
+	     type="date"
+	     value={cloudImportStartDay}
+	     onChange={(e) => setCloudImportStartDay(e.target.value)}
+	     style={{ padding: "4px 6px", borderRadius: 6, border: `1px solid ${btnBorder}` }}
+	   />
+	   <span style={{ opacity: 0.75 }}>→</span>
+	   <input
+	     type="date"
+	     value={cloudImportEndDay}
+	     onChange={(e) => setCloudImportEndDay(e.target.value)}
+	     style={{ padding: "4px 6px", borderRadius: 6, border: `1px solid ${btnBorder}` }}
+	   />
+	   <button
+	     onClick={loadCloudRangeToHistory}
+	     style={{ background: "#6a1b9a", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px" }}
+	   >
+	     Load Range to App
+	   </button>
+	 </div>
+	 <small style={{ opacity: 0.8 }}>
+	   Last save: {cloudStatus.lastSaveAt ? cloudStatus.lastSaveAt.toLocaleString() : "—"} • Last load: {cloudStatus.lastLoadAt ? cloudStatus.lastLoadAt.toLocaleString() : "—"}
+	 </small>
   {cloudStatus.error && (
     <small style={{ color: "#c62828" }}>Error: {String(cloudStatus.error)}</small>
   )}
