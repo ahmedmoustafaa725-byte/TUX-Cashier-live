@@ -558,14 +558,7 @@ function getOnlineServices() {
 const SHOP_ID = "tux";
 // In your React POS app code (App.js)
 
-const ONLINE_ORDER_COLLECTIONS = [
-  {
-    name: "pos/onlineOrders",
-    source: "menu", // This correctly uses the 'tux-menu' Firebase project
-    path: ["shops", SHOP_ID, "onlineOrders"], // This is the path we are writing to
-    constraints: [where("shopId", "==", SHOP_ID)], // This filter remains correct
-  },
-];
+const ONLINE_ORDER_COLLECTIONS = [];
 const LS_KEY = "tux_pos_local_state_v1";
 function loadLocal() {
 
@@ -2987,71 +2980,6 @@ const formatPhoneForDisplay = (raw) => {
   if (digits.startsWith("2")) return `+${digits}`;
   return `+20${digits}`;
 };
-const formatPhoneForWhatsapp = (raw) => {
-  let digits = normalizePhone(raw);
-  if (!digits) return "";
-  if (digits.startsWith("0") && digits.length > 1) {
-    digits = `2${digits}`;
-  } else if (!digits.startsWith("20")) {
-    digits = `20${digits}`;
-  }
-  return digits.replace(/^\+/, "");
-};
-const hasWhatsappNumberLength = (raw) => /^20\d{10}$/.test(formatPhoneForWhatsapp(raw));
-const openWhatsappNotification = (order, phoneDigits) => {
-  const waNumber = formatPhoneForWhatsapp(phoneDigits);
-  if (!waNumber) return;
-  const name = order?.deliveryName?.trim() || "customer";
-  const orderLabel = order?.orderNo ? ` #${order.orderNo}` : "";
-  const typeKey = normalizeNameKey(order?.orderType);
-  const isDelivery = typeKey === "delivery";
-  const message = isDelivery
-    ? `Hello ${name}, your order${orderLabel} is out for delivery.`
-    : `Hello ${name}, your order${orderLabel} is ready for pickup.`;
-  const encodedMessage = encodeURIComponent(message);
-  const appUrl = `whatsapp://send?phone=${waNumber}&text=${encodedMessage}`;
-  const fallbackUrl = `https://wa.me/${waNumber}?text=${encodedMessage}`;
-
-  if (typeof window === "undefined") return;
-
-  const openFallback = () => {
-    if (window?.open) {
-      window.open(fallbackUrl, "_blank", "noopener");
-    }
-  };
-
-  let fallbackTimer = null;
-  const cancelFallback = () => {
-    if (fallbackTimer) {
-      clearTimeout(fallbackTimer);
-      fallbackTimer = null;
-    }
-    if (typeof window !== "undefined") {
-      window.removeEventListener("blur", cancelFallback);
-      window.removeEventListener("pagehide", cancelFallback);
-    }
-  };
-
-  try {
-    if (typeof document !== "undefined" && document.body) {
-      const anchor = document.createElement("a");
-      anchor.href = appUrl;
-      anchor.target = "_blank";
-      anchor.rel = "noopener noreferrer";
-      document.body.appendChild(anchor);
-      anchor.click();
-      document.body.removeChild(anchor);
-      fallbackTimer = setTimeout(openFallback, 1500);
-      window.addEventListener("blur", cancelFallback, { once: true });
-      window.addEventListener("pagehide", cancelFallback, { once: true });
-      return;
-    }
-  } catch (err) {
-    cancelFallback();
-  }
-
-  openFallback();
-};
 const upsertCustomer = (list, rec) => {
   const phone = normalizePhone(rec.phone);
   const existing = (list || []).find((c) => normalizePhone(c.phone) === phone) || {};
@@ -3556,10 +3484,7 @@ const activeWorkers = useMemo(() => {
   return names;
 }, [workerSessions]);
 const [orders, setOrders] = useState([]);
-const [onlineFbUser, setOnlineFbUser] = useState(null);const [orderBoardFilter, setOrderBoardFilter] = useState(() => {
-  const l = loadLocal();
-  return l?.orderBoardFilter === "online" ? "online" : "onsite";
-});
+const [onlineFbUser, setOnlineFbUser] = useState(null);const [orderBoardFilter, setOrderBoardFilter] = useState("onsite");
 const [lastSeenOnlineOrderTs, setLastSeenOnlineOrderTs] = useState(() => {
   const l = loadLocal();
   const v = Number(l?.lastSeenOnlineOrderTs);
@@ -3772,7 +3697,6 @@ const [deliveryAddress, setDeliveryAddress] = useState("");
 const [deliveryZoneId, setDeliveryZoneId] = useState("");
 const [customerName, setCustomerName] = useState("");
 const [customerPhone, setCustomerPhone] = useState("");
-const [syncWhatsappReady, setSyncWhatsappReady] = useState(false);            
 const [customers, setCustomers] = useState([]);                         
 const [deliveryZones, setDeliveryZones] = useState(DEFAULT_ZONES);
 const [customerSearch, setCustomerSearch] = useState("");
@@ -6100,11 +6024,7 @@ const checkout = async () => {
     }
     let optimisticNo = nextOrderNo;
 
-  const hasWhatsappPhone = hasWhatsappNumberLength(orderCustomerPhone);
-    const shouldWhatsapp =
-      orderType === "Delivery"
-        ? hasWhatsappPhone
-        : hasWhatsappPhone && !!syncWhatsappReady;
+    const shouldWhatsapp = false;
     let order = enrichOrderWithChannel({
       orderNo: optimisticNo,
       date: new Date(),
@@ -6183,7 +6103,6 @@ const checkout = async () => {
     setDeliveryZoneId("");
     setCustomerName("");
     setCustomerPhone("");
-    setSyncWhatsappReady(false); 
     setSplitPay(false);
     setPayA(""); setPayB("");
     setAmtA(0); setAmtB(0);
@@ -6342,7 +6261,7 @@ const integrateOnlineOrder = async (onlineOrder) => {
   const phoneDigits = normalizePhone(
     onlineOrder.deliveryPhone || onlineOrder.customerPhone
   );
-  const shouldWhatsapp = hasWhatsappNumberLength(phoneDigits);
+  const shouldWhatsapp = false;
 
 const onlineFallbackId =
     onlineOrder.id ||
@@ -6667,25 +6586,13 @@ const onlineFallbackId =
   return posOrder;
 };
 const markOrderDone = async (orderNo) => {
-const ord = orders.find((o) => o.orderNo === orderNo);
-  const phoneDigits = ord ? normalizePhone(ord.deliveryPhone) : "";
- const shouldNotify =
-    ord &&
-    ord.notifyViaWhatsapp &&
-    !ord.whatsappSentAt &&
-    hasWhatsappNumberLength(phoneDigits);
-  let notifiedAt = null;
-  if (shouldNotify) {
-    notifiedAt = new Date();
-    openWhatsappNotification(ord, phoneDigits);
-  }
   // If not live, update locally
   if (!realtimeOrders) {
     setOrders((o) =>
       o.map((ordr) =>
         ordr.orderNo !== orderNo || ordr.done
           ? ordr
-          : { ...ordr, done: true, whatsappSentAt: notifiedAt || ordr.whatsappSentAt || null }
+          : { ...ordr, done: true }
       )
     );
   }
@@ -6702,9 +6609,6 @@ const ord = orders.find((o) => o.orderNo === orderNo);
         done: true,
         updatedAt: serverTimestamp(),
       };
-      if (notifiedAt) {
-        payload.whatsappSentAt = toIso(notifiedAt);
-      }
       await updateDoc(fsDoc(db, "shops", SHOP_ID, "orders", targetId), payload);
     }
   } catch (e) {
@@ -9859,20 +9763,6 @@ const cogs = Number(
                         style={{ flex: 1, padding: 6, borderRadius: 6, border: `1px solid ${btnBorder}` }}
                       />
                     </div>
-                    {hasWhatsappNumberLength(customerPhone) && (
-                      <small style={{ opacity: 0.7 }}>
-                        WhatsApp will use {formatPhoneForDisplay(customerPhone)} for updates.
-                      </small>
-                    )}
-                    <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <input
-                        type="checkbox"
-                        checked={syncWhatsappReady}
-                        onChange={(e) => setSyncWhatsappReady(e.target.checked)}
-                        disabled={!hasWhatsappNumberLength(customerPhone)}
-                      />
-                      <span>Send ready message via WhatsApp when order is done</span>
-                    </label>
                   </div>
                 )}
 
@@ -9945,10 +9835,7 @@ const cogs = Number(
               flexWrap: "wrap",
             }}
           >
-            {[
-              ["onsite", "On-site orders"],
-              ["online", "Online orders"],
-            ].map(([key, label]) => (
+            {[["onsite", "On-site orders"]].map(([key, label]) => (
               <button
                 key={key}
                 onClick={() => setOrderBoardFilter(key)}
@@ -9998,7 +9885,7 @@ const cogs = Number(
               </button>
             ))}
           </div>
-          {orderBoardFilter === "online" ? (
+          {false ? (
             <>
               {onlineOrders.length === 0 ? (
                 <p>No online orders yet.</p>
@@ -10388,14 +10275,6 @@ const cogs = Number(
                               ? ` (${formatPhoneForDisplay(o.deliveryPhone)})`
                               : ""}
                             {o.deliveryAddress ? ` • ${o.deliveryAddress}` : ""}
-                          </>
-                        )}
-                        {o.notifyViaWhatsapp && (
-                          <>
-                            {" "}• WhatsApp:{" "}
-                            {o.whatsappSentAt
-                              ? `Sent ${fmtDateTime(o.whatsappSentAt)}`
-                              : "Pending"}
                           </>
                         )}
                         {o.payment === "Cash" && o.cashReceived != null && (
