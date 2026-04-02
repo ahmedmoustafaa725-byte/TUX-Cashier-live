@@ -1231,6 +1231,12 @@ export function packStateForCloud(state) {
     onlineOrdersRaw,
     onlineOrderStatus,
     lastSeenOnlineOrderTs,
+    historicalOrders,
+    historicalExpenses,
+    historicalPurchases,
+    reportFilter,
+    reportDay,
+    reportMonth,
   } = state;
   const purchases = Array.isArray(state.purchases)
     ? state.purchases.map((p) => ({
@@ -1348,6 +1354,28 @@ export function packStateForCloud(state) {
     lastSeenOnlineOrderTs: Number.isFinite(Number(lastSeenOnlineOrderTs))
       ? Number(lastSeenOnlineOrderTs)
       : undefined,
+    historicalOrders: Array.isArray(historicalOrders)
+      ? historicalOrders.map((o) => ({
+          ...o,
+          date: toIso(o?.date),
+          restockedAt: toIso(o?.restockedAt),
+        }))
+      : [],
+    historicalExpenses: Array.isArray(historicalExpenses)
+      ? historicalExpenses.map((e) => ({
+          ...e,
+          date: toIso(e?.date),
+        }))
+      : [],
+    historicalPurchases: Array.isArray(historicalPurchases)
+      ? historicalPurchases.map((p) => ({
+          ...p,
+          date: toIso(p?.date),
+        }))
+      : [],
+    reportFilter: typeof reportFilter === "string" ? reportFilter : undefined,
+    reportDay: typeof reportDay === "string" ? reportDay : undefined,
+    reportMonth: typeof reportMonth === "string" ? reportMonth : undefined,
   };
   return sanitizeForFirestore(payload);
 }
@@ -1455,11 +1483,35 @@ if (Array.isArray(data.orders)) {
   } else {
     out.dayMeta = fallbackDayMeta;
   }
-   if (Array.isArray(data.reconHistory)) {
+  if (Array.isArray(data.reconHistory)) {
   out.reconHistory = data.reconHistory.map(r => ({
     ...r, at: r.at ? new Date(r.at) : new Date()
   }));
 }
+  if (Array.isArray(data.historicalOrders)) {
+    out.historicalOrders = data.historicalOrders.map((o) =>
+      enrichOrderWithChannel({
+        ...o,
+        date: o?.date ? new Date(o.date) : o?.date,
+        restockedAt: o?.restockedAt ? new Date(o.restockedAt) : o?.restockedAt,
+      })
+    );
+  }
+  if (Array.isArray(data.historicalExpenses)) {
+    out.historicalExpenses = data.historicalExpenses.map((e) => ({
+      ...e,
+      date: e?.date ? new Date(e.date) : new Date(),
+    }));
+  }
+  if (Array.isArray(data.historicalPurchases)) {
+    out.historicalPurchases = data.historicalPurchases.map((p) => ({
+      ...p,
+      date: p?.date ? new Date(p.date) : new Date(),
+    }));
+  }
+  if (typeof data.reportFilter === "string") out.reportFilter = data.reportFilter;
+  if (typeof data.reportDay === "string") out.reportDay = data.reportDay;
+  if (typeof data.reportMonth === "string") out.reportMonth = data.reportMonth;
   if (data.menu) out.menu = data.menu;
   if (data.extras) out.extraList = data.extras;
   if (data.inventory) out.inventory = data.inventory;
@@ -3197,9 +3249,17 @@ const [historicalPurchases, setHistoricalPurchases] = useState(() => {
   const l = loadLocal();
   return l.historicalPurchases || [];
 });
-const [reportFilter, setReportFilter] = useState("shift");
-const [reportDay, setReportDay] = useState(() => new Date().toISOString().slice(0, 10));
+const [reportFilter, setReportFilter] = useState(() => {
+  const l = loadLocal();
+  return typeof l?.reportFilter === "string" ? l.reportFilter : "shift";
+});
+const [reportDay, setReportDay] = useState(() => {
+  const l = loadLocal();
+  return typeof l?.reportDay === "string" ? l.reportDay : new Date().toISOString().slice(0, 10);
+});
 const [reportMonth, setReportMonth] = useState(() => {
+  const l = loadLocal();
+  if (typeof l?.reportMonth === "string") return l.reportMonth;
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 });
@@ -4050,6 +4110,9 @@ useEffect(() => { saveLocalPartial({ reconSavedBy }); }, [reconSavedBy]);
 useEffect(() => { saveLocalPartial({ purchaseCategories }); }, [purchaseCategories]); // ⬅️ NEW
 useEffect(() => { saveLocalPartial({ purchaseFilter }); }, [purchaseFilter]);  
 useEffect(() => {
+  saveLocalPartial({ reportFilter, reportDay, reportMonth });
+}, [reportFilter, reportDay, reportMonth]);
+useEffect(() => {
   saveLocalPartial({ usageFilter, usageWeekDate, usageMonth });
 }, [usageFilter, usageWeekDate, usageMonth]);
 useEffect(() => { saveLocalPartial({ customers }); }, [customers]);                  // ⬅️ NEW
@@ -4090,6 +4153,9 @@ useEffect(() => {
 useEffect(() => { saveLocalPartial({ expenses }); }, [expenses]);
 useEffect(() => { saveLocalPartial({ bankTx }); }, [bankTx]);
 useEffect(() => { saveLocalPartial({ dayMeta }); }, [dayMeta]);
+useEffect(() => { saveLocalPartial({ historicalOrders }); }, [historicalOrders]);
+useEffect(() => { saveLocalPartial({ historicalExpenses }); }, [historicalExpenses]);
+useEffect(() => { saveLocalPartial({ historicalPurchases }); }, [historicalPurchases]);
 useEffect(() => { saveLocalPartial({ inventoryLocked }); }, [inventoryLocked]);
 useEffect(() => { saveLocalPartial({ inventorySnapshot }); }, [inventorySnapshot]);
 useEffect(() => { saveLocalPartial({ inventoryLockedAt }); }, [inventoryLockedAt]);
@@ -4112,6 +4178,8 @@ useEffect(() => {
   autoPrintOnCheckout, preferredPaperWidthMm, cloudEnabled, realtimeOrders, nextOrderNo,
    purchases, purchaseCategories, customers, deliveryZones, purchaseFilter, purchaseDay, purchaseMonth,workerProfiles,
  workerSessions,
+  historicalOrders, historicalExpenses, historicalPurchases,
+  reportFilter, reportDay, reportMonth,
   utilityBills, laborProfile, equipmentList,
 ]);
 useEffect(() => {
@@ -4273,6 +4341,12 @@ const onlineOrderCollections = useMemo(() => {
             setLastSeenOnlineOrderTs(unpacked.lastSeenOnlineOrderTs);
           if (unpacked.workerProfiles) setWorkerProfiles(unpacked.workerProfiles);
         if (unpacked.workerSessions) setWorkerSessions(unpacked.workerSessions);
+          if (unpacked.historicalOrders) setHistoricalOrders(unpacked.historicalOrders);
+          if (unpacked.historicalExpenses) setHistoricalExpenses(unpacked.historicalExpenses);
+          if (unpacked.historicalPurchases) setHistoricalPurchases(unpacked.historicalPurchases);
+          if (typeof unpacked.reportFilter === "string") setReportFilter(unpacked.reportFilter);
+          if (typeof unpacked.reportDay === "string") setReportDay(unpacked.reportDay);
+          if (typeof unpacked.reportMonth === "string") setReportMonth(unpacked.reportMonth);
            if (unpacked.purchases) setPurchases(unpacked.purchases);
        if (unpacked.purchaseCategories) {
    setPurchaseCategories(normalizePurchaseCategories(unpacked.purchaseCategories));
@@ -4322,6 +4396,12 @@ if (ts && lastLocalEditAt && ts < lastLocalEditAt) return;
       if (unpacked.orderTypes) setOrderTypes(unpacked.orderTypes);
       if (unpacked.defaultDeliveryFee != null) setDefaultDeliveryFee(unpacked.defaultDeliveryFee);
       if (unpacked.expenses) setExpenses(unpacked.expenses);
+      if (unpacked.historicalOrders) setHistoricalOrders(unpacked.historicalOrders);
+      if (unpacked.historicalExpenses) setHistoricalExpenses(unpacked.historicalExpenses);
+      if (unpacked.historicalPurchases) setHistoricalPurchases(unpacked.historicalPurchases);
+      if (typeof unpacked.reportFilter === "string") setReportFilter(unpacked.reportFilter);
+      if (typeof unpacked.reportDay === "string") setReportDay(unpacked.reportDay);
+      if (typeof unpacked.reportMonth === "string") setReportMonth(unpacked.reportMonth);
 
       const appliedAt = ts || Date.now();
       setLastAppliedCloudAt(appliedAt);
@@ -4366,6 +4446,12 @@ if (unpacked.workerSessions) setWorkerSessions(unpacked.workerSessions);
       if (unpacked.expenses) setExpenses(unpacked.expenses);
       if (unpacked.dayMeta) setDayMeta(unpacked.dayMeta);
        if (unpacked.bankTx) setBankTx(unpacked.bankTx);
+      if (unpacked.historicalOrders) setHistoricalOrders(unpacked.historicalOrders);
+      if (unpacked.historicalExpenses) setHistoricalExpenses(unpacked.historicalExpenses);
+      if (unpacked.historicalPurchases) setHistoricalPurchases(unpacked.historicalPurchases);
+      if (typeof unpacked.reportFilter === "string") setReportFilter(unpacked.reportFilter);
+      if (typeof unpacked.reportDay === "string") setReportDay(unpacked.reportDay);
+      if (typeof unpacked.reportMonth === "string") setReportMonth(unpacked.reportMonth);
       if (unpacked.customers) setCustomers(dedupeCustomers(unpacked.customers));
 
        if (unpacked.purchases) setPurchases(unpacked.purchases);
@@ -4421,6 +4507,12 @@ if (unpacked.workerSessions) setWorkerSessions(unpacked.workerSessions);
       onlineOrdersRaw,
       onlineOrderStatus,
       lastSeenOnlineOrderTs,
+      historicalOrders,
+      historicalExpenses,
+      historicalPurchases,
+      reportFilter,
+      reportDay,
+      reportMonth,
     });
     writeSeqRef.current += 1;
     const body = {
@@ -4479,6 +4571,12 @@ useEffect(() => {
         onlineOrdersRaw,
         onlineOrderStatus,
         lastSeenOnlineOrderTs,
+        historicalOrders,
+        historicalExpenses,
+        historicalPurchases,
+        reportFilter,
+        reportDay,
+        reportMonth,
       });
       writeSeqRef.current += 1;
       const body = {
@@ -4539,6 +4637,12 @@ useEffect(() => {
   onlineOrdersRaw,
   onlineOrderStatus,
   lastSeenOnlineOrderTs,
+  historicalOrders,
+  historicalExpenses,
+  historicalPurchases,
+  reportFilter,
+  reportDay,
+  reportMonth,
 ]);
   const startedAtMs = dayMeta?.startedAt
     ? new Date(dayMeta.startedAt).getTime()
@@ -5786,6 +5890,12 @@ const endDay = async () => {
           onlineOrdersRaw,
           onlineOrderStatus,
           lastSeenOnlineOrderTs,
+          historicalOrders: newHistoricalOrders,
+          historicalExpenses: newHistoricalExpenses,
+          historicalPurchases: newHistoricalPurchases,
+          reportFilter,
+          reportDay,
+          reportMonth,
         });
         writeSeqRef.current += 1;
         const body = {
