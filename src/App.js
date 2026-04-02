@@ -6169,6 +6169,11 @@ const checkout = async () => {
         console.warn("Cloud order write failed:", e);
       }
     }
+    if (autoPrintOnCheckout) {
+      const receiptWidth = Number(preferredPaperWidthMm) || 80;
+      printReceiptHTML(order, receiptWidth, "Customer");
+      setTimeout(() => printReceiptHTML(order, receiptWidth, "Customer"), 350);
+    }
     setCart([]);
     setWorker("");
     setPayment("");
