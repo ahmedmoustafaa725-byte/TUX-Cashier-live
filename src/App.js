@@ -4257,7 +4257,7 @@ useEffect(() => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [
   menu, extraList, workers, paymentMethods, orderTypes, defaultDeliveryFee,
- inventory, adminPins, dark,
+ inventory, bulkInventoryItems, bulkInventoryHistory, adminPins, dark,
   expenses, bankTx, dayMeta, inventoryLocked, inventorySnapshot, inventoryLockedAt,
   autoPrintOnCheckout, preferredPaperWidthMm, cloudEnabled, realtimeOrders, nextOrderNo,
    purchases, purchaseCategories, customers, deliveryZones, purchaseFilter, purchaseDay, purchaseMonth,workerProfiles,
@@ -10832,12 +10832,36 @@ const cogs = Number(
               </button>
             ))}
             <button
-              onClick={() => {
+              onClick={async () => {
                 const okAdmin = !!promptAdminAndPin();
                 if (!okAdmin) return;
                 if (!window.confirm("Force delete all Bulk Inventory items and history? This cannot be undone.")) return;
+                const now = Date.now();
+                setLastLocalEditAt(now);
                 setBulkInventoryItems([]);
                 setBulkInventoryHistory([]);
+                if (cloudEnabled && stateDocRef && fbUser) {
+                  try {
+                    writeSeqRef.current += 1;
+                    await setDoc(
+                      stateDocRef,
+                      sanitizeForFirestore({
+                        bulkInventoryItems: [],
+                        bulkInventoryHistory: [],
+                        updatedAt: serverTimestamp(),
+                        writerId: clientIdRef.current,
+                        writeSeq: writeSeqRef.current,
+                      }),
+                      { merge: true }
+                    );
+                    setLastAppliedCloudAt(now);
+                    setCloudStatus((s) => ({ ...s, lastSaveAt: new Date(), error: null }));
+                  } catch (e) {
+                    console.warn("Failed to reset bulk inventory in cloud:", e);
+                    setCloudStatus((s) => ({ ...s, error: String(e) }));
+                    alert("Bulk inventory was cleared locally, but cloud reset failed. Please try again.");
+                  }
+                }
               }}
               style={{ marginLeft: "auto", padding: "8px 12px", borderRadius: 10, border: "none", background: "#ef5350", color: "#fff", cursor: "pointer", fontWeight: 700 }}
             >
