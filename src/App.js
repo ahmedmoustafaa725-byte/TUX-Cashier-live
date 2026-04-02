@@ -3325,8 +3325,8 @@ const [bulkInventoryHistory, setBulkInventoryHistory] = useState(() => {
 const [bulkInventoryTab, setBulkInventoryTab] = useState("table");
 const [bulkNewItemName, setBulkNewItemName] = useState("");
 const [bulkNewItemUnit, setBulkNewItemUnit] = useState("bag");
-const [bulkNewItemOpeningStock, setBulkNewItemOpeningStock] = useState(0);
-const [bulkNewItemMinStock, setBulkNewItemMinStock] = useState(0);
+const [bulkNewItemOpeningStock, setBulkNewItemOpeningStock] = useState("");
+const [bulkNewItemMinStock, setBulkNewItemMinStock] = useState("");
 const [bulkRefillItemId, setBulkRefillItemId] = useState("");
 const [bulkRefillQty, setBulkRefillQty] = useState(1);
 const [inventoryLocked, setInventoryLocked] = useState(false);
@@ -3513,6 +3513,14 @@ const bulkHistorySorted = useMemo(
       (a, b) => new Date(b?.timestamp || 0).getTime() - new Date(a?.timestamp || 0).getTime()
     ),
   [bulkInventoryHistory]
+);
+const bulkRefillHistory = useMemo(
+  () => bulkHistorySorted.filter((entry) => entry?.type === "refill"),
+  [bulkHistorySorted]
+);
+const bulkUsageHistory = useMemo(
+  () => bulkHistorySorted.filter((entry) => entry?.type === "used"),
+  [bulkHistorySorted]
 );
 const bulkAddHistory = useCallback((entry) => {
   setBulkInventoryHistory((prev) => [{ id: `hist_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, ...entry }, ...prev]);
@@ -10827,18 +10835,9 @@ const cogs = Number(
               onClick={() => {
                 const okAdmin = !!promptAdminAndPin();
                 if (!okAdmin) return;
-                if (!window.confirm("Reset Bulk Inventory section? Items and history are archived in logs then cleared.")) return;
-                const nowIso = new Date().toISOString();
-                const archivedLogs = bulkActiveItems.map((it) => ({
-                  id: `hist_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-                  itemName: it.name,
-                  type: "reset",
-                  quantity: Number(it.stock || 0),
-                  unit: it.unit,
-                  timestamp: nowIso,
-                }));
-                setBulkInventoryHistory((prev) => [...archivedLogs, ...prev]);
+                if (!window.confirm("Force delete all Bulk Inventory items and history? This cannot be undone.")) return;
                 setBulkInventoryItems([]);
+                setBulkInventoryHistory([]);
               }}
               style={{ marginLeft: "auto", padding: "8px 12px", borderRadius: 10, border: "none", background: "#ef5350", color: "#fff", cursor: "pointer", fontWeight: 700 }}
             >
@@ -10864,7 +10863,25 @@ const cogs = Number(
                         <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{item.name}</td>
                         <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{item.unit}</td>
                         <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{Number(item.stock || 0)}</td>
-                        <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{Number(item.minStock || 0)}</td>
+                        <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
+                          <input
+                            type="number"
+                            min={0}
+                            value={item.minStock ?? ""}
+                            placeholder="Set min stock alert level"
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setBulkInventoryItems((prev) =>
+                                prev.map((row) =>
+                                  row.id === item.id
+                                    ? { ...row, minStock: val === "" ? "" : Math.max(0, Number(val || 0)) }
+                                    : row
+                                )
+                              );
+                            }}
+                            style={{ width: 110, padding: "6px 8px", borderRadius: 8, border: `1px solid ${btnBorder}`, textAlign: "right" }}
+                          />
+                        </td>
                         <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, color: low ? "#c62828" : "#2e7d32", fontWeight: 700 }}>{low ? "Low Stock" : "OK"}</td>
                         <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{item.lastUsedAt ? new Date(item.lastUsedAt).toLocaleString() : "—"}</td>
                         <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{item.lastBoughtAt ? new Date(item.lastBoughtAt).toLocaleString() : "—"}</td>
@@ -10917,8 +10934,8 @@ const cogs = Number(
                 <select value={bulkNewItemUnit} onChange={(e) => setBulkNewItemUnit(e.target.value)} style={{ padding: 10, borderRadius: 8, border: `1px solid ${btnBorder}` }}>
                   {BULK_INVENTORY_UNITS.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
                 </select>
-                <input type="number" min={0} value={bulkNewItemOpeningStock} onChange={(e) => setBulkNewItemOpeningStock(Number(e.target.value || 0))} placeholder="Opening Stock" style={{ padding: 10, borderRadius: 8, border: `1px solid ${btnBorder}` }} />
-                <input type="number" min={0} value={bulkNewItemMinStock} onChange={(e) => setBulkNewItemMinStock(Number(e.target.value || 0))} placeholder="Min Stock" style={{ padding: 10, borderRadius: 8, border: `1px solid ${btnBorder}` }} />
+                <input type="number" min={0} value={bulkNewItemOpeningStock} onChange={(e) => setBulkNewItemOpeningStock(e.target.value)} placeholder="Enter opening stock quantity" style={{ padding: 10, borderRadius: 8, border: `1px solid ${btnBorder}` }} />
+                <input type="number" min={0} value={bulkNewItemMinStock} onChange={(e) => setBulkNewItemMinStock(e.target.value)} placeholder="Set minimum stock alert level" style={{ padding: 10, borderRadius: 8, border: `1px solid ${btnBorder}` }} />
                 <button
                   onClick={() => {
                     const name = String(bulkNewItemName || "").trim();
@@ -10938,8 +10955,8 @@ const cogs = Number(
                     bulkAddHistory({ itemName: item.name, type: "created", quantity: item.stock, unit: item.unit, timestamp: nowIso });
                     setBulkNewItemName("");
                     setBulkNewItemUnit("bag");
-                    setBulkNewItemOpeningStock(0);
-                    setBulkNewItemMinStock(0);
+                    setBulkNewItemOpeningStock("");
+                    setBulkNewItemMinStock("");
                   }}
                   style={{ padding: "10px 12px", borderRadius: 8, border: "none", background: "#2e7d32", color: "#fff", fontWeight: 700, cursor: "pointer" }}
                 >
@@ -10981,32 +10998,34 @@ const cogs = Number(
 
           {bulkInventoryTab === "history" && (
             <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 14, padding: 12, display: "grid", gap: 12 }}>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {["created", "used", "refill"].map((type) => (
-                  <span key={type} style={{ padding: "4px 8px", borderRadius: 999, background: dark ? "#2c2c2c" : "#f1f1f1", fontSize: 12 }}>
-                    {type}
-                  </span>
-                ))}
-              </div>
-              <div style={{ display: "grid", gap: 8 }}>
-                {bulkHistorySorted.map((entry) => (
-                  <div key={entry.id} style={{ border: `1px solid ${cardBorder}`, borderRadius: 10, padding: 10 }}>
-                    <div style={{ fontWeight: 700 }}>{entry.itemName}</div>
-                    <div style={{ fontSize: 13, opacity: 0.85 }}>
-                      {entry.type === "created"
-                        ? `Created with ${entry.quantity} ${entry.unit}`
-                        : entry.type === "used"
-                        ? `Used ${entry.quantity} ${entry.unit}`
-                        : entry.type === "refill"
-                        ? `Bought/refilled ${entry.quantity} ${entry.unit}`
-                        : `${entry.type} ${entry.quantity} ${entry.unit}`}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
+                <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 10, padding: 10, display: "grid", gap: 8 }}>
+                  <h4 style={{ margin: 0 }}>Refill</h4>
+                  {bulkRefillHistory.map((entry) => (
+                    <div key={entry.id} style={{ border: `1px solid ${cardBorder}`, borderRadius: 10, padding: 10 }}>
+                      <div style={{ fontWeight: 700 }}>{entry.itemName}</div>
+                      <div style={{ fontSize: 13, opacity: 0.85 }}>{`Bought/refilled ${entry.quantity} ${entry.unit}`}</div>
+                      <div style={{ fontSize: 12, opacity: 0.7 }}>
+                        {entry.timestamp ? new Date(entry.timestamp).toLocaleString() : "—"}
+                      </div>
                     </div>
-                    <div style={{ fontSize: 12, opacity: 0.7 }}>
-                      {entry.timestamp ? new Date(entry.timestamp).toLocaleString() : "—"}
+                  ))}
+                  {bulkRefillHistory.length === 0 && <div style={{ opacity: 0.75 }}>No refill history yet.</div>}
+                </div>
+
+                <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 10, padding: 10, display: "grid", gap: 8 }}>
+                  <h4 style={{ margin: 0 }}>Usage</h4>
+                  {bulkUsageHistory.map((entry) => (
+                    <div key={entry.id} style={{ border: `1px solid ${cardBorder}`, borderRadius: 10, padding: 10 }}>
+                      <div style={{ fontWeight: 700 }}>{entry.itemName}</div>
+                      <div style={{ fontSize: 13, opacity: 0.85 }}>{`Used ${entry.quantity} ${entry.unit}`}</div>
+                      <div style={{ fontSize: 12, opacity: 0.7 }}>
+                        {entry.timestamp ? new Date(entry.timestamp).toLocaleString() : "—"}
+                      </div>
                     </div>
-                  </div>
-                ))}
-                {bulkHistorySorted.length === 0 && <div style={{ opacity: 0.75 }}>No history yet.</div>}
+                  ))}
+                  {bulkUsageHistory.length === 0 && <div style={{ opacity: 0.75 }}>No usage history yet.</div>}
+                </div>
               </div>
             </div>
           )}
