@@ -7953,58 +7953,6 @@ const generatePurchasesPDF = () => {
     </button>
 
     <button
-      onClick={() => {
-        handleTabClick("board");
-        setOrderBoardFilter("online");
-      }}
-      title={
-        newOnlineOrderCount
-          ? `${newOnlineOrderCount} new online order${newOnlineOrderCount === 1 ? "" : "s"}`
-          : "No new online orders"
-      }
-      style={{
-        position: "relative",
-        padding: "6px 10px",
-        borderRadius: 6,
-        border: `1px solid ${btnBorder}`,
-        background: newOnlineOrderCount
-          ? (dark ? "#1e3a5f" : "#e3f2fd")
-          : dark
-          ? "#2c2c2c"
-          : "#f1f1f1",
-        color: newOnlineOrderCount ? (dark ? "#bbdefb" : "#0d47a1") : dark ? "#fff" : "#000",
-        cursor: "pointer",
-        fontWeight: 700,
-      }}
-    >
-      🌐 Online Orders
-      {newOnlineOrderCount > 0 && (
-        <span
-          style={{
-            position: "absolute",
-            top: -4,
-            right: -4,
-            minWidth: 16,
-            height: 16,
-            borderRadius: 8,
-            padding: "0 4px",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: "#1565c0",
-            color: "#fff",
-            fontSize: 10,
-            fontWeight: 800,
-            lineHeight: 1,
-            border: "1.5px solid white",
-          }}
-        >
-          {newOnlineOrderCount > 99 ? "99+" : newOnlineOrderCount}
-        </span>
-      )}
-    </button>
-
-    <button
       onClick={() => setDark((d) => !d)}
       title={dark ? "Switch to Light" : "Switch to Dark"}
       style={{
@@ -12996,8 +12944,6 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
                   <thead>
                     <tr>
                       <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Date / Time</th>
-                      <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Order Ref</th>
-                      <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Channel</th>
                       <th style={{ textAlign: "right", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>POS #</th>
                       <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Worker</th>
                       <th style={{ textAlign: "left", borderBottom: `1px solid ${cardBorder}`, padding: 6 }}>Payment</th>
@@ -13010,7 +12956,6 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
                   </thead>
                   <tbody>
                     {reportOrdersDetailed.map((order, idx) => {
-                      const channelLabel = order.channel === "online" ? "Online" : "On-site";
                       const rawItemsOnly = Number(
                         order.itemsTotal != null
                           ? order.itemsTotal
@@ -13052,8 +12997,6 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
                       return (
                         <tr key={key}>
                           <td style={{ padding: 6 }}>{fmtDateTime(order.date)}</td>
-                          <td style={{ padding: 6 }}>{order.channelOrderNo || formatOnsiteChannelOrderNo(order.orderNo)}</td>
-                          <td style={{ padding: 6 }}>{channelLabel}</td>
                           <td style={{ padding: 6, textAlign: "right" }}>{posDisplay}</td>
                           <td style={{ padding: 6 }}>{order.worker || "—"}</td>
                           <td style={{ padding: 6 }}>{paymentDisplay}</td>
@@ -13067,7 +13010,7 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
                     })}
                     {reportOrdersDetailed.length === 0 && (
                       <tr>
-                        <td colSpan={11} style={{ padding: 8, opacity: 0.8 }}>
+                        <td colSpan={9} style={{ padding: 8, opacity: 0.8 }}>
                           No orders recorded for the selected period.
                         </td>
                       </tr>
