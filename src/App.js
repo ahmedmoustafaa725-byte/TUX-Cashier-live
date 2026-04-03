@@ -1237,8 +1237,6 @@ export function packStateForCloud(state) {
     reportFilter,
     reportDay,
     reportMonth,
-    bulkInventoryItems,
-    bulkInventoryHistory,
   } = state;
   const purchases = Array.isArray(state.purchases)
     ? state.purchases.map((p) => ({
@@ -1378,8 +1376,6 @@ export function packStateForCloud(state) {
     reportFilter: typeof reportFilter === "string" ? reportFilter : undefined,
     reportDay: typeof reportDay === "string" ? reportDay : undefined,
     reportMonth: typeof reportMonth === "string" ? reportMonth : undefined,
-    bulkInventoryItems: Array.isArray(bulkInventoryItems) ? bulkInventoryItems : [],
-    bulkInventoryHistory: Array.isArray(bulkInventoryHistory) ? bulkInventoryHistory : [],
   };
   return sanitizeForFirestore(payload);
 }
@@ -1516,8 +1512,6 @@ if (Array.isArray(data.orders)) {
   if (typeof data.reportFilter === "string") out.reportFilter = data.reportFilter;
   if (typeof data.reportDay === "string") out.reportDay = data.reportDay;
   if (typeof data.reportMonth === "string") out.reportMonth = data.reportMonth;
-  if (Array.isArray(data.bulkInventoryItems)) out.bulkInventoryItems = data.bulkInventoryItems;
-  if (Array.isArray(data.bulkInventoryHistory)) out.bulkInventoryHistory = data.bulkInventoryHistory;
   if (data.menu) out.menu = data.menu;
   if (data.extras) out.extraList = data.extras;
   if (data.inventory) out.inventory = data.inventory;
@@ -2433,7 +2427,6 @@ const DEFAULT_INVENTORY = [
   { id: "meat",   name: "Meat",   unit: "g",     qty: 0, costPerUnit: 0, minQty: 0 },
   { id: "cheese", name: "Cheese", unit: "slices",qty: 0, costPerUnit: 0, minQty: 0 },
 ];
-const BULK_INVENTORY_UNITS = ["bag", "box", "bottle", "kg", "g", "liter", "ml", "piece", "pack", "tray"];
 const DEFAULT_UTILITY_BILLS = {
   electricity: { amount: 0, units: 0 },
   gas: { amount: 0, units: 0 },
@@ -3314,21 +3307,6 @@ setMenu((arr) => [
   setNewItemColor("#ffffff");
 };
 const [inventory, setInventory] = useState(DEFAULT_INVENTORY);
-const [bulkInventoryItems, setBulkInventoryItems] = useState(() => {
-  const l = loadLocal();
-  return Array.isArray(l?.bulkInventoryItems) ? l.bulkInventoryItems : [];
-});
-const [bulkInventoryHistory, setBulkInventoryHistory] = useState(() => {
-  const l = loadLocal();
-  return Array.isArray(l?.bulkInventoryHistory) ? l.bulkInventoryHistory : [];
-});
-const [bulkInventoryTab, setBulkInventoryTab] = useState("table");
-const [bulkNewItemName, setBulkNewItemName] = useState("");
-const [bulkNewItemUnit, setBulkNewItemUnit] = useState("bag");
-const [bulkNewItemOpeningStock, setBulkNewItemOpeningStock] = useState("");
-const [bulkNewItemMinStock, setBulkNewItemMinStock] = useState("");
-const [bulkRefillItemId, setBulkRefillItemId] = useState("");
-const [bulkRefillQty, setBulkRefillQty] = useState(1);
 const [inventoryLocked, setInventoryLocked] = useState(false);
 const [inventorySnapshot, setInventorySnapshot] = useState([]);
 const [inventoryLockedAt, setInventoryLockedAt] = useState(null);
@@ -3491,64 +3469,6 @@ const reorderSuggestionById = useMemo(() => {
   return map;
 }, [reorderSuggestions]);
 const lowStockCount = lowStockItems.length;
-const bulkActiveItems = useMemo(
-  () => (bulkInventoryItems || []).filter((item) => !item.archivedAt),
-  [bulkInventoryItems]
-);
-const bulkLowStockItems = useMemo(
-  () =>
-    bulkActiveItems.filter(
-      (item) => Number(item?.stock || 0) <= Number(item?.minStock || 0)
-    ),
-  [bulkActiveItems]
-);
-const bulkTotalUnits = useMemo(
-  () =>
-    bulkActiveItems.reduce((sum, item) => sum + Number(item?.stock || 0), 0),
-  [bulkActiveItems]
-);
-const bulkHistorySorted = useMemo(
-  () =>
-    [...(bulkInventoryHistory || [])].sort(
-      (a, b) => new Date(b?.timestamp || 0).getTime() - new Date(a?.timestamp || 0).getTime()
-    ),
-  [bulkInventoryHistory]
-);
-const bulkRefillHistory = useMemo(
-  () => bulkHistorySorted.filter((entry) => entry?.type === "refill"),
-  [bulkHistorySorted]
-);
-const bulkUsageHistory = useMemo(
-  () => bulkHistorySorted.filter((entry) => entry?.type === "used"),
-  [bulkHistorySorted]
-);
-const bulkAddHistory = useCallback((entry) => {
-  setBulkInventoryHistory((prev) => [{ id: `hist_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, ...entry }, ...prev]);
-}, []);
-const bulkMinusOne = useCallback((itemId) => {
-  const nowIso = new Date().toISOString();
-  setBulkInventoryItems((prev) =>
-    prev.map((item) => {
-      if (item.id !== itemId) return item;
-      const currentStock = Number(item.stock || 0);
-      if (currentStock <= 0) return item;
-      return {
-        ...item,
-        stock: currentStock - 1,
-        lastUsedAt: nowIso,
-      };
-    })
-  );
-  const hit = bulkInventoryItems.find((item) => item.id === itemId);
-  if (!hit || Number(hit.stock || 0) <= 0) return;
-  bulkAddHistory({
-    itemName: hit.name,
-    type: "used",
-    quantity: 1,
-    unit: hit.unit,
-    timestamp: nowIso,
-  });
-}, [bulkInventoryItems, bulkAddHistory]);
 const [dayMeta, setDayMeta] = useState({
   startedBy: "",
   currentWorker: "",
@@ -4097,8 +4017,6 @@ useEffect(() => {
   if (l.orderTypes) setOrderTypes(l.orderTypes);
   if (typeof l.defaultDeliveryFee === "number") setDefaultDeliveryFee(l.defaultDeliveryFee);
   if (l.inventory) setInventory(l.inventory);
-  if (Array.isArray(l.bulkInventoryItems)) setBulkInventoryItems(l.bulkInventoryItems);
-  if (Array.isArray(l.bulkInventoryHistory)) setBulkInventoryHistory(l.bulkInventoryHistory);
   if (l.utilityBills) setUtilityBills(normalizeUtilityBills(l.utilityBills));
   if (l.laborProfile) setLaborProfile(normalizeLaborProfile(l.laborProfile));
   if (Array.isArray(l.equipmentList)) setEquipmentList(normalizeEquipmentList(l.equipmentList));
@@ -4208,8 +4126,6 @@ useEffect(() => { saveLocalPartial({ utilityBills }); }, [utilityBills]);
 useEffect(() => { saveLocalPartial({ laborProfile }); }, [laborProfile]);
 useEffect(() => { saveLocalPartial({ equipmentList }); }, [equipmentList]);
 useEffect(() => { saveLocalPartial({ inventory }); }, [inventory]);
-useEffect(() => { saveLocalPartial({ bulkInventoryItems }); }, [bulkInventoryItems]);
-useEffect(() => { saveLocalPartial({ bulkInventoryHistory }); }, [bulkInventoryHistory]);
 useEffect(() => { saveLocalPartial({ adminPins }); }, [adminPins]);
 useEffect(() => { saveLocalPartial({ dark }); }, [dark]);
 useEffect(() => { saveLocalPartial({ targetMarginPct }); }, [targetMarginPct]);
@@ -4257,7 +4173,7 @@ useEffect(() => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [
   menu, extraList, workers, paymentMethods, orderTypes, defaultDeliveryFee,
- inventory, bulkInventoryItems, bulkInventoryHistory, adminPins, dark,
+ inventory, adminPins, dark,
   expenses, bankTx, dayMeta, inventoryLocked, inventorySnapshot, inventoryLockedAt,
   autoPrintOnCheckout, preferredPaperWidthMm, cloudEnabled, realtimeOrders, nextOrderNo,
    purchases, purchaseCategories, customers, deliveryZones, purchaseFilter, purchaseDay, purchaseMonth,workerProfiles,
@@ -4395,8 +4311,6 @@ const onlineOrderCollections = useMemo(() => {
           if (unpacked.reconHistory) setReconHistory(unpacked.reconHistory);
           if (unpacked.extraList) setExtraList(unpacked.extraList);
           if (unpacked.inventory) setInventory(unpacked.inventory);
-          if (unpacked.bulkInventoryItems) setBulkInventoryItems(unpacked.bulkInventoryItems);
-          if (unpacked.bulkInventoryHistory) setBulkInventoryHistory(unpacked.bulkInventoryHistory);
           if (unpacked.utilityBills) setUtilityBills(normalizeUtilityBills(unpacked.utilityBills));
           if (unpacked.laborProfile) setLaborProfile(normalizeLaborProfile(unpacked.laborProfile));
           if (unpacked.equipmentList) setEquipmentList(normalizeEquipmentList(unpacked.equipmentList));
@@ -4471,8 +4385,6 @@ if (ts && lastLocalEditAt && ts < lastLocalEditAt) return;
       if (unpacked.reconHistory) setReconHistory(unpacked.reconHistory);
       if (unpacked.extraList) setExtraList(unpacked.extraList);
       if (unpacked.inventory) setInventory(unpacked.inventory);
-      if (unpacked.bulkInventoryItems) setBulkInventoryItems(unpacked.bulkInventoryItems);
-      if (unpacked.bulkInventoryHistory) setBulkInventoryHistory(unpacked.bulkInventoryHistory);
       if (typeof unpacked.nextOrderNo === "number") setNextOrderNo(unpacked.nextOrderNo);
       if (typeof unpacked.dark === "boolean") setDark(unpacked.dark);
       if (unpacked.workers) setWorkers(unpacked.workers);
@@ -4516,8 +4428,6 @@ if (unpacked.workerProfiles) setWorkerProfiles(unpacked.workerProfiles);
 if (unpacked.workerSessions) setWorkerSessions(unpacked.workerSessions);
       if (unpacked.extraList) setExtraList(unpacked.extraList);
       if (unpacked.inventory) setInventory(unpacked.inventory);
-      if (unpacked.bulkInventoryItems) setBulkInventoryItems(unpacked.bulkInventoryItems);
-      if (unpacked.bulkInventoryHistory) setBulkInventoryHistory(unpacked.bulkInventoryHistory);
       if (unpacked.nextOrderNo != null) setNextOrderNo(unpacked.nextOrderNo);
       if (unpacked.dark != null) setDark(unpacked.dark);
       if (unpacked.workers) setWorkers(unpacked.workers);
@@ -4570,8 +4480,6 @@ if (unpacked.workerSessions) setWorkerSessions(unpacked.workerSessions);
       extraList,
       orders: realtimeOrders ? [] : orders,
       inventory,
-      bulkInventoryItems,
-      bulkInventoryHistory,
       nextOrderNo,
        reconHistory,
         workerProfiles,
@@ -4636,8 +4544,6 @@ useEffect(() => {
         extraList,
         orders: realtimeOrders ? [] : orders,
         inventory,
-        bulkInventoryItems,
-        bulkInventoryHistory,
         nextOrderNo,
         dark,
         workers,
@@ -4706,8 +4612,6 @@ useEffect(() => {
   extraList,
   orders,
   inventory,
-  bulkInventoryItems,
-  bulkInventoryHistory,
   nextOrderNo,
   dark,
   workers,
@@ -8352,7 +8256,6 @@ const generatePurchasesPDF = () => {
     ["board", "Orders Board"],
     ["expenses", "Expenses"],
     ["usage", "Inventory Usage"],
-    ["bulkInventory", "Bulk Inventory"],
      ["reconcile","Reconcile"],
     ["admin", "Admin"], // <-- new consolidated tab
   ].map(([key, label]) => (
@@ -10770,289 +10673,6 @@ const cogs = Number(
               </div>
             )}
           </div>
-        </div>
-      )}
-
-      {/* BULK INVENTORY */}
-      {activeTab === "bulkInventory" && (
-        <div style={{ display: "grid", gap: 14 }}>
-          <h2 style={{ margin: 0 }}>Bulk Inventory</h2>
-
-          {bulkLowStockItems.length > 0 && (
-            <div
-              style={{
-                border: "1px solid #ef9a9a",
-                background: dark ? "rgba(244,67,54,0.2)" : "#ffebee",
-                color: dark ? "#ffcdd2" : "#b71c1c",
-                borderRadius: 12,
-                padding: 12,
-                fontWeight: 700,
-              }}
-            >
-              Low stock alert: {bulkLowStockItems.length} item(s) need refill.
-            </div>
-          )}
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
-            <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 12, padding: 12 }}>
-              <div style={{ fontSize: 12, opacity: 0.7 }}>Items</div>
-              <div style={{ fontSize: 24, fontWeight: 800 }}>{bulkActiveItems.length}</div>
-            </div>
-            <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 12, padding: 12 }}>
-              <div style={{ fontSize: 12, opacity: 0.7 }}>Low Stock</div>
-              <div style={{ fontSize: 24, fontWeight: 800, color: bulkLowStockItems.length ? "#c62828" : undefined }}>
-                {bulkLowStockItems.length}
-              </div>
-            </div>
-            <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 12, padding: 12 }}>
-              <div style={{ fontSize: 12, opacity: 0.7 }}>Total Units</div>
-              <div style={{ fontSize: 24, fontWeight: 800 }}>{bulkTotalUnits}</div>
-            </div>
-          </div>
-
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {[
-              ["table", "Inventory Table"],
-              ["add", "Add / Refill"],
-              ["history", "History"],
-            ].map(([key, label]) => (
-              <button
-                key={key}
-                onClick={() => setBulkInventoryTab(key)}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 10,
-                  border: `1px solid ${btnBorder}`,
-                  background: bulkInventoryTab === key ? "#ffd54f" : dark ? "#2c2c2c" : "#f1f1f1",
-                  cursor: "pointer",
-                  fontWeight: 600,
-                }}
-              >
-                {label}
-              </button>
-            ))}
-            <button
-              onClick={async () => {
-                const okAdmin = !!promptAdminAndPin();
-                if (!okAdmin) return;
-                if (!window.confirm("Force delete all Bulk Inventory items and history? This cannot be undone.")) return;
-                const now = Date.now();
-                setLastLocalEditAt(now);
-                setBulkInventoryItems([]);
-                setBulkInventoryHistory([]);
-                if (cloudEnabled && stateDocRef && fbUser) {
-                  try {
-                    writeSeqRef.current += 1;
-                    await setDoc(
-                      stateDocRef,
-                      sanitizeForFirestore({
-                        bulkInventoryItems: [],
-                        bulkInventoryHistory: [],
-                        updatedAt: serverTimestamp(),
-                        writerId: clientIdRef.current,
-                        writeSeq: writeSeqRef.current,
-                      }),
-                      { merge: true }
-                    );
-                    setLastAppliedCloudAt(now);
-                    setCloudStatus((s) => ({ ...s, lastSaveAt: new Date(), error: null }));
-                  } catch (e) {
-                    console.warn("Failed to reset bulk inventory in cloud:", e);
-                    setCloudStatus((s) => ({ ...s, error: String(e) }));
-                    alert("Bulk inventory was cleared locally, but cloud reset failed. Please try again.");
-                  }
-                }
-              }}
-              style={{ marginLeft: "auto", padding: "8px 12px", borderRadius: 10, border: "none", background: "#ef5350", color: "#fff", cursor: "pointer", fontWeight: 700 }}
-            >
-              Reset Bulk Inventory
-            </button>
-          </div>
-
-          {bulkInventoryTab === "table" && (
-            <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 14, padding: 12, overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr>
-                    {["Item", "Unit", "Current Stock", "Min Stock", "Status", "Last Used", "Last Bought", "Use"].map((head) => (
-                      <th key={head} style={{ textAlign: head === "Current Stock" || head === "Min Stock" ? "right" : "left", padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{head}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {bulkActiveItems.map((item) => {
-                    const low = Number(item.stock || 0) <= Number(item.minStock || 0);
-                    return (
-                      <tr key={item.id} style={{ background: low ? (dark ? "rgba(244,67,54,0.22)" : "#ffebee") : "transparent" }}>
-                        <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{item.name}</td>
-                        <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{item.unit}</td>
-                        <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>{Number(item.stock || 0)}</td>
-                        <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, textAlign: "right" }}>
-                          <input
-                            type="number"
-                            min={0}
-                            value={item.minStock ?? ""}
-                            placeholder="Set min stock alert level"
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setBulkInventoryItems((prev) =>
-                                prev.map((row) =>
-                                  row.id === item.id
-                                    ? { ...row, minStock: val === "" ? "" : Math.max(0, Number(val || 0)) }
-                                    : row
-                                )
-                              );
-                            }}
-                            style={{ width: 110, padding: "6px 8px", borderRadius: 8, border: `1px solid ${btnBorder}`, textAlign: "right" }}
-                          />
-                        </td>
-                        <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, color: low ? "#c62828" : "#2e7d32", fontWeight: 700 }}>{low ? "Low Stock" : "OK"}</td>
-                        <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{item.lastUsedAt ? new Date(item.lastUsedAt).toLocaleString() : "—"}</td>
-                        <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}` }}>{item.lastBoughtAt ? new Date(item.lastBoughtAt).toLocaleString() : "—"}</td>
-                        <td style={{ padding: 8, borderBottom: `1px solid ${cardBorder}`, display: "flex", gap: 8 }}>
-                          <button
-                            onClick={() => bulkMinusOne(item.id)}
-                            disabled={Number(item.stock || 0) <= 0}
-                            style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: Number(item.stock || 0) <= 0 ? "#9e9e9e" : "#f57c00", color: "#fff", cursor: Number(item.stock || 0) <= 0 ? "not-allowed" : "pointer" }}
-                          >
-                            Minus 1
-                          </button>
-                          <button
-                            onClick={() => {
-                              const okAdmin = !!promptAdminAndPin();
-                              if (!okAdmin) return;
-                              if (!window.confirm(`Archive ${item.name}?`)) return;
-                              const nowIso = new Date().toISOString();
-                              setBulkInventoryItems((prev) => prev.map((row) => (row.id === item.id ? { ...row, archivedAt: nowIso } : row)));
-                              bulkAddHistory({
-                                itemName: item.name,
-                                type: "removed",
-                                quantity: Number(item.stock || 0),
-                                unit: item.unit,
-                                timestamp: nowIso,
-                              });
-                            }}
-                            style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: "#c62828", color: "#fff", cursor: "pointer" }}
-                          >
-                            Remove
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {bulkActiveItems.length === 0 && (
-                    <tr>
-                      <td colSpan={8} style={{ padding: 10, opacity: 0.7 }}>No inventory items yet.</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {bulkInventoryTab === "add" && (
-            <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))" }}>
-              <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 14, padding: 14, display: "grid", gap: 10 }}>
-                <h3 style={{ margin: 0 }}>Add New Item</h3>
-                <input value={bulkNewItemName} onChange={(e) => setBulkNewItemName(e.target.value)} placeholder="Item Name" style={{ padding: 10, borderRadius: 8, border: `1px solid ${btnBorder}` }} />
-                <select value={bulkNewItemUnit} onChange={(e) => setBulkNewItemUnit(e.target.value)} style={{ padding: 10, borderRadius: 8, border: `1px solid ${btnBorder}` }}>
-                  {BULK_INVENTORY_UNITS.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
-                </select>
-                <input type="number" min={0} value={bulkNewItemOpeningStock} onChange={(e) => setBulkNewItemOpeningStock(e.target.value)} placeholder="Enter opening stock quantity" style={{ padding: 10, borderRadius: 8, border: `1px solid ${btnBorder}` }} />
-                <input type="number" min={0} value={bulkNewItemMinStock} onChange={(e) => setBulkNewItemMinStock(e.target.value)} placeholder="Set minimum stock alert level" style={{ padding: 10, borderRadius: 8, border: `1px solid ${btnBorder}` }} />
-                <button
-                  onClick={() => {
-                    const name = String(bulkNewItemName || "").trim();
-                    if (!name) return alert("Item name required.");
-                    const nowIso = new Date().toISOString();
-                    const item = {
-                      id: `bulk_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-                      name,
-                      unit: bulkNewItemUnit || "piece",
-                      stock: Math.max(0, Number(bulkNewItemOpeningStock || 0)),
-                      minStock: Math.max(0, Number(bulkNewItemMinStock || 0)),
-                      createdAt: nowIso,
-                      lastUsedAt: null,
-                      lastBoughtAt: Number(bulkNewItemOpeningStock || 0) > 0 ? nowIso : null,
-                    };
-                    setBulkInventoryItems((prev) => [item, ...prev]);
-                    bulkAddHistory({ itemName: item.name, type: "created", quantity: item.stock, unit: item.unit, timestamp: nowIso });
-                    setBulkNewItemName("");
-                    setBulkNewItemUnit("bag");
-                    setBulkNewItemOpeningStock("");
-                    setBulkNewItemMinStock("");
-                  }}
-                  style={{ padding: "10px 12px", borderRadius: 8, border: "none", background: "#2e7d32", color: "#fff", fontWeight: 700, cursor: "pointer" }}
-                >
-                  Add Item
-                </button>
-              </div>
-
-              <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 14, padding: 14, display: "grid", gap: 10 }}>
-                <h3 style={{ margin: 0 }}>Refill Existing Item</h3>
-                <select value={bulkRefillItemId} onChange={(e) => setBulkRefillItemId(e.target.value)} style={{ padding: 10, borderRadius: 8, border: `1px solid ${btnBorder}` }}>
-                  <option value="">Select item</option>
-                  {bulkActiveItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-                </select>
-                <input type="number" min={1} value={bulkRefillQty} onChange={(e) => setBulkRefillQty(Math.max(1, Number(e.target.value || 1)))} placeholder="Refill Quantity" style={{ padding: 10, borderRadius: 8, border: `1px solid ${btnBorder}` }} />
-                <button
-                  onClick={() => {
-                    if (!bulkRefillItemId) return alert("Select an item.");
-                    const qty = Math.max(1, Number(bulkRefillQty || 0));
-                    const nowIso = new Date().toISOString();
-                    let target = null;
-                    setBulkInventoryItems((prev) =>
-                      prev.map((row) => {
-                        if (row.id !== bulkRefillItemId) return row;
-                        target = row;
-                        return { ...row, stock: Number(row.stock || 0) + qty, lastBoughtAt: nowIso };
-                      })
-                    );
-                    if (!target) return;
-                    bulkAddHistory({ itemName: target.name, type: "refill", quantity: qty, unit: target.unit, timestamp: nowIso });
-                    setBulkRefillQty(1);
-                  }}
-                  style={{ padding: "10px 12px", borderRadius: 8, border: "none", background: "#1976d2", color: "#fff", fontWeight: 700, cursor: "pointer" }}
-                >
-                  Refill
-                </button>
-              </div>
-            </div>
-          )}
-
-          {bulkInventoryTab === "history" && (
-            <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 14, padding: 12, display: "grid", gap: 12 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
-                <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 10, padding: 10, display: "grid", gap: 8 }}>
-                  <h4 style={{ margin: 0 }}>Refill</h4>
-                  {bulkRefillHistory.map((entry) => (
-                    <div key={entry.id} style={{ border: `1px solid ${cardBorder}`, borderRadius: 10, padding: 10 }}>
-                      <div style={{ fontWeight: 700 }}>{entry.itemName}</div>
-                      <div style={{ fontSize: 13, opacity: 0.85 }}>{`Bought/refilled ${entry.quantity} ${entry.unit}`}</div>
-                      <div style={{ fontSize: 12, opacity: 0.7 }}>
-                        {entry.timestamp ? new Date(entry.timestamp).toLocaleString() : "—"}
-                      </div>
-                    </div>
-                  ))}
-                  {bulkRefillHistory.length === 0 && <div style={{ opacity: 0.75 }}>No refill history yet.</div>}
-                </div>
-
-                <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 10, padding: 10, display: "grid", gap: 8 }}>
-                  <h4 style={{ margin: 0 }}>Usage</h4>
-                  {bulkUsageHistory.map((entry) => (
-                    <div key={entry.id} style={{ border: `1px solid ${cardBorder}`, borderRadius: 10, padding: 10 }}>
-                      <div style={{ fontWeight: 700 }}>{entry.itemName}</div>
-                      <div style={{ fontSize: 13, opacity: 0.85 }}>{`Used ${entry.quantity} ${entry.unit}`}</div>
-                      <div style={{ fontSize: 12, opacity: 0.7 }}>
-                        {entry.timestamp ? new Date(entry.timestamp).toLocaleString() : "—"}
-                      </div>
-                    </div>
-                  ))}
-                  {bulkUsageHistory.length === 0 && <div style={{ opacity: 0.75 }}>No usage history yet.</div>}
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
