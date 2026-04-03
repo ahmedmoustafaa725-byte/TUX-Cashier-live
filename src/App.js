@@ -3324,12 +3324,18 @@ const [bulkInventoryHistory, setBulkInventoryHistory] = useState(() => {
 const [bulkInventoryView, setBulkInventoryView] = useState("table");
 const [bulkNewItemName, setBulkNewItemName] = useState("");
 const [bulkNewItemUnit, setBulkNewItemUnit] = useState("bag");
-const [bulkOpeningStock, setBulkOpeningStock] = useState(0);
-const [bulkMinStock, setBulkMinStock] = useState(0);
+const [bulkOpeningStock, setBulkOpeningStock] = useState("");
+const [bulkMinStock, setBulkMinStock] = useState("");
 const [bulkRefillItemId, setBulkRefillItemId] = useState("");
-const [bulkRefillQty, setBulkRefillQty] = useState(0);
+const [bulkRefillQty, setBulkRefillQty] = useState("");
 const [bulkHistoryRange, setBulkHistoryRange] = useState("week");
 const [bulkHistoryItemId, setBulkHistoryItemId] = useState("all");
+const [bulkHistoryDay, setBulkHistoryDay] = useState(() => toDateInputValue(new Date()));
+const [bulkHistoryWeek, setBulkHistoryWeek] = useState(() => formatSundayWeekInputValue(new Date()));
+const [bulkHistoryMonth, setBulkHistoryMonth] = useState(() => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+});
 const [inventoryLocked, setInventoryLocked] = useState(false);
 const [inventorySnapshot, setInventorySnapshot] = useState([]);
 const [inventoryLockedAt, setInventoryLockedAt] = useState(null);
@@ -3381,18 +3387,44 @@ const bulkInventorySummary = useMemo(() => {
   return { items, lowStock, totalUnits };
 }, [bulkInventoryItems, bulkInventoryLowStockItems.length]);
 const bulkHistoryFiltered = useMemo(() => {
-  const now = Date.now();
-  const ms = bulkHistoryRange === "month" ? 30 * 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+  let start = null;
+  let end = null;
+  if (bulkHistoryRange === "day") {
+    const d = bulkHistoryDay ? new Date(bulkHistoryDay) : new Date();
+    d.setHours(0, 0, 0, 0);
+    start = d;
+    end = new Date(d);
+    end.setHours(23, 59, 59, 999);
+  } else if (bulkHistoryRange === "week") {
+    const weekRange = getWeekRangeFromInput(bulkHistoryWeek);
+    if (weekRange) [start, end] = weekRange;
+  } else if (bulkHistoryRange === "month") {
+    const [yearStr, monthStr] = String(bulkHistoryMonth || "").split("-");
+    const y = Number(yearStr);
+    const m = Number(monthStr) - 1;
+    if (Number.isFinite(y) && Number.isFinite(m) && m >= 0 && m <= 11) {
+      start = new Date(y, m, 1, 0, 0, 0, 0);
+      end = new Date(y, m + 1, 0, 23, 59, 59, 999);
+    }
+  }
   return (bulkInventoryHistory || [])
     .filter((row) => {
       const ts = new Date(row.timestamp || 0).getTime();
       if (!Number.isFinite(ts)) return false;
-      if (now - ts > ms) return false;
+      if (start && ts < start.getTime()) return false;
+      if (end && ts > end.getTime()) return false;
       if (bulkHistoryItemId !== "all" && row.itemId !== bulkHistoryItemId) return false;
       return true;
     })
     .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
-}, [bulkInventoryHistory, bulkHistoryRange, bulkHistoryItemId]);
+}, [
+  bulkInventoryHistory,
+  bulkHistoryRange,
+  bulkHistoryItemId,
+  bulkHistoryDay,
+  bulkHistoryWeek,
+  bulkHistoryMonth,
+]);
 const inventoryReportRows = useMemo(() => {
   if (!inventorySnapshot || inventorySnapshot.length === 0) return [];
   const snapMap = {};
@@ -5834,8 +5866,8 @@ const workerMonthlyTotalPay = useMemo(
     });
     setBulkNewItemName("");
     setBulkNewItemUnit("bag");
-    setBulkOpeningStock(0);
-    setBulkMinStock(0);
+    setBulkOpeningStock("");
+    setBulkMinStock("");
     if (!bulkRefillItemId) setBulkRefillItemId(nextItem.id);
   };
   const handleBulkRefill = () => {
@@ -5861,7 +5893,7 @@ const workerMonthlyTotalPay = useMemo(
       unit: target.unit,
       timestamp: nowIso,
     });
-    setBulkRefillQty(0);
+    setBulkRefillQty("");
   };
   const handleBulkRemoveItem = (itemId) => {
     const target = (bulkInventoryItems || []).find((it) => it.id === itemId);
@@ -11140,8 +11172,8 @@ const cogs = Number(
             <select value={bulkNewItemUnit} onChange={(e) => setBulkNewItemUnit(e.target.value)} style={{ padding: 10, borderRadius: 8, border: `1px solid ${btnBorder}` }}>
               {bulkUnitOptions.map((u) => <option key={u} value={u}>{u}</option>)}
             </select>
-            <input type="number" value={bulkOpeningStock} onChange={(e) => setBulkOpeningStock(Number(e.target.value || 0))} placeholder="Opening Stock" style={{ padding: 10, borderRadius: 8, border: `1px solid ${btnBorder}` }} />
-            <input type="number" value={bulkMinStock} onChange={(e) => setBulkMinStock(Number(e.target.value || 0))} placeholder="Min Stock" style={{ padding: 10, borderRadius: 8, border: `1px solid ${btnBorder}` }} />
+            <input type="number" value={bulkOpeningStock} onChange={(e) => setBulkOpeningStock(e.target.value)} placeholder="Enter Opening Stock" style={{ padding: 10, borderRadius: 8, border: `1px solid ${btnBorder}` }} />
+            <input type="number" value={bulkMinStock} onChange={(e) => setBulkMinStock(e.target.value)} placeholder="Enter Min Stock" style={{ padding: 10, borderRadius: 8, border: `1px solid ${btnBorder}` }} />
             <button onClick={handleBulkCreateItem} style={{ padding: "10px 12px", borderRadius: 8, border: "none", background: "#1565c0", color: "#fff", cursor: "pointer" }}>
               Add Item
             </button>
@@ -11155,7 +11187,7 @@ const cogs = Number(
               <option value="">Select item</option>
               {bulkInventoryItems.map((it) => <option key={it.id} value={it.id}>{it.name} ({it.stock} {it.unit})</option>)}
             </select>
-            <input type="number" value={bulkRefillQty} onChange={(e) => setBulkRefillQty(Number(e.target.value || 0))} placeholder="Refill Quantity" style={{ padding: 10, borderRadius: 8, border: `1px solid ${btnBorder}` }} />
+            <input type="number" value={bulkRefillQty} onChange={(e) => setBulkRefillQty(e.target.value)} placeholder="Enter Refill Quantity" style={{ padding: 10, borderRadius: 8, border: `1px solid ${btnBorder}` }} />
             <button onClick={handleBulkRefill} style={{ padding: "10px 12px", borderRadius: 8, border: "none", background: "#2e7d32", color: "#fff", cursor: "pointer" }}>
               Refill
             </button>
@@ -11167,8 +11199,18 @@ const cogs = Number(
     {bulkInventoryView === "history" && (
       <div style={{ display: "grid", gap: 12 }}>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+          <button onClick={() => setBulkHistoryRange("day")} style={{ padding: "6px 10px", borderRadius: 8, border: `1px solid ${btnBorder}`, background: bulkHistoryRange === "day" ? "#ffe082" : dark ? "#2c2c2c" : "#f4f4f4" }}>Day</button>
           <button onClick={() => setBulkHistoryRange("week")} style={{ padding: "6px 10px", borderRadius: 8, border: `1px solid ${btnBorder}`, background: bulkHistoryRange === "week" ? "#ffe082" : dark ? "#2c2c2c" : "#f4f4f4" }}>Week</button>
           <button onClick={() => setBulkHistoryRange("month")} style={{ padding: "6px 10px", borderRadius: 8, border: `1px solid ${btnBorder}`, background: bulkHistoryRange === "month" ? "#ffe082" : dark ? "#2c2c2c" : "#f4f4f4" }}>Month</button>
+          {bulkHistoryRange === "day" && (
+            <input type="date" value={bulkHistoryDay} onChange={(e) => setBulkHistoryDay(e.target.value)} style={{ padding: 8, borderRadius: 8, border: `1px solid ${btnBorder}` }} />
+          )}
+          {bulkHistoryRange === "week" && (
+            <input type="week" value={bulkHistoryWeek} onChange={(e) => setBulkHistoryWeek(e.target.value)} style={{ padding: 8, borderRadius: 8, border: `1px solid ${btnBorder}` }} />
+          )}
+          {bulkHistoryRange === "month" && (
+            <input type="month" value={bulkHistoryMonth} onChange={(e) => setBulkHistoryMonth(e.target.value)} style={{ padding: 8, borderRadius: 8, border: `1px solid ${btnBorder}` }} />
+          )}
           <select value={bulkHistoryItemId} onChange={(e) => setBulkHistoryItemId(e.target.value)} style={{ padding: 8, borderRadius: 8, border: `1px solid ${btnBorder}` }}>
             <option value="all">All Items</option>
             {bulkInventoryItems.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
@@ -11182,6 +11224,7 @@ const cogs = Number(
             {(bulkHistoryFiltered.filter((h) => h.type === "refill").slice(0, 8)).map((h) => (
               <div key={h.id} style={{ padding: "6px 0", borderBottom: `1px dashed ${cardBorder}` }}>
                 +{h.quantity} {h.unit} · {h.itemName}
+                <div style={{ opacity: 0.75, fontSize: 12 }}>{fmtDateTime(new Date(h.timestamp))}</div>
               </div>
             ))}
           </div>
@@ -11190,6 +11233,7 @@ const cogs = Number(
             {(bulkHistoryFiltered.filter((h) => h.type === "used").slice(0, 8)).map((h) => (
               <div key={h.id} style={{ padding: "6px 0", borderBottom: `1px dashed ${cardBorder}` }}>
                 -{h.quantity} {h.unit} · {h.itemName}
+                <div style={{ opacity: 0.75, fontSize: 12 }}>{fmtDateTime(new Date(h.timestamp))}</div>
               </div>
             ))}
           </div>
