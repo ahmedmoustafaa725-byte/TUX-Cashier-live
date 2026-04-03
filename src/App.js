@@ -3336,6 +3336,34 @@ const [bulkHistoryMonth, setBulkHistoryMonth] = useState(() => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 });
+const getLatestBulkMutationMs = useCallback((items = [], history = []) => {
+  let maxMs = 0;
+  for (const it of Array.isArray(items) ? items : []) {
+    const candidates = [it?.createdAt, it?.lastUsedAt, it?.lastBoughtAt];
+    for (const value of candidates) {
+      const ms = value ? new Date(value).getTime() : 0;
+      if (Number.isFinite(ms)) maxMs = Math.max(maxMs, ms);
+    }
+  }
+  for (const row of Array.isArray(history) ? history : []) {
+    const ms = row?.timestamp ? new Date(row.timestamp).getTime() : 0;
+    if (Number.isFinite(ms)) maxMs = Math.max(maxMs, ms);
+  }
+  return maxMs;
+}, []);
+const applyBulkInventoryFromCloud = useCallback((incomingItems, incomingHistory) => {
+  const hasIncomingItems = Array.isArray(incomingItems);
+  const hasIncomingHistory = Array.isArray(incomingHistory);
+  if (!hasIncomingItems && !hasIncomingHistory) return;
+  const localLatest = getLatestBulkMutationMs(bulkInventoryItems, bulkInventoryHistory);
+  const incomingLatest = getLatestBulkMutationMs(
+    hasIncomingItems ? incomingItems : bulkInventoryItems,
+    hasIncomingHistory ? incomingHistory : bulkInventoryHistory
+  );
+  if (localLatest && incomingLatest && incomingLatest < localLatest) return;
+  if (hasIncomingItems) setBulkInventoryItems(incomingItems);
+  if (hasIncomingHistory) setBulkInventoryHistory(incomingHistory);
+}, [bulkInventoryHistory, bulkInventoryItems, getLatestBulkMutationMs]);
 const [inventoryLocked, setInventoryLocked] = useState(false);
 const [inventorySnapshot, setInventorySnapshot] = useState([]);
 const [inventoryLockedAt, setInventoryLockedAt] = useState(null);
@@ -4405,8 +4433,7 @@ const onlineOrderCollections = useMemo(() => {
           if (unpacked.reconHistory) setReconHistory(unpacked.reconHistory);
           if (unpacked.extraList) setExtraList(unpacked.extraList);
           if (unpacked.inventory) setInventory(unpacked.inventory);
-          if (Array.isArray(unpacked.bulkInventoryItems)) setBulkInventoryItems(unpacked.bulkInventoryItems);
-          if (Array.isArray(unpacked.bulkInventoryHistory)) setBulkInventoryHistory(unpacked.bulkInventoryHistory);
+          applyBulkInventoryFromCloud(unpacked.bulkInventoryItems, unpacked.bulkInventoryHistory);
           if (unpacked.utilityBills) setUtilityBills(normalizeUtilityBills(unpacked.utilityBills));
           if (unpacked.laborProfile) setLaborProfile(normalizeLaborProfile(unpacked.laborProfile));
           if (unpacked.equipmentList) setEquipmentList(normalizeEquipmentList(unpacked.equipmentList));
@@ -4457,7 +4484,7 @@ const onlineOrderCollections = useMemo(() => {
         setHydrated(true);
       }
     })();
-  }, [stateDocRef, fbUser, hydrated, dayMeta, realtimeOrders]);
+  }, [stateDocRef, fbUser, hydrated, dayMeta, realtimeOrders, applyBulkInventoryFromCloud]);
   useEffect(() => {
   if (!cloudEnabled || !stateDocRef || !fbUser) return;
   const unsub = onSnapshot(stateDocRef, (snap) => {
@@ -4481,8 +4508,7 @@ if (ts && lastLocalEditAt && ts < lastLocalEditAt) return;
       if (unpacked.reconHistory) setReconHistory(unpacked.reconHistory);
       if (unpacked.extraList) setExtraList(unpacked.extraList);
       if (unpacked.inventory) setInventory(unpacked.inventory);
-      if (Array.isArray(unpacked.bulkInventoryItems)) setBulkInventoryItems(unpacked.bulkInventoryItems);
-      if (Array.isArray(unpacked.bulkInventoryHistory)) setBulkInventoryHistory(unpacked.bulkInventoryHistory);
+      applyBulkInventoryFromCloud(unpacked.bulkInventoryItems, unpacked.bulkInventoryHistory);
       if (typeof unpacked.nextOrderNo === "number") setNextOrderNo(unpacked.nextOrderNo);
       if (typeof unpacked.dark === "boolean") setDark(unpacked.dark);
       if (unpacked.workers) setWorkers(unpacked.workers);
@@ -4511,7 +4537,7 @@ if (ts && lastLocalEditAt && ts < lastLocalEditAt) return;
   });
 
   return () => unsub();
-}, [cloudEnabled, stateDocRef, fbUser, dayMeta, lastAppliedCloudAt, lastLocalEditAt]);
+}, [cloudEnabled, stateDocRef, fbUser, dayMeta, lastAppliedCloudAt, lastLocalEditAt, applyBulkInventoryFromCloud]);
   // Manual pull
   const loadFromCloud = async () => {
     if (!stateDocRef || !fbUser) return alert("Firebase not ready.");
@@ -4526,8 +4552,7 @@ if (unpacked.workerProfiles) setWorkerProfiles(unpacked.workerProfiles);
 if (unpacked.workerSessions) setWorkerSessions(unpacked.workerSessions);
       if (unpacked.extraList) setExtraList(unpacked.extraList);
       if (unpacked.inventory) setInventory(unpacked.inventory);
-      if (Array.isArray(unpacked.bulkInventoryItems)) setBulkInventoryItems(unpacked.bulkInventoryItems);
-      if (Array.isArray(unpacked.bulkInventoryHistory)) setBulkInventoryHistory(unpacked.bulkInventoryHistory);
+      applyBulkInventoryFromCloud(unpacked.bulkInventoryItems, unpacked.bulkInventoryHistory);
       if (unpacked.nextOrderNo != null) setNextOrderNo(unpacked.nextOrderNo);
       if (unpacked.dark != null) setDark(unpacked.dark);
       if (unpacked.workers) setWorkers(unpacked.workers);
@@ -11247,7 +11272,7 @@ const cogs = Number(
             ) : (
               bulkHistoryFiltered.map((h) => (
                 <div key={h.id} style={{ padding: 8, borderRadius: 8, background: dark ? "#1f1f1f" : "#f8f8f8" }}>
-                  <b>{h.type === "created" ? "Created" : h.type === "used" ? "Used" : "Bought/refilled"}</b> {h.quantity} {h.unit} · {h.itemName} · {fmtDate(new Date(h.timestamp))}
+                  <b>{h.type === "created" ? "Created" : h.type === "used" ? "Used" : "Bought/refilled"}</b> {h.quantity} {h.unit} · {h.itemName} · {fmtDateTime(new Date(h.timestamp))}
                 </div>
               ))
             )}
