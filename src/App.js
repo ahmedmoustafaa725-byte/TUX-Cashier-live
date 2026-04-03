@@ -1208,6 +1208,8 @@ export function packStateForCloud(state) {
     extraList,
     orders,
     inventory,
+    bulkInventoryItems,
+    bulkInventoryHistory,
     nextOrderNo,
     workerProfiles,
     workerSessions,
@@ -1276,6 +1278,8 @@ export function packStateForCloud(state) {
       restockedAt: toIso(o.restockedAt),
     })),
     inventory,
+    bulkInventoryItems: Array.isArray(bulkInventoryItems) ? bulkInventoryItems : [],
+    bulkInventoryHistory: Array.isArray(bulkInventoryHistory) ? bulkInventoryHistory : [],
     nextOrderNo,
     dark,
     workers,
@@ -1515,6 +1519,8 @@ if (Array.isArray(data.orders)) {
   if (data.menu) out.menu = data.menu;
   if (data.extras) out.extraList = data.extras;
   if (data.inventory) out.inventory = data.inventory;
+  if (Array.isArray(data.bulkInventoryItems)) out.bulkInventoryItems = data.bulkInventoryItems;
+  if (Array.isArray(data.bulkInventoryHistory)) out.bulkInventoryHistory = data.bulkInventoryHistory;
   if (typeof data.nextOrderNo === "number") out.nextOrderNo = data.nextOrderNo;
   if (typeof data.dark === "boolean") out.dark = data.dark;
   if (Array.isArray(data.workers)) out.workers = data.workers;
@@ -3307,6 +3313,23 @@ setMenu((arr) => [
   setNewItemColor("#ffffff");
 };
 const [inventory, setInventory] = useState(DEFAULT_INVENTORY);
+const [bulkInventoryItems, setBulkInventoryItems] = useState(() => {
+  const l = loadLocal();
+  return Array.isArray(l.bulkInventoryItems) ? l.bulkInventoryItems : [];
+});
+const [bulkInventoryHistory, setBulkInventoryHistory] = useState(() => {
+  const l = loadLocal();
+  return Array.isArray(l.bulkInventoryHistory) ? l.bulkInventoryHistory : [];
+});
+const [bulkInventoryView, setBulkInventoryView] = useState("table");
+const [bulkNewItemName, setBulkNewItemName] = useState("");
+const [bulkNewItemUnit, setBulkNewItemUnit] = useState("bag");
+const [bulkOpeningStock, setBulkOpeningStock] = useState(0);
+const [bulkMinStock, setBulkMinStock] = useState(0);
+const [bulkRefillItemId, setBulkRefillItemId] = useState("");
+const [bulkRefillQty, setBulkRefillQty] = useState(0);
+const [bulkHistoryRange, setBulkHistoryRange] = useState("week");
+const [bulkHistoryItemId, setBulkHistoryItemId] = useState("all");
 const [inventoryLocked, setInventoryLocked] = useState(false);
 const [inventorySnapshot, setInventorySnapshot] = useState([]);
 const [inventoryLockedAt, setInventoryLockedAt] = useState(null);
@@ -3341,6 +3364,35 @@ const lowStockItems = useMemo(() => {
     return Number(it.qty || 0) <= min; // at or below threshold
   });
 }, [inventory]);
+const bulkInventoryLowStockItems = useMemo(
+  () =>
+    (bulkInventoryItems || []).filter(
+      (it) => Number(it.stock || 0) <= Number(it.minStock || 0)
+    ),
+  [bulkInventoryItems]
+);
+const bulkInventorySummary = useMemo(() => {
+  const items = (bulkInventoryItems || []).length;
+  const lowStock = bulkInventoryLowStockItems.length;
+  const totalUnits = (bulkInventoryItems || []).reduce(
+    (sum, it) => sum + Number(it.stock || 0),
+    0
+  );
+  return { items, lowStock, totalUnits };
+}, [bulkInventoryItems, bulkInventoryLowStockItems.length]);
+const bulkHistoryFiltered = useMemo(() => {
+  const now = Date.now();
+  const ms = bulkHistoryRange === "month" ? 30 * 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+  return (bulkInventoryHistory || [])
+    .filter((row) => {
+      const ts = new Date(row.timestamp || 0).getTime();
+      if (!Number.isFinite(ts)) return false;
+      if (now - ts > ms) return false;
+      if (bulkHistoryItemId !== "all" && row.itemId !== bulkHistoryItemId) return false;
+      return true;
+    })
+    .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+}, [bulkInventoryHistory, bulkHistoryRange, bulkHistoryItemId]);
 const inventoryReportRows = useMemo(() => {
   if (!inventorySnapshot || inventorySnapshot.length === 0) return [];
   const snapMap = {};
@@ -4017,6 +4069,8 @@ useEffect(() => {
   if (l.orderTypes) setOrderTypes(l.orderTypes);
   if (typeof l.defaultDeliveryFee === "number") setDefaultDeliveryFee(l.defaultDeliveryFee);
   if (l.inventory) setInventory(l.inventory);
+  if (Array.isArray(l.bulkInventoryItems)) setBulkInventoryItems(l.bulkInventoryItems);
+  if (Array.isArray(l.bulkInventoryHistory)) setBulkInventoryHistory(l.bulkInventoryHistory);
   if (l.utilityBills) setUtilityBills(normalizeUtilityBills(l.utilityBills));
   if (l.laborProfile) setLaborProfile(normalizeLaborProfile(l.laborProfile));
   if (Array.isArray(l.equipmentList)) setEquipmentList(normalizeEquipmentList(l.equipmentList));
@@ -4126,6 +4180,8 @@ useEffect(() => { saveLocalPartial({ utilityBills }); }, [utilityBills]);
 useEffect(() => { saveLocalPartial({ laborProfile }); }, [laborProfile]);
 useEffect(() => { saveLocalPartial({ equipmentList }); }, [equipmentList]);
 useEffect(() => { saveLocalPartial({ inventory }); }, [inventory]);
+useEffect(() => { saveLocalPartial({ bulkInventoryItems }); }, [bulkInventoryItems]);
+useEffect(() => { saveLocalPartial({ bulkInventoryHistory }); }, [bulkInventoryHistory]);
 useEffect(() => { saveLocalPartial({ adminPins }); }, [adminPins]);
 useEffect(() => { saveLocalPartial({ dark }); }, [dark]);
 useEffect(() => { saveLocalPartial({ targetMarginPct }); }, [targetMarginPct]);
@@ -4150,6 +4206,11 @@ useEffect(() => {
     setNewPurchase(p => ({ ...p, categoryId: purchaseCategories[0].id }));
   }
 }, [newPurchase.categoryId, purchaseCategories]);
+useEffect(() => {
+  if (!bulkRefillItemId && bulkInventoryItems.length) {
+    setBulkRefillItemId(bulkInventoryItems[0].id);
+  }
+}, [bulkRefillItemId, bulkInventoryItems]);
 useEffect(() => { saveLocalPartial({ expenses }); }, [expenses]);
 useEffect(() => { saveLocalPartial({ bankTx }); }, [bankTx]);
 useEffect(() => { saveLocalPartial({ dayMeta }); }, [dayMeta]);
@@ -4174,6 +4235,7 @@ useEffect(() => {
 }, [
   menu, extraList, workers, paymentMethods, orderTypes, defaultDeliveryFee,
  inventory, adminPins, dark,
+  bulkInventoryItems, bulkInventoryHistory,
   expenses, bankTx, dayMeta, inventoryLocked, inventorySnapshot, inventoryLockedAt,
   autoPrintOnCheckout, preferredPaperWidthMm, cloudEnabled, realtimeOrders, nextOrderNo,
    purchases, purchaseCategories, customers, deliveryZones, purchaseFilter, purchaseDay, purchaseMonth,workerProfiles,
@@ -4311,6 +4373,8 @@ const onlineOrderCollections = useMemo(() => {
           if (unpacked.reconHistory) setReconHistory(unpacked.reconHistory);
           if (unpacked.extraList) setExtraList(unpacked.extraList);
           if (unpacked.inventory) setInventory(unpacked.inventory);
+          if (Array.isArray(unpacked.bulkInventoryItems)) setBulkInventoryItems(unpacked.bulkInventoryItems);
+          if (Array.isArray(unpacked.bulkInventoryHistory)) setBulkInventoryHistory(unpacked.bulkInventoryHistory);
           if (unpacked.utilityBills) setUtilityBills(normalizeUtilityBills(unpacked.utilityBills));
           if (unpacked.laborProfile) setLaborProfile(normalizeLaborProfile(unpacked.laborProfile));
           if (unpacked.equipmentList) setEquipmentList(normalizeEquipmentList(unpacked.equipmentList));
@@ -4385,6 +4449,8 @@ if (ts && lastLocalEditAt && ts < lastLocalEditAt) return;
       if (unpacked.reconHistory) setReconHistory(unpacked.reconHistory);
       if (unpacked.extraList) setExtraList(unpacked.extraList);
       if (unpacked.inventory) setInventory(unpacked.inventory);
+      if (Array.isArray(unpacked.bulkInventoryItems)) setBulkInventoryItems(unpacked.bulkInventoryItems);
+      if (Array.isArray(unpacked.bulkInventoryHistory)) setBulkInventoryHistory(unpacked.bulkInventoryHistory);
       if (typeof unpacked.nextOrderNo === "number") setNextOrderNo(unpacked.nextOrderNo);
       if (typeof unpacked.dark === "boolean") setDark(unpacked.dark);
       if (unpacked.workers) setWorkers(unpacked.workers);
@@ -4428,6 +4494,8 @@ if (unpacked.workerProfiles) setWorkerProfiles(unpacked.workerProfiles);
 if (unpacked.workerSessions) setWorkerSessions(unpacked.workerSessions);
       if (unpacked.extraList) setExtraList(unpacked.extraList);
       if (unpacked.inventory) setInventory(unpacked.inventory);
+      if (Array.isArray(unpacked.bulkInventoryItems)) setBulkInventoryItems(unpacked.bulkInventoryItems);
+      if (Array.isArray(unpacked.bulkInventoryHistory)) setBulkInventoryHistory(unpacked.bulkInventoryHistory);
       if (unpacked.nextOrderNo != null) setNextOrderNo(unpacked.nextOrderNo);
       if (unpacked.dark != null) setDark(unpacked.dark);
       if (unpacked.workers) setWorkers(unpacked.workers);
@@ -4480,6 +4548,8 @@ if (unpacked.workerSessions) setWorkerSessions(unpacked.workerSessions);
       extraList,
       orders: realtimeOrders ? [] : orders,
       inventory,
+      bulkInventoryItems,
+      bulkInventoryHistory,
       nextOrderNo,
        reconHistory,
         workerProfiles,
@@ -4544,6 +4614,8 @@ useEffect(() => {
         extraList,
         orders: realtimeOrders ? [] : orders,
         inventory,
+        bulkInventoryItems,
+        bulkInventoryHistory,
         nextOrderNo,
         dark,
         workers,
@@ -4612,6 +4684,8 @@ useEffect(() => {
   extraList,
   orders,
   inventory,
+  bulkInventoryItems,
+  bulkInventoryHistory,
   nextOrderNo,
   dark,
   workers,
@@ -5679,6 +5753,135 @@ const workerMonthlyTotalPay = useMemo(
     }
     return n;
   };
+  const bulkUnitOptions = ["bag", "box", "bottle", "kg", "g", "liter", "ml", "piece", "pack", "tray"];
+  const bulkLowStockAlertedRef = useRef([]);
+  useEffect(() => {
+    const currentLow = bulkInventoryLowStockItems.map((it) => it.id);
+    const prevLow = bulkLowStockAlertedRef.current || [];
+    const newlyLow = bulkInventoryLowStockItems.filter((it) => !prevLow.includes(it.id));
+    if (newlyLow.length) {
+      alert(
+        `Low stock alert:\n${newlyLow
+          .map((it) => `${it.name}: ${it.stock} ${it.unit} (min ${it.minStock})`)
+          .join("\n")}`
+      );
+    }
+    bulkLowStockAlertedRef.current = currentLow;
+  }, [bulkInventoryLowStockItems]);
+  const makeBulkId = (prefix) =>
+    `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const addBulkHistoryEntry = ({ itemId, itemName, type, quantity, unit, timestamp }) => {
+    setBulkInventoryHistory((rows) => [
+      {
+        id: makeBulkId("bh"),
+        itemId,
+        itemName,
+        type,
+        quantity: Number(quantity || 0),
+        unit: unit || "",
+        timestamp: timestamp || new Date().toISOString(),
+      },
+      ...rows,
+    ]);
+  };
+  const handleBulkMinusOne = (itemId) => {
+    const target = (bulkInventoryItems || []).find((it) => it.id === itemId);
+    if (!target) return;
+    const current = Number(target.stock || 0);
+    if (current <= 0) return;
+    const nowIso = new Date().toISOString();
+    setBulkInventoryItems((rows) =>
+      rows.map((it) =>
+        it.id === itemId
+          ? { ...it, stock: Math.max(0, Number(it.stock || 0) - 1), lastUsedAt: nowIso }
+          : it
+      )
+    );
+    addBulkHistoryEntry({
+      itemId: target.id,
+      itemName: target.name,
+      type: "used",
+      quantity: 1,
+      unit: target.unit,
+      timestamp: nowIso,
+    });
+  };
+  const handleBulkCreateItem = () => {
+    const name = String(bulkNewItemName || "").trim();
+    const unit = String(bulkNewItemUnit || "").trim() || "piece";
+    const opening = Math.max(0, Number(bulkOpeningStock || 0));
+    const min = Math.max(0, Number(bulkMinStock || 0));
+    if (!name) return alert("Item Name is required.");
+    const nowIso = new Date().toISOString();
+    const nextItem = {
+      id: makeBulkId("bi"),
+      name,
+      unit,
+      stock: opening,
+      minStock: min,
+      createdAt: nowIso,
+      lastUsedAt: null,
+      lastBoughtAt: opening > 0 ? nowIso : null,
+    };
+    setBulkInventoryItems((rows) => [...rows, nextItem]);
+    addBulkHistoryEntry({
+      itemId: nextItem.id,
+      itemName: nextItem.name,
+      type: "created",
+      quantity: opening,
+      unit: nextItem.unit,
+      timestamp: nowIso,
+    });
+    setBulkNewItemName("");
+    setBulkNewItemUnit("bag");
+    setBulkOpeningStock(0);
+    setBulkMinStock(0);
+    if (!bulkRefillItemId) setBulkRefillItemId(nextItem.id);
+  };
+  const handleBulkRefill = () => {
+    const itemId = String(bulkRefillItemId || "");
+    const qty = Math.max(0, Number(bulkRefillQty || 0));
+    if (!itemId) return alert("Select an item to refill.");
+    if (!(qty > 0)) return alert("Refill Quantity must be greater than 0.");
+    const target = (bulkInventoryItems || []).find((it) => it.id === itemId);
+    if (!target) return alert("Selected item not found.");
+    const nowIso = new Date().toISOString();
+    setBulkInventoryItems((rows) =>
+      rows.map((it) =>
+        it.id === itemId
+          ? { ...it, stock: Number(it.stock || 0) + qty, lastBoughtAt: nowIso }
+          : it
+      )
+    );
+    addBulkHistoryEntry({
+      itemId: target.id,
+      itemName: target.name,
+      type: "refill",
+      quantity: qty,
+      unit: target.unit,
+      timestamp: nowIso,
+    });
+    setBulkRefillQty(0);
+  };
+  const handleBulkRemoveItem = (itemId) => {
+    const target = (bulkInventoryItems || []).find((it) => it.id === itemId);
+    if (!target) return;
+    const adminNum = promptAdminAndPin();
+    if (!adminNum) return;
+    if (!window.confirm(`Admin ${adminNum}: Remove ${target.name}?`)) return;
+    setBulkInventoryItems((rows) => rows.filter((it) => it.id !== itemId));
+    setBulkInventoryHistory((rows) => rows.filter((row) => row.itemId !== itemId));
+    if (bulkRefillItemId === itemId) setBulkRefillItemId("");
+  };
+  const handleBulkResetAll = () => {
+    const adminNum = promptAdminAndPin();
+    if (!adminNum) return;
+    if (!window.confirm(`Admin ${adminNum}: Reset all Bulk Inventory data?`)) return;
+    setBulkInventoryItems([]);
+    setBulkInventoryHistory([]);
+    setBulkRefillItemId("");
+    setBulkHistoryItemId("all");
+  };
 
   const resetAllCustomerContacts = () => {
     const adminNum = promptAdminAndPin();
@@ -5863,6 +6066,8 @@ const endDay = async () => {
           extraList,
           orders: realtimeOrders ? [] : clearedOrders,
           inventory,
+          bulkInventoryItems,
+          bulkInventoryHistory,
           nextOrderNo: 1,
           workerProfiles,
           workerSessions: closedSessions,
@@ -8256,6 +8461,7 @@ const generatePurchasesPDF = () => {
     ["board", "Orders Board"],
     ["expenses", "Expenses"],
     ["usage", "Inventory Usage"],
+    ["bulkInventory", "Bulk Inventory"],
      ["reconcile","Reconcile"],
     ["admin", "Admin"], // <-- new consolidated tab
   ].map(([key, label]) => (
@@ -10820,6 +11026,193 @@ const cogs = Number(
           </table>
         </div>
       )}
+
+{/* ───────────────────────── BULK INVENTORY (top-level) ───────────────────────── */}
+{activeTab === "bulkInventory" && (
+  <div style={{ display: "grid", gap: 14 }}>
+    <h2>Bulk Inventory</h2>
+
+    <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))" }}>
+      <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 12, padding: 12, background: dark ? "#1a1a1a" : "#fff" }}>
+        <div style={{ opacity: 0.75, fontSize: 12 }}>Items</div>
+        <div style={{ fontSize: 24, fontWeight: 800 }}>{bulkInventorySummary.items}</div>
+      </div>
+      <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 12, padding: 12, background: dark ? "#1a1a1a" : "#fff" }}>
+        <div style={{ opacity: 0.75, fontSize: 12 }}>Low Stock</div>
+        <div style={{ fontSize: 24, fontWeight: 800, color: bulkInventorySummary.lowStock > 0 ? "#d32f2f" : undefined }}>
+          {bulkInventorySummary.lowStock}
+        </div>
+      </div>
+      <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 12, padding: 12, background: dark ? "#1a1a1a" : "#fff" }}>
+        <div style={{ opacity: 0.75, fontSize: 12 }}>Total Units</div>
+        <div style={{ fontSize: 24, fontWeight: 800 }}>{bulkInventorySummary.totalUnits}</div>
+      </div>
+    </div>
+
+    {bulkInventorySummary.lowStock > 0 && (
+      <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 12, padding: 12, background: dark ? "#4a1d1d" : "#ffebee", color: dark ? "#fff" : "#b71c1c" }}>
+        <b>Low Stock Alert:</b> {bulkInventoryLowStockItems.map((it) => `${it.name} (${it.stock} ${it.unit})`).join(", ")}
+      </div>
+    )}
+
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+      {[
+        ["table", "Inventory Table"],
+        ["refill", "Add / Refill"],
+        ["history", "History"],
+      ].map(([key, label]) => (
+        <button
+          key={key}
+          onClick={() => setBulkInventoryView(key)}
+          style={{
+            padding: "8px 12px",
+            borderRadius: 8,
+            border: `1px solid ${btnBorder}`,
+            background: bulkInventoryView === key ? "#ffe082" : dark ? "#2c2c2c" : "#f4f4f4",
+            cursor: "pointer",
+          }}
+        >
+          {label}
+        </button>
+      ))}
+      <button
+        onClick={handleBulkResetAll}
+        style={{ marginLeft: "auto", padding: "8px 12px", borderRadius: 8, border: "none", background: "#c62828", color: "#fff", cursor: "pointer" }}
+      >
+        Reset (Admin Passcode)
+      </button>
+    </div>
+
+    {bulkInventoryView === "table" && (
+      <div style={{ overflowX: "auto", border: `1px solid ${cardBorder}`, borderRadius: 12, background: dark ? "#121212" : "#fff" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              {["Item", "Unit", "Current Stock", "Min Stock", "Status", "Last Used", "Last Bought", "Use", "Actions"].map((h) => (
+                <th key={h} style={{ textAlign: h === "Current Stock" || h === "Min Stock" ? "right" : "left", padding: 10, borderBottom: `1px solid ${cardBorder}` }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {bulkInventoryItems.length === 0 ? (
+              <tr><td colSpan={9} style={{ padding: 10, opacity: 0.7 }}>No bulk inventory items yet.</td></tr>
+            ) : (
+              bulkInventoryItems.map((it) => {
+                const isLow = Number(it.stock || 0) <= Number(it.minStock || 0);
+                return (
+                  <tr key={it.id} style={{ background: isLow ? (dark ? "#5f2121" : "#ffebee") : "transparent" }}>
+                    <td style={{ padding: 10 }}>{it.name}</td>
+                    <td style={{ padding: 10 }}>{it.unit}</td>
+                    <td style={{ padding: 10, textAlign: "right", fontWeight: 700 }}>{Number(it.stock || 0)}</td>
+                    <td style={{ padding: 10, textAlign: "right" }}>{Number(it.minStock || 0)}</td>
+                    <td style={{ padding: 10, color: isLow ? "#d32f2f" : "#2e7d32", fontWeight: 700 }}>{isLow ? "Low Stock" : "OK"}</td>
+                    <td style={{ padding: 10 }}>{it.lastUsedAt ? fmtDate(new Date(it.lastUsedAt)) : "—"}</td>
+                    <td style={{ padding: 10 }}>{it.lastBoughtAt ? fmtDate(new Date(it.lastBoughtAt)) : "—"}</td>
+                    <td style={{ padding: 10 }}>
+                      <button
+                        onClick={() => handleBulkMinusOne(it.id)}
+                        disabled={Number(it.stock || 0) <= 0}
+                        style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: Number(it.stock || 0) <= 0 ? "#9e9e9e" : "#ef6c00", color: "#fff", cursor: Number(it.stock || 0) <= 0 ? "not-allowed" : "pointer" }}
+                      >
+                        Minus 1
+                      </button>
+                    </td>
+                    <td style={{ padding: 10 }}>
+                      <button onClick={() => handleBulkRemoveItem(it.id)} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: "#b71c1c", color: "#fff", cursor: "pointer" }}>
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    )}
+
+    {bulkInventoryView === "refill" && (
+      <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
+        <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 12, padding: 14, background: dark ? "#161616" : "#fff" }}>
+          <h3 style={{ marginTop: 0 }}>Add New Item</h3>
+          <div style={{ display: "grid", gap: 8 }}>
+            <input value={bulkNewItemName} onChange={(e) => setBulkNewItemName(e.target.value)} placeholder="Item Name" style={{ padding: 10, borderRadius: 8, border: `1px solid ${btnBorder}` }} />
+            <select value={bulkNewItemUnit} onChange={(e) => setBulkNewItemUnit(e.target.value)} style={{ padding: 10, borderRadius: 8, border: `1px solid ${btnBorder}` }}>
+              {bulkUnitOptions.map((u) => <option key={u} value={u}>{u}</option>)}
+            </select>
+            <input type="number" value={bulkOpeningStock} onChange={(e) => setBulkOpeningStock(Number(e.target.value || 0))} placeholder="Opening Stock" style={{ padding: 10, borderRadius: 8, border: `1px solid ${btnBorder}` }} />
+            <input type="number" value={bulkMinStock} onChange={(e) => setBulkMinStock(Number(e.target.value || 0))} placeholder="Min Stock" style={{ padding: 10, borderRadius: 8, border: `1px solid ${btnBorder}` }} />
+            <button onClick={handleBulkCreateItem} style={{ padding: "10px 12px", borderRadius: 8, border: "none", background: "#1565c0", color: "#fff", cursor: "pointer" }}>
+              Add Item
+            </button>
+          </div>
+        </div>
+
+        <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 12, padding: 14, background: dark ? "#161616" : "#fff" }}>
+          <h3 style={{ marginTop: 0 }}>Refill Existing Item</h3>
+          <div style={{ display: "grid", gap: 8 }}>
+            <select value={bulkRefillItemId} onChange={(e) => setBulkRefillItemId(e.target.value)} style={{ padding: 10, borderRadius: 8, border: `1px solid ${btnBorder}` }}>
+              <option value="">Select item</option>
+              {bulkInventoryItems.map((it) => <option key={it.id} value={it.id}>{it.name} ({it.stock} {it.unit})</option>)}
+            </select>
+            <input type="number" value={bulkRefillQty} onChange={(e) => setBulkRefillQty(Number(e.target.value || 0))} placeholder="Refill Quantity" style={{ padding: 10, borderRadius: 8, border: `1px solid ${btnBorder}` }} />
+            <button onClick={handleBulkRefill} style={{ padding: "10px 12px", borderRadius: 8, border: "none", background: "#2e7d32", color: "#fff", cursor: "pointer" }}>
+              Refill
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {bulkInventoryView === "history" && (
+      <div style={{ display: "grid", gap: 12 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+          <button onClick={() => setBulkHistoryRange("week")} style={{ padding: "6px 10px", borderRadius: 8, border: `1px solid ${btnBorder}`, background: bulkHistoryRange === "week" ? "#ffe082" : dark ? "#2c2c2c" : "#f4f4f4" }}>Week</button>
+          <button onClick={() => setBulkHistoryRange("month")} style={{ padding: "6px 10px", borderRadius: 8, border: `1px solid ${btnBorder}`, background: bulkHistoryRange === "month" ? "#ffe082" : dark ? "#2c2c2c" : "#f4f4f4" }}>Month</button>
+          <select value={bulkHistoryItemId} onChange={(e) => setBulkHistoryItemId(e.target.value)} style={{ padding: 8, borderRadius: 8, border: `1px solid ${btnBorder}` }}>
+            <option value="all">All Items</option>
+            {bulkInventoryItems.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
+          </select>
+          <button onClick={() => setBulkHistoryItemId("all")} style={{ padding: "6px 10px", borderRadius: 8, border: `1px solid ${btnBorder}`, background: dark ? "#2c2c2c" : "#f4f4f4" }}>All</button>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 }}>
+          <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 12, padding: 12, background: dark ? "#121212" : "#fff" }}>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>Refill</div>
+            {(bulkHistoryFiltered.filter((h) => h.type === "refill").slice(0, 8)).map((h) => (
+              <div key={h.id} style={{ padding: "6px 0", borderBottom: `1px dashed ${cardBorder}` }}>
+                +{h.quantity} {h.unit} · {h.itemName}
+              </div>
+            ))}
+          </div>
+          <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 12, padding: 12, background: dark ? "#121212" : "#fff" }}>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>Usage</div>
+            {(bulkHistoryFiltered.filter((h) => h.type === "used").slice(0, 8)).map((h) => (
+              <div key={h.id} style={{ padding: "6px 0", borderBottom: `1px dashed ${cardBorder}` }}>
+                -{h.quantity} {h.unit} · {h.itemName}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ border: `1px solid ${cardBorder}`, borderRadius: 12, background: dark ? "#121212" : "#fff", padding: 12 }}>
+          <h3 style={{ marginTop: 0 }}>All History (Newest First)</h3>
+          <div style={{ display: "grid", gap: 6 }}>
+            {bulkHistoryFiltered.length === 0 ? (
+              <div style={{ opacity: 0.7 }}>No history for this filter.</div>
+            ) : (
+              bulkHistoryFiltered.map((h) => (
+                <div key={h.id} style={{ padding: 8, borderRadius: 8, background: dark ? "#1f1f1f" : "#f8f8f8" }}>
+                  <b>{h.type === "created" ? "Created" : h.type === "used" ? "Used" : "Bought/refilled"}</b> {h.quantity} {h.unit} · {h.itemName} · {fmtDate(new Date(h.timestamp))}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+  </div>
+)}
 
 {/* ───────────────────────── INVENTORY USAGE (top-level) ───────────────────────── */}
 {activeTab === "usage" && (
