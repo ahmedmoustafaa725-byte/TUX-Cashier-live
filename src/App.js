@@ -7432,10 +7432,35 @@ const computeProfitBuckets = useCallback(
       const ms = toMillis(value);
       return Number.isFinite(ms) ? ms : 0;
     };
+
+    const selectedMonth = String(reportMonth || "").trim();
+    const selectedYear = Number(reportYear);
+
+    const matchesSelection = (order) => {
+      const d = toDate(order?.date);
+      if (!d) return false;
+
+      if (reportFilter === "month") {
+        const [yearStr, monthStr] = selectedMonth.split("-");
+        const y = Number(yearStr);
+        const m = Number(monthStr);
+        if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return false;
+        return d.getFullYear() === y && d.getMonth() === m - 1;
+      }
+
+      if (reportFilter === "year") {
+        if (!Number.isFinite(selectedYear)) return false;
+        return d.getFullYear() === selectedYear;
+      }
+
+      return true;
+    };
+
     return [...reportOrders]
       .map(enrichOrderWithChannel)
+      .filter(matchesSelection)
       .sort((a, b) => toMs(b.date) - toMs(a.date));
-  }, [reportOrders]);
+  }, [reportOrders, reportFilter, reportMonth, reportYear]);
 
 const totals = useMemo(() => {
     const makeEmptyMaps = () => {
