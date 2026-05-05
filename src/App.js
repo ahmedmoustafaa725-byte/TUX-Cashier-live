@@ -1239,7 +1239,6 @@ export function packStateForCloud(state) {
     reportFilter,
     reportDay,
     reportMonth,
-      reportYear,
   } = state;
   const purchases = Array.isArray(state.purchases)
     ? state.purchases.map((p) => ({
@@ -1381,7 +1380,6 @@ export function packStateForCloud(state) {
     reportFilter: typeof reportFilter === "string" ? reportFilter : undefined,
     reportDay: typeof reportDay === "string" ? reportDay : undefined,
     reportMonth: typeof reportMonth === "string" ? reportMonth : undefined,
-    reportYear: Number.isFinite(Number(reportYear)) ? Number(reportYear) : undefined,
   };
   return sanitizeForFirestore(payload);
 }
@@ -1518,7 +1516,6 @@ if (Array.isArray(data.orders)) {
   if (typeof data.reportFilter === "string") out.reportFilter = data.reportFilter;
   if (typeof data.reportDay === "string") out.reportDay = data.reportDay;
   if (typeof data.reportMonth === "string") out.reportMonth = data.reportMonth;
-  if (Number.isFinite(Number(data.reportYear))) out.reportYear = Number(data.reportYear);
   if (data.menu) out.menu = data.menu;
   if (data.extras) out.extraList = data.extras;
   if (data.inventory) out.inventory = data.inventory;
@@ -3272,11 +3269,6 @@ const [reportMonth, setReportMonth] = useState(() => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 });
-const [reportYear, setReportYear] = useState(() => {
-  const l = loadLocal();
-  const year = Number(l?.reportYear);
-  return Number.isFinite(year) ? year : new Date().getFullYear();
-});
 const [marginChartFilter, setMarginChartFilter] = useState("week");
 const [marginChartWeek, setMarginChartWeek] = useState(() =>
   getSundayWeekInfo(new Date()).week
@@ -4232,8 +4224,8 @@ useEffect(() => { saveLocalPartial({ reconSavedBy }); }, [reconSavedBy]);
 useEffect(() => { saveLocalPartial({ purchaseCategories }); }, [purchaseCategories]); // ⬅️ NEW
 useEffect(() => { saveLocalPartial({ purchaseFilter }); }, [purchaseFilter]);  
 useEffect(() => {
-  saveLocalPartial({ reportFilter, reportDay, reportMonth, reportYear });
-}, [reportFilter, reportDay, reportMonth, reportYear]);
+  saveLocalPartial({ reportFilter, reportDay, reportMonth });
+}, [reportFilter, reportDay, reportMonth]);
 useEffect(() => {
   saveLocalPartial({ usageFilter, usageWeekDate, usageMonth });
 }, [usageFilter, usageWeekDate, usageMonth]);
@@ -4310,7 +4302,6 @@ useEffect(() => {
  workerSessions,
   historicalOrders, historicalExpenses, historicalPurchases,
   reportFilter, reportDay, reportMonth,
-      reportYear,
   utilityBills, laborProfile, equipmentList,
 ]);
 useEffect(() => {
@@ -4479,7 +4470,6 @@ const onlineOrderCollections = useMemo(() => {
           if (typeof unpacked.reportFilter === "string") setReportFilter(unpacked.reportFilter);
           if (typeof unpacked.reportDay === "string") setReportDay(unpacked.reportDay);
           if (typeof unpacked.reportMonth === "string") setReportMonth(unpacked.reportMonth);
-          if (Number.isFinite(Number(unpacked.reportYear))) setReportYear(Number(unpacked.reportYear));
            if (unpacked.purchases) setPurchases(unpacked.purchases);
        if (unpacked.purchaseCategories) {
    setPurchaseCategories(normalizePurchaseCategories(unpacked.purchaseCategories));
@@ -4536,7 +4526,6 @@ if (ts && lastLocalEditAt && ts < lastLocalEditAt) return;
       if (typeof unpacked.reportFilter === "string") setReportFilter(unpacked.reportFilter);
       if (typeof unpacked.reportDay === "string") setReportDay(unpacked.reportDay);
       if (typeof unpacked.reportMonth === "string") setReportMonth(unpacked.reportMonth);
-          if (Number.isFinite(Number(unpacked.reportYear))) setReportYear(Number(unpacked.reportYear));
 
       const appliedAt = ts || Date.now();
       setLastAppliedCloudAt(appliedAt);
@@ -4588,7 +4577,6 @@ if (unpacked.workerSessions) setWorkerSessions(unpacked.workerSessions);
       if (typeof unpacked.reportFilter === "string") setReportFilter(unpacked.reportFilter);
       if (typeof unpacked.reportDay === "string") setReportDay(unpacked.reportDay);
       if (typeof unpacked.reportMonth === "string") setReportMonth(unpacked.reportMonth);
-          if (Number.isFinite(Number(unpacked.reportYear))) setReportYear(Number(unpacked.reportYear));
       if (unpacked.customers) setCustomers(dedupeCustomers(unpacked.customers));
 
        if (unpacked.purchases) setPurchases(unpacked.purchases);
@@ -4652,7 +4640,6 @@ if (unpacked.workerSessions) setWorkerSessions(unpacked.workerSessions);
       reportFilter,
       reportDay,
       reportMonth,
-      reportYear,
     });
     writeSeqRef.current += 1;
     const body = {
@@ -4719,7 +4706,6 @@ useEffect(() => {
         reportFilter,
         reportDay,
         reportMonth,
-      reportYear,
       });
       writeSeqRef.current += 1;
       const body = {
@@ -4788,7 +4774,6 @@ useEffect(() => {
   reportFilter,
   reportDay,
   reportMonth,
-      reportYear,
 ]);
   const startedAtMs = dayMeta?.startedAt
     ? new Date(dayMeta.startedAt).getTime()
@@ -5529,7 +5514,7 @@ const marginTrend = useMemo(() => {
 const sumPurchases = (rows = []) =>
   rows.reduce((s, p) => s + Number(p.qty || 0) * Number(p.unitPrice || 0), 0);
   
-function getPeriodRange(kind, dayMeta, dayStr, monthStr, weekStr, yearValue) {
+function getPeriodRange(kind, dayMeta, dayStr, monthStr, weekStr) {
   if (kind === "shift") {
     const now = new Date();
     const start = dayMeta?.startedAt ? new Date(dayMeta.startedAt) : now;
@@ -5591,10 +5576,8 @@ function getPeriodRange(kind, dayMeta, dayStr, monthStr, weekStr, yearValue) {
     return [start, end];
   }
   const now = new Date();
-  const selectedYear = Number(yearValue);
-  const resolvedYear = Number.isFinite(selectedYear) ? selectedYear : now.getFullYear();
-  const start = new Date(resolvedYear, 0, 1, 0, 0, 0, 0);
-  const end   = new Date(resolvedYear, 11, 31, 23, 59, 59, 999);
+  const start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+  const end   = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
   return [start, end];
 }
 // === Worker helpers ===
@@ -6175,7 +6158,6 @@ const endDay = async () => {
           reportFilter,
           reportDay,
           reportMonth,
-      reportYear,
         });
         writeSeqRef.current += 1;
         const body = {
@@ -7196,16 +7178,9 @@ const voidOrderToExpense = async (orderNo) => {
   };
 
   const [reportStart, reportEnd] = useMemo(() => {
-    const [start, end] = getPeriodRange(
-      reportFilter,
-      dayMeta,
-      reportDay,
-      reportMonth,
-      undefined,
-      reportYear
-    );
+    const [start, end] = getPeriodRange(reportFilter, dayMeta, reportDay, reportMonth, undefined);
     return [start, end];
-  }, [reportFilter, reportDay, reportMonth, reportYear, dayMeta]);
+  }, [reportFilter, reportDay, reportMonth, dayMeta]);
 
 
   const resetReports = () => {
@@ -7225,7 +7200,6 @@ const voidOrderToExpense = async (orderNo) => {
     setReportFilter("shift");
     setReportDay(isoDay);
     setReportMonth(isoMonth);
-    setReportYear(now.getFullYear());
     setMarginChartFilter("week");
 
     const { week: defaultWeek } = getSundayWeekInfo(now);
@@ -7432,41 +7406,10 @@ const computeProfitBuckets = useCallback(
       const ms = toMillis(value);
       return Number.isFinite(ms) ? ms : 0;
     };
-    const toDate = (value) => {
-      if (!value) return null;
-      if (value instanceof Date) return value;
-      const d = new Date(value);
-      return Number.isNaN(+d) ? null : d;
-    };
-
-    const selectedMonth = String(reportMonth || "").trim();
-    const selectedYear = Number(reportYear);
-
-    const matchesSelection = (order) => {
-      const d = toDate(order?.date);
-      if (!d) return false;
-
-      if (reportFilter === "month") {
-        const [yearStr, monthStr] = selectedMonth.split("-");
-        const y = Number(yearStr);
-        const m = Number(monthStr);
-        if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return false;
-        return d.getFullYear() === y && d.getMonth() === m - 1;
-      }
-
-      if (reportFilter === "year") {
-        if (!Number.isFinite(selectedYear)) return false;
-        return d.getFullYear() === selectedYear;
-      }
-
-      return true;
-    };
-
     return [...reportOrders]
       .map(enrichOrderWithChannel)
-      .filter(matchesSelection)
       .sort((a, b) => toMs(b.date) - toMs(a.date));
-  }, [reportOrders, reportFilter, reportMonth, reportYear]);
+  }, [reportOrders]);
 
 const totals = useMemo(() => {
     const makeEmptyMaps = () => {
@@ -12310,7 +12253,7 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
       gap: 8,
       margin: "6px 0 10px"
     }}>
-      {["shift", "day", "month", "year"].map((k) => (
+      {["day","month","year"].map((k) => (
         <button
           key={k}
           onClick={() => setPurchaseFilter(k)}
@@ -13458,24 +13401,6 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
             >
               MONTH
             </button>
-            <button
-              onClick={() => setReportFilter("year")}
-              style={{
-                padding: "6px 10px",
-                borderRadius: 6,
-                border: `1px solid ${btnBorder}`,
-                background:
-                  reportFilter === "year"
-                    ? "#ffd54f"
-                    : dark
-                    ? "#2c2c2c"
-                    : "#f1f1f1",
-                cursor: "pointer",
-                fontWeight: 700,
-              }}
-            >
-              YEAR
-            </button>
             {reportFilter === "day" && (
               <>
                 <label><b>Pick day:</b></label>
@@ -13502,26 +13427,6 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
                     padding: 6,
                     borderRadius: 6,
                     border: `1px solid ${btnBorder}`,
-                  }}
-                />
-              </>
-            )}
-            {reportFilter === "year" && (
-              <>
-                <label><b>Pick year:</b></label>
-                <input
-                  type="number"
-                  min={2000}
-                  max={2100}
-                  value={reportYear}
-                  onChange={(e) =>
-                    setReportYear(Number(e.target.value) || new Date().getFullYear())
-                  }
-                  style={{
-                    padding: 6,
-                    borderRadius: 6,
-                    border: `1px solid ${btnBorder}`,
-                    width: 110,
                   }}
                 />
               </>
