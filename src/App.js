@@ -7432,6 +7432,12 @@ const computeProfitBuckets = useCallback(
       const ms = toMillis(value);
       return Number.isFinite(ms) ? ms : 0;
     };
+    const toDate = (value) => {
+      if (!value) return null;
+      if (value instanceof Date) return value;
+      const d = new Date(value);
+      return Number.isNaN(+d) ? null : d;
+    };
 
     const selectedMonth = String(reportMonth || "").trim();
     const selectedYear = Number(reportYear);
