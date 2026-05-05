@@ -12279,7 +12279,7 @@ const purchasesInPeriod = (allPurchases || []).filter(p => {
       gap: 8,
       margin: "6px 0 10px"
     }}>
-      ["shift", "day", "month", "year"]
+      {["shift", "day", "month", "year"].map((k) => (
         <button
           key={k}
           onClick={() => setPurchaseFilter(k)}
